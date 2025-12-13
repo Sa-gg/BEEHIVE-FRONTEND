@@ -10,7 +10,7 @@ interface MenuItemCardProps {
 }
 
 export const MenuItemCard = ({ item, onAddToOrder }: MenuItemCardProps) => {
-  const [showAddAnimation, setShowAddAnimation] = useState(false)
+  const [animations, setAnimations] = useState<number[]>([])
 
   const handleAddToOrder = (e?: React.MouseEvent) => {
     if (e) {
@@ -19,8 +19,15 @@ export const MenuItemCard = ({ item, onAddToOrder }: MenuItemCardProps) => {
     if (!item.available) return
     
     onAddToOrder(item)
-    setShowAddAnimation(true)
-    setTimeout(() => setShowAddAnimation(false), 600)
+    
+    // Add new animation
+    const animationId = Date.now()
+    setAnimations(prev => [...prev, animationId])
+    
+    // Remove animation after it completes
+    setTimeout(() => {
+      setAnimations(prev => prev.filter(id => id !== animationId))
+    }, 400)
   }
 
   return (
@@ -63,14 +70,21 @@ export const MenuItemCard = ({ item, onAddToOrder }: MenuItemCardProps) => {
         </div>
       </div>
       
-      {/* +1 Animation */}
-      {showAddAnimation && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
+      {/* +1 Animation Stack */}
+      {animations.map((animationId, index) => (
+        <div 
+          key={animationId}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
+          style={{ 
+            animationDelay: `${index * 50}ms`,
+            left: `calc(50% + ${(index % 3 - 1) * 15}px)` 
+          }}
+        >
           <div className="text-4xl font-bold text-green-500 animate-ping-scale">
             +1
           </div>
         </div>
-      )}
+      ))}
       
       <style>{`
         @keyframes ping-scale {
@@ -88,7 +102,7 @@ export const MenuItemCard = ({ item, onAddToOrder }: MenuItemCardProps) => {
           }
         }
         .animate-ping-scale {
-          animation: ping-scale 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+          animation: ping-scale 0.4s cubic-bezier(0.4, 0, 0.6, 1);
         }
       `}</style>
     </div>

@@ -6,93 +6,91 @@ import type { OrderItem } from '../../../core/domain/entities/Order.entity'
 import { MenuItemCard } from '../../components/features/POS/MenuItemCard'
 import { OrderSummary } from '../../components/features/POS/OrderSummary'
 import { Button } from '../../components/common/ui/button'
-import { ShoppingCart, Search } from 'lucide-react'
+import { ShoppingCart, Search, Loader2 } from 'lucide-react'
+import { menuItemsApi, type MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
+import { ordersApi } from '../../../infrastructure/api/orders.api'
 
-// Sample menu data - In production, this would come from your backend
-const MENU_ITEMS: MenuItem[] = [
-  // Pizza
-  { id: '1', name: 'Bacon Pepperoni', category: 'pizza', price: 299, image: '/src/assets/pizza/Bacon Pepperoni.jpg', available: true },
-  { id: '2', name: 'Beef Wagon', category: 'pizza', price: 329, image: '/src/assets/pizza/beef wagon.jpg', available: true },
-  { id: '3', name: 'Creamy Spinach', category: 'pizza', price: 279, image: '/src/assets/pizza/Creamy Spinach.jpg', available: true },
-  { id: '4', name: 'Ham & Cheese Hawaiian', category: 'pizza', price: 289, image: '/src/assets/pizza/Ham & Cheese Hawaiian.jpg', available: true },
-  
-  // Appetizers
-  { id: '5', name: 'Beef Burger', category: 'appetizer', price: 149, image: '/src/assets/appetizer/Beef Burger.jpg', available: true },
-  { id: '6', name: 'Chicken Burger', category: 'appetizer', price: 139, image: '/src/assets/appetizer/Chicken Burger.jpg', available: true },
-  { id: '7', name: 'Burger w/ Fries', category: 'appetizer', price: 179, image: '/src/assets/appetizer/Burger w Fries.jpg', available: true },
-  { id: '8', name: 'Cheesy Fries', category: 'appetizer', price: 99, image: '/src/assets/appetizer/Cheesy Fries.jpg', available: true },
-  { id: '9', name: 'Chili Fries', category: 'appetizer', price: 109, image: '/src/assets/appetizer/chili fries.jpg', available: true },
-  { id: '10', name: 'Meaty Chili Fries', category: 'appetizer', price: 129, image: '/src/assets/appetizer/Meaty Chili Fries.jpg', available: true },
-  { id: '11', name: 'Meaty Fries', category: 'appetizer', price: 119, image: '/src/assets/appetizer/meaty fries.jpg', available: true },
-  { id: '12', name: 'Nacho Fries', category: 'appetizer', price: 139, image: '/src/assets/appetizer/Nacho Fries.png', available: true },
-  { id: '13', name: 'Nachos', category: 'appetizer', price: 159, image: '/src/assets/appetizer/Nachos.jpg', available: true },
-  { id: '14', name: 'Lumpia Shanghai', category: 'appetizer', price: 89, image: '/src/assets/appetizer/Lumpia Shanghai.jpg', available: true },
-  { id: '15', name: 'Pancit Canton Chili Mansi', category: 'appetizer', price: 39, image: '/src/assets/appetizer/Pancit Canton Chili Mansi.jpg', available: true },
-  { id: '16', name: 'Pancit Canton Extra Hot', category: 'appetizer', price: 39, image: '/src/assets/appetizer/Pancit Canton Extra Hot.jpg', available: true },
-  
-  // Hot Drinks
-  { id: '17', name: 'Hot Coffee', category: 'hot drinks', price: 79, image: '/src/assets/hot drinks/hot coffee.png', available: true },
-  { id: '18', name: 'Hot Coffee with Milk', category: 'hot drinks', price: 89, image: '/src/assets/hot drinks/hot coffee with millk.png', available: true },
-  { id: '19', name: 'Hot Chocolate', category: 'hot drinks', price: 99, image: '/src/assets/hot drinks/hot chocolate.png', available: true },
-  { id: '20', name: 'Hot Matcha', category: 'hot drinks', price: 109, image: '/src/assets/hot drinks/hot matcha.png', available: true },
-  
-  // Cold Drinks
-  { id: '21', name: 'Caramel Macchiato', category: 'cold drinks', price: 119, image: '/src/assets/cold drinks/caramel machiato.png', available: true },
-  { id: '22', name: 'Caramel Matcha', category: 'cold drinks', price: 129, image: '/src/assets/cold drinks/caramel matahca.png', available: true },
-  { id: '23', name: 'Dirty Matcha Latte', category: 'cold drinks', price: 139, image: '/src/assets/cold drinks/dirty matcha latte.png', available: true },
-  { id: '24', name: 'Iced Americano', category: 'cold drinks', price: 99, image: '/src/assets/cold drinks/iced americano.png', available: true },
-  { id: '25', name: 'Iced Caramel Milk', category: 'cold drinks', price: 109, image: '/src/assets/cold drinks/iced caramel milk.png', available: true },
-  { id: '26', name: 'Iced Chocolate', category: 'cold drinks', price: 109, image: '/src/assets/cold drinks/iced chocolate.png', available: true },
-  { id: '27', name: 'Iced Coffee', category: 'cold drinks', price: 89, image: '/src/assets/cold drinks/iced coffee.png', available: true },
-  { id: '28', name: 'Iced Matcha', category: 'cold drinks', price: 119, image: '/src/assets/cold drinks/iceed matcha.png', available: true },
-  { id: '29', name: 'Salted Caramel', category: 'cold drinks', price: 129, image: '/src/assets/cold drinks/salted caramel.png', available: true },
-  { id: '30', name: 'Spanish Latte', category: 'cold drinks', price: 119, image: '/src/assets/cold drinks/spanish latte.png', available: true },
-  
-  // Smoothies
-  { id: '31', name: 'Blueberry Smoothie', category: 'smoothie', price: 149, image: '/src/assets/smoothie/blueberry.png', available: true },
-  { id: '32', name: 'Strawberry Smoothie', category: 'smoothie', price: 149, image: '/src/assets/smoothie/strawberry.png', available: true },
-  
-  // Platter
-  { id: '33', name: 'Beef Tapa', category: 'platter', price: 189, image: '/src/assets/platter/beeftapa.jpg', available: true },
-  { id: '34', name: 'Boneless Bangus', category: 'platter', price: 179, image: '/src/assets/platter/bonelessbangus.webp', available: true },
-  { id: '35', name: 'Chicharon Bulaklak', category: 'platter', price: 199, image: '/src/assets/platter/chicharonbulaklak.jpg', available: true },
-  { id: '36', name: 'Hungarian', category: 'platter', price: 159, image: '/src/assets/platter/hungarian.jpg', available: true },
-  { id: '37', name: 'Hungarian w/ Fries', category: 'platter', price: 189, image: '/src/assets/platter/hungarianwfries.jpg', available: true },
-  { id: '38', name: 'Pork Sisig', category: 'platter', price: 169, image: '/src/assets/platter/porksisig.png', available: true },
-  
-  // Savers
-  { id: '39', name: 'Beef Tapa', category: 'savers', price: 129, image: '/src/assets/savers/beef tapa.jpg', available: true },
-  { id: '40', name: 'Burger Steak', category: 'savers', price: 119, image: '/src/assets/savers/burger steak.png', available: true },
-  { id: '41', name: 'Cheesy Hungarian', category: 'savers', price: 109, image: '/src/assets/savers/cheesy hungarian.png', available: true },
-  { id: '42', name: 'Chicken Fillet', category: 'savers', price: 119, image: '/src/assets/savers/chicken fillet.png', available: true },
-  { id: '43', name: 'Fish Fillet', category: 'savers', price: 119, image: '/src/assets/savers/fishfillet.png', available: true },
-  { id: '44', name: 'Fried Liempo', category: 'savers', price: 129, image: '/src/assets/savers/fried liempo.png', available: true },
-  { id: '45', name: 'Garlic Pepper Beef', category: 'savers', price: 139, image: '/src/assets/savers/garlic pepper beef.png', available: true },
-  { id: '46', name: 'Grilled Liempo', category: 'savers', price: 129, image: '/src/assets/savers/grilled liempo.jpg', available: true },
-  { id: '47', name: 'Pork Sisig', category: 'savers', price: 119, image: '/src/assets/savers/pork sisig.jpg', available: true },
-  
-  // Value Meal
-  { id: '48', name: 'Boneless Bangus', category: 'value meal', price: 159, image: '/src/assets/value meal/Boneless Bangus.jpg', available: true },
-  { id: '49', name: 'Chicharon Bulaklak', category: 'value meal', price: 179, image: '/src/assets/value meal/chicharon bulaklak.png', available: true },
-  { id: '50', name: 'Hungarian', category: 'value meal', price: 149, image: '/src/assets/value meal/hungarian.png', available: true },
-  { id: '51', name: 'Pork BBQ Grilled', category: 'value meal', price: 169, image: '/src/assets/value meal/Pork BBQ Grilled.jpg', available: true },
-  { id: '52', name: 'Spare Ribs', category: 'value meal', price: 189, image: '/src/assets/value meal/spareribs.jpg', available: true },
-]
+const CATEGORIES = ['all', 'best seller', 'PIZZA', 'APPETIZER', 'HOT_DRINKS', 'COLD_DRINKS', 'SMOOTHIE', 'PLATTER', 'SAVERS', 'VALUE_MEAL'] as const
 
-const BEST_SELLER_IDS = ['1', '2', '13', '14', '33', '40']
-
-const CATEGORIES = ['all', 'best seller', 'pizza', 'appetizer', 'hot drinks', 'cold drinks', 'smoothie', 'platter', 'savers', 'value meal'] as const
+const CATEGORY_LABELS: Record<string, string> = {
+  'all': 'All',
+  'best seller': 'Best Seller',
+  'PIZZA': 'Pizza',
+  'APPETIZER': 'Appetizer',
+  'HOT_DRINKS': 'Hot Drinks',
+  'COLD_DRINKS': 'Cold Drinks',
+  'SMOOTHIE': 'Smoothie',
+  'PLATTER': 'Platter',
+  'SAVERS': 'Savers',
+  'VALUE_MEAL': 'Value Meal'
+}
 
 export const POSPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const editingOrder = location.state?.editingOrder
   
-  const [orderItems, setOrderItems] = useState<OrderItem[]>(editingOrder?.items || [])
+  // Transform order items from backend format to POS format
+  const transformOrderItems = (items: any[]): OrderItem[] => {
+    if (!items) return []
+    return items.map(item => ({
+      menuItemId: item.menuItemId || item.id,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      subtotal: item.subtotal || (item.price * item.quantity)
+    }))
+  }
+  
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [orderItems, setOrderItems] = useState<OrderItem[]>(transformOrderItems(editingOrder?.items || []))
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isEditMode, setIsEditMode] = useState(!!editingOrder)
+  
+  // Order details state
+  const [customerName, setCustomerName] = useState(editingOrder?.customerName || '')
+  const [tableNumber, setTableNumber] = useState(editingOrder?.tableNumber || '')
+  const [paymentMethod, setPaymentMethod] = useState(editingOrder?.paymentMethod || 'CASH')
+  const [orderType, setOrderType] = useState(editingOrder?.orderType || 'DINE_IN')
+
+  // Helper function to get full image URL
+  const getImageUrl = (imagePath: string | null) => {
+    if (!imagePath) return null
+    if (imagePath.startsWith('http')) return imagePath
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+    return `${API_BASE_URL}${imagePath}`
+  }
+
+  // Fetch menu items from API
+  useEffect(() => {
+    const fetchMenuItems = async () => {
+      try {
+        setLoading(true)
+        const response = await menuItemsApi.getAll({ available: true })
+        // Convert API DTOs to MenuItem format
+        const items: MenuItem[] = response.data.map((item: MenuItemDTO) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category.toLowerCase().replace('_', ' '),
+          price: item.price,
+          image: getImageUrl(item.image),
+          available: item.available,
+          featured: item.featured
+        }))
+        setMenuItems(items)
+      } catch (error) {
+        console.error('Failed to fetch menu items:', error)
+        alert('Failed to load menu items. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchMenuItems()
+  }, [])
 
   // Open cart automatically when editing an order
   useEffect(() => {
@@ -155,24 +153,73 @@ export const POSPage = () => {
 
   const clearOrder = () => {
     setOrderItems([])
+    setCustomerName('')
+    setTableNumber('')
+    setPaymentMethod('CASH')
+    setOrderType('DINE_IN')
   }
 
-  const confirmOrder = () => {
+  const confirmOrder = async () => {
     if (isEditMode && editingOrder) {
-      // Return to orders page with updated items
-      navigate('/admin/orders', { 
-        state: { 
-          updatedOrder: {
-            ...editingOrder,
-            items: orderItems,
-            totalAmount: orderItems.reduce((sum, item) => sum + item.subtotal, 0)
-          }
+      // Update order by deleting old and creating new with same order number
+      try {
+        // Delete the old order
+        await ordersApi.delete(editingOrder.id)
+        
+        // Create new order with updated items
+        const orderData = {
+          customerName: customerName || undefined,
+          tableNumber: tableNumber || undefined,
+          orderType: orderType,
+          paymentMethod: paymentMethod,
+          items: orderItems.map(item => ({
+            menuItemId: item.menuItemId,
+            quantity: item.quantity,
+            price: item.price
+          }))
         }
-      })
+        
+        const updatedOrder = await ordersApi.create(orderData)
+        
+        // Show success message
+        alert(`Order Updated Successfully!\nOrder Number: ${updatedOrder.orderNumber}\nTotal: ₱${updatedOrder.totalAmount.toFixed(2)}`)
+        
+        // Navigate back to orders page
+        navigate('/admin/orders')
+      } catch (error: any) {
+        console.error('Failed to update order:', error)
+        alert(`Failed to update order: ${error.response?.data?.error || error.message}`)
+      }
     } else {
-      // In production, this would save the order to the backend
-      alert(`Order confirmed!\nTotal: ₱${(orderItems.reduce((sum, item) => sum + item.subtotal, 0) * 1.12).toFixed(2)}`)
-      clearOrder()
+      // Create order via API
+      try {
+        const orderData = {
+          customerName: customerName || undefined,
+          tableNumber: tableNumber || undefined,
+          orderType: orderType,
+          paymentMethod: paymentMethod,
+          items: orderItems.map(item => ({
+            menuItemId: item.menuItemId,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        }
+        
+        console.log('Sending order data:', orderData)
+        
+        const createdOrder = await ordersApi.create(orderData)
+        
+        // Show success message with order number
+        alert(`Order Created Successfully!\nOrder Number: ${createdOrder.orderNumber}\nTotal: ₱${createdOrder.totalAmount.toFixed(2)}`)
+        clearOrder()
+        
+        // Optionally navigate to orders page
+        // navigate('/admin/orders')
+      } catch (error: any) {
+        console.error('Failed to create order:', error)
+        console.error('Error response:', error.response?.data)
+        alert(`Failed to create order: ${error.response?.data?.error || error.message}`)
+      }
     }
   }
 
@@ -181,10 +228,10 @@ export const POSPage = () => {
   }
 
   const filteredItems = selectedCategory === 'all' 
-    ? MENU_ITEMS 
+    ? menuItems 
     : selectedCategory === 'best seller'
-    ? MENU_ITEMS.filter(item => BEST_SELLER_IDS.includes(item.id))
-    : MENU_ITEMS.filter((item) => item.category === selectedCategory)
+    ? menuItems.filter(item => item.featured)
+    : menuItems.filter((item) => item.category === selectedCategory.toLowerCase().replace('_', ' '))
 
   // Apply search filter
   const searchFilteredItems = searchQuery.trim() 
@@ -212,7 +259,7 @@ export const POSPage = () => {
                 size="sm"
                 variant="outline"
                 onClick={cancelEdit}
-                className="text-white border-white hover:bg-white/20"
+                className="bg-white text-blue-600 border-white hover:bg-blue-50 font-medium"
               >
                 Cancel Edit
               </Button>
@@ -251,7 +298,7 @@ export const POSPage = () => {
                   onClick={() => setSelectedCategory(category)}
                   className="capitalize whitespace-nowrap text-xs lg:text-sm flex-shrink-0"
                 >
-                  {category}
+                  {CATEGORY_LABELS[category] || category}
                 </Button>
               ))}
             </div>
@@ -259,23 +306,33 @@ export const POSPage = () => {
 
           {/* Menu Items Grid */}
           <div className="flex-1 overflow-y-auto p-3 lg:p-4 min-h-0 pb-24 lg:pb-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 lg:gap-3">
-              {searchFilteredItems.map((item) => (
-                <MenuItemCard
-                  key={item.id}
-                  item={item}
-                  onAddToOrder={addToOrder}
-                />
-              ))}
-            </div>
-            {searchFilteredItems.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                <Search className="h-16 w-16 mb-4" />
-                <p className="text-sm">No items found</p>
-                {searchQuery && (
-                  <p className="text-xs mt-2">Try a different search term</p>
-                )}
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <Loader2 className="h-12 w-12 animate-spin text-yellow-500 mx-auto mb-4" />
+                  <p className="text-gray-500">Loading menu items...</p>
+                </div>
               </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 lg:gap-3">
+                  {searchFilteredItems.map((item) => (
+                    <MenuItemCard
+                      key={item.id}
+                      item={item}
+                      onAddToOrder={addToOrder}
+                    />
+                  ))}
+                </div>
+                {searchFilteredItems.length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No items found</p>
+                    {searchQuery && (
+                      <p className="text-xs mt-2 text-gray-400">Try a different search term</p>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -284,6 +341,14 @@ export const POSPage = () => {
         <div className="hidden lg:block lg:w-80 xl:w-96 flex-shrink-0 overflow-hidden">
           <OrderSummary
             items={orderItems}
+            customerName={customerName}
+            tableNumber={tableNumber}
+            paymentMethod={paymentMethod}
+            orderType={orderType}
+            onCustomerNameChange={setCustomerName}
+            onTableNumberChange={setTableNumber}
+            onPaymentMethodChange={setPaymentMethod}
+            onOrderTypeChange={setOrderType}
             onUpdateQuantity={updateQuantity}
             onRemove={removeItem}
             onClearOrder={clearOrder}
@@ -318,6 +383,14 @@ export const POSPage = () => {
             <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[80vh] flex flex-col animate-slide-up">
               <OrderSummary
                 items={orderItems}
+                customerName={customerName}
+                tableNumber={tableNumber}
+                paymentMethod={paymentMethod}
+                orderType={orderType}
+                onCustomerNameChange={setCustomerName}
+                onTableNumberChange={setTableNumber}
+                onPaymentMethodChange={setPaymentMethod}
+                onOrderTypeChange={setOrderType}
                 onUpdateQuantity={updateQuantity}
                 onRemove={removeItem}
                 onClearOrder={clearOrder}

@@ -6,6 +6,7 @@ export interface MenuItem {
   image?: string
   description?: string
   available: boolean
+  featured?: boolean
   nutritionalBenefits?: {
     nutrients: string[]
     moodBenefits: {

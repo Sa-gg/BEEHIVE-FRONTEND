@@ -3,101 +3,101 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Clock, CheckCircle, XCircle, Package, Search, Filter, Eye } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Package, Search, Filter, Eye, Loader2 } from 'lucide-react'
+import { ordersApi, type OrderResponse } from '../../../infrastructure/api/orders.api'
+import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 
 interface OrderItem {
   id: string
   name: string
   quantity: number
   price: number
+  subtotal: number
+  menuItemId: string
 }
 
 interface Order {
   id: string
   orderNumber: string
-  customerName: string
+  customerName: string | null
   items: OrderItem[]
   totalAmount: number
-  status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled'
-  paymentStatus: 'paid' | 'unpaid'
-  orderType: 'dine-in' | 'takeout' | 'delivery'
-  tableNumber?: string
-  createdAt: Date
-  completedAt?: Date
+  status: 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED'
+  paymentStatus: 'PAID' | 'UNPAID' | 'REFUNDED'
+  tableNumber?: string | null
+  createdAt: string
+  completedAt?: string | null
+  subtotal: number
+  tax: number
 }
-
-// Sample data
-const SAMPLE_ORDERS: Order[] = [
-  {
-    id: '1',
-    orderNumber: 'ORD-001',
-    customerName: 'John Doe',
-    items: [
-      { id: '1', name: 'Bacon Pepperoni', quantity: 2, price: 299 },
-      { id: '17', name: 'Hot Coffee', quantity: 2, price: 79 },
-    ],
-    totalAmount: 756,
-    status: 'pending',
-    paymentStatus: 'paid',
-    orderType: 'dine-in',
-    tableNumber: '5',
-    createdAt: new Date(Date.now() - 5 * 60000),
-  },
-  {
-    id: '2',
-    orderNumber: 'ORD-002',
-    customerName: 'Jane Smith',
-    items: [
-      { id: '5', name: 'Beef Burger', quantity: 1, price: 149 },
-      { id: '7', name: 'Burger w/ Fries', quantity: 1, price: 179 },
-      { id: '21', name: 'Caramel Macchiato', quantity: 2, price: 119 },
-    ],
-    totalAmount: 566,
-    status: 'preparing',
-    paymentStatus: 'paid',
-    orderType: 'takeout',
-    createdAt: new Date(Date.now() - 15 * 60000),
-  },
-  {
-    id: '3',
-    orderNumber: 'ORD-003',
-    customerName: 'Mike Johnson',
-    items: [
-      { id: '2', name: 'Beef Wagon', quantity: 1, price: 329 },
-      { id: '31', name: 'Blueberry Smoothie', quantity: 2, price: 149 },
-    ],
-    totalAmount: 627,
-    status: 'ready',
-    paymentStatus: 'paid',
-    orderType: 'dine-in',
-    tableNumber: '12',
-    createdAt: new Date(Date.now() - 25 * 60000),
-  },
-  {
-    id: '4',
-    orderNumber: 'ORD-004',
-    customerName: 'Sarah Williams',
-    items: [
-      { id: '33', name: 'Beef Tapa', quantity: 2, price: 189 },
-      { id: '27', name: 'Iced Coffee', quantity: 2, price: 89 },
-    ],
-    totalAmount: 556,
-    status: 'completed',
-    paymentStatus: 'paid',
-    orderType: 'delivery',
-    createdAt: new Date(Date.now() - 60 * 60000),
-    completedAt: new Date(Date.now() - 45 * 60000),
-  },
-]
 
 export const OrdersPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const [orders, setOrders] = useState<Order[]>(SAMPLE_ORDERS)
+  const [orders, setOrders] = useState<Order[]>([])
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [currentTime, setCurrentTime] = useState(() => Date.now())
+  const [loading, setLoading] = useState(true)
+  const [menuItems, setMenuItems] = useState<Map<string, string>>(new Map())
+  const [menuItemsLoaded, setMenuItemsLoaded] = useState(false)
+
+  // Fetch menu items for mapping IDs to names
+  useEffect(() => {
+    const fetchMenuItems = async () => {
+      try {
+        const response = await menuItemsApi.getAll()
+        const items = response.data || response // Handle both response formats
+        const itemsMap = new Map(items.map((item: any) => [item.id, item.name]))
+        console.log('Menu items loaded:', itemsMap.size, 'items')
+        setMenuItems(itemsMap)
+      } catch (error) {
+        console.error('Failed to fetch menu items:', error)
+      } finally {
+        setMenuItemsLoaded(true)
+      }
+    }
+    fetchMenuItems()
+  }, [])
+
+  // Fetch orders from API
+  useEffect(() => {
+    const fetchOrders = async () => {
+      if (!menuItemsLoaded) return
+      
+      try {
+        setLoading(true)
+        const fetchedOrders = await ordersApi.getAll()
+        
+        // Map order items with menu item names
+        const ordersWithNames = fetchedOrders.map(order => ({
+          ...order,
+          customerName: order.customerName || 'Guest',
+          items: order.order_items.map(item => {
+            const itemName = menuItems.get(item.menuItemId)
+            console.log(`Mapping item ${item.menuItemId} to name:`, itemName)
+            return {
+              id: item.id,
+              menuItemId: item.menuItemId,
+              name: itemName || `Unknown Item (${item.menuItemId})`,
+              quantity: item.quantity,
+              price: item.price,
+              subtotal: item.subtotal
+            }
+          })
+        }))
+        
+        setOrders(ordersWithNames)
+      } catch (error) {
+        console.error('Failed to fetch orders:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchOrders()
+  }, [menuItemsLoaded, menuItems])
 
   // Handle updated order from POS
   useEffect(() => {
@@ -121,25 +121,25 @@ export const OrdersPage = () => {
   }, [])
 
   const statusConfig = {
-    pending: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: Clock },
-    preparing: { label: 'Preparing', color: 'bg-blue-100 text-blue-800 border-blue-200', icon: Package },
-    ready: { label: 'Ready', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle },
-    completed: { label: 'Completed', color: 'bg-gray-100 text-gray-800 border-gray-200', icon: CheckCircle },
-    cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-800 border-red-200', icon: XCircle },
+    PENDING: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: Clock },
+    PREPARING: { label: 'Preparing', color: 'bg-blue-100 text-blue-800 border-blue-200', icon: Package },
+    READY: { label: 'Ready', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle },
+    COMPLETED: { label: 'Completed', color: 'bg-gray-100 text-gray-800 border-gray-200', icon: CheckCircle },
+    CANCELLED: { label: 'Cancelled', color: 'bg-red-100 text-red-800 border-red-200', icon: XCircle },
   }
 
-  const orderTypeConfig = {
-    'dine-in': { label: 'Dine In', emoji: '🍽️' },
-    'takeout': { label: 'Takeout', emoji: '🛍️' },
-    'delivery': { label: 'Delivery', emoji: '🚗' },
-  }
-
-  const updateOrderStatus = (orderId: string, newStatus: Order['status']) => {
-    setOrders(prev => prev.map(order => 
-      order.id === orderId 
-        ? { ...order, status: newStatus, completedAt: newStatus === 'completed' ? new Date() : order.completedAt }
-        : order
-    ))
+  const updateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
+    try {
+      await ordersApi.updateStatus(orderId, newStatus)
+      setOrders(prev => prev.map(order => 
+        order.id === orderId 
+          ? { ...order, status: newStatus, completedAt: newStatus === 'COMPLETED' ? new Date().toISOString() : order.completedAt }
+          : order
+      ))
+    } catch (error: any) {
+      console.error('Failed to update order status:', error)
+      alert(`Failed to update order status: ${error.response?.data?.error || error.message}`)
+    }
   }
 
   const updateOrderItems = (orderId: string, items: OrderItem[]) => {
@@ -153,7 +153,7 @@ export const OrdersPage = () => {
   }
 
   const handleEditOrder = (order: Order) => {
-    if (order.status === 'pending') {
+    if (order.status === 'PENDING') {
       navigate('/admin/pos', { state: { editingOrder: order } })
     }
   }
@@ -161,14 +161,15 @@ export const OrdersPage = () => {
 
 
   const filteredOrders = orders.filter(order => {
-    const matchesStatus = selectedStatus === 'all' || order.status === selectedStatus
+    const matchesStatus = selectedStatus === 'all' || order.status.toLowerCase() === selectedStatus.toLowerCase()
     const matchesSearch = searchQuery.trim() === '' || 
       order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customerName.toLowerCase().includes(searchQuery.toLowerCase())
+      (order.customerName && order.customerName.toLowerCase().includes(searchQuery.toLowerCase()))
     return matchesStatus && matchesSearch
   })
 
-  const getTimeAgo = (date: Date) => {
+  const getTimeAgo = (dateString: string) => {
+    const date = new Date(dateString)
     const minutes = Math.floor((currentTime - date.getTime()) / 60000)
     if (minutes < 1) return 'Just now'
     if (minutes < 60) return `${minutes}m ago`
@@ -178,10 +179,10 @@ export const OrdersPage = () => {
   }
 
   const stats = {
-    pending: orders.filter(o => o.status === 'pending').length,
-    preparing: orders.filter(o => o.status === 'preparing').length,
-    ready: orders.filter(o => o.status === 'ready').length,
-    completed: orders.filter(o => o.status === 'completed').length,
+    pending: orders.filter(o => o.status === 'PENDING').length,
+    preparing: orders.filter(o => o.status === 'PREPARING').length,
+    ready: orders.filter(o => o.status === 'READY').length,
+    completed: orders.filter(o => o.status === 'COMPLETED').length,
   }
 
   return (
@@ -297,7 +298,12 @@ export const OrdersPage = () => {
 
         {/* Orders List */}
         <div className="space-y-3">
-          {filteredOrders.length === 0 ? (
+          {loading ? (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+              <Loader2 className="h-16 w-16 text-yellow-400 mx-auto mb-4 animate-spin" />
+              <p className="text-gray-500">Loading orders...</p>
+            </div>
+          ) : filteredOrders.length === 0 ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
               <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500">No orders found</p>
@@ -319,9 +325,6 @@ export const OrdersPage = () => {
                           <StatusIcon className="h-3 w-3 mr-1" />
                           {statusConfig[order.status].label}
                         </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          {orderTypeConfig[order.orderType].emoji} {orderTypeConfig[order.orderType].label}
-                        </Badge>
                         {order.tableNumber && (
                           <Badge variant="outline" className="text-xs">
                             Table {order.tableNumber}
@@ -342,8 +345,8 @@ export const OrdersPage = () => {
                           <span className="font-semibold text-lg" style={{ color: '#F9C900' }}>
                             ₱{order.totalAmount.toFixed(2)}
                           </span>
-                          <Badge variant={order.paymentStatus === 'paid' ? 'default' : 'outline'} className="text-xs">
-                            {order.paymentStatus === 'paid' ? '✓ Paid' : 'Unpaid'}
+                          <Badge variant={order.paymentStatus === 'PAID' ? 'default' : 'outline'} className="text-xs">
+                            {order.paymentStatus === 'PAID' ? '✓ Paid' : 'Unpaid'}
                           </Badge>
                         </div>
                       </div>
@@ -351,7 +354,7 @@ export const OrdersPage = () => {
 
                     {/* Actions */}
                     <div className="flex flex-wrap lg:flex-col gap-2">
-                      {order.status === 'pending' && (
+                      {order.status === 'PENDING' && (
                         <>
                           <Button
                             size="sm"
@@ -363,7 +366,7 @@ export const OrdersPage = () => {
                           </Button>
                           <Button
                             size="sm"
-                            onClick={() => updateOrderStatus(order.id, 'preparing')}
+                            onClick={() => updateOrderStatus(order.id, 'PREPARING')}
                             className="flex-1 lg:flex-none lg:min-w-[120px]"
                             style={{ backgroundColor: '#F9C900', color: '#000000' }}
                           >
@@ -372,27 +375,27 @@ export const OrdersPage = () => {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => updateOrderStatus(order.id, 'cancelled')}
+                            onClick={() => updateOrderStatus(order.id, 'CANCELLED')}
                             className="flex-1 lg:flex-none text-red-600 border-red-300 hover:bg-red-50"
                           >
                             Cancel
                           </Button>
                         </>
                       )}
-                      {order.status === 'preparing' && (
+                      {order.status === 'PREPARING' && (
                         <Button
                           size="sm"
-                          onClick={() => updateOrderStatus(order.id, 'ready')}
+                          onClick={() => updateOrderStatus(order.id, 'READY')}
                           className="lg:min-w-[120px]"
                           style={{ backgroundColor: '#F9C900', color: '#000000' }}
                         >
                           Mark Ready
                         </Button>
                       )}
-                      {order.status === 'ready' && (
+                      {order.status === 'READY' && (
                         <Button
                           size="sm"
-                          onClick={() => updateOrderStatus(order.id, 'completed')}
+                          onClick={() => updateOrderStatus(order.id, 'COMPLETED')}
                           className="lg:min-w-[120px]"
                           style={{ backgroundColor: '#F9C900', color: '#000000' }}
                         >
@@ -440,9 +443,6 @@ export const OrdersPage = () => {
                   <Badge className={`${statusConfig[selectedOrder.status].color} border`}>
                     {statusConfig[selectedOrder.status].label}
                   </Badge>
-                  <Badge variant="outline">
-                    {orderTypeConfig[selectedOrder.orderType].emoji} {orderTypeConfig[selectedOrder.orderType].label}
-                  </Badge>
                 </div>
               </div>
 
@@ -456,10 +456,6 @@ export const OrdersPage = () => {
                     <p className="text-sm text-gray-500 mb-1">Customer</p>
                     <p className="font-semibold">{selectedOrder.customerName}</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">Order Type</p>
-                    <p className="font-semibold">{orderTypeConfig[selectedOrder.orderType].label}</p>
-                  </div>
                   {selectedOrder.tableNumber && (
                     <div>
                       <p className="text-sm text-gray-500 mb-1">Table Number</p>
@@ -468,13 +464,21 @@ export const OrdersPage = () => {
                   )}
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Payment Status</p>
-                    <Badge variant={selectedOrder.paymentStatus === 'paid' ? 'default' : 'outline'}>
-                      {selectedOrder.paymentStatus === 'paid' ? '✓ Paid' : 'Unpaid'}
+                    <Badge variant={selectedOrder.paymentStatus === 'PAID' ? 'default' : 'outline'}>
+                      {selectedOrder.paymentStatus === 'PAID' ? '✓ Paid' : 'Unpaid'}
                     </Badge>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Created</p>
-                    <p className="font-semibold">{selectedOrder.createdAt.toLocaleString()}</p>
+                    <p className="font-semibold">{new Date(selectedOrder.createdAt).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Subtotal</p>
+                    <p className="font-semibold">₱{selectedOrder.subtotal.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Tax (12%)</p>
+                    <p className="font-semibold">₱{selectedOrder.tax.toFixed(2)}</p>
                   </div>
                 </div>
 
@@ -485,9 +489,9 @@ export const OrdersPage = () => {
                       <div key={item.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                         <div>
                           <p className="font-medium">{item.name}</p>
-                          <p className="text-sm text-gray-500">Quantity: {item.quantity}</p>
+                          <p className="text-sm text-gray-500">Quantity: {item.quantity} × ₱{item.price.toFixed(2)}</p>
                         </div>
-                        <p className="font-semibold">₱{(item.price * item.quantity).toFixed(2)}</p>
+                        <p className="font-semibold">₱{item.subtotal.toFixed(2)}</p>
                       </div>
                     ))}
                   </div>
