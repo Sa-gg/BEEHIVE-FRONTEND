@@ -185,10 +185,22 @@ export const NUTRITIONAL_BENEFITS: Record<string, {
 }
 
 // Helper function to get mood-specific explanation for a menu item
-export const getMoodExplanation = (itemName: string, mood: MoodType): string | null => {
+export const getMoodExplanation = (itemName: string, mood: MoodType, moodBenefitsJson?: string | null): string | null => {
+  // First check if moodBenefits from database exists and has the mood
+  if (moodBenefitsJson) {
+    try {
+      const moodBenefits = JSON.parse(moodBenefitsJson) as Partial<Record<MoodType, string>>
+      if (moodBenefits[mood]) {
+        return moodBenefits[mood]
+      }
+    } catch (error) {
+      console.error('Failed to parse moodBenefits:', error)
+    }
+  }
+  
+  // Fallback to checking ingredient categories in item name
   const lowerName = itemName.toLowerCase()
   
-  // Check each ingredient category
   for (const [ingredient, data] of Object.entries(NUTRITIONAL_BENEFITS)) {
     if (lowerName.includes(ingredient)) {
       return data.moodBenefits[mood] || null

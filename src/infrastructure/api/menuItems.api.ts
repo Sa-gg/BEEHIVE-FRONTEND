@@ -13,6 +13,7 @@ export interface MenuItemDTO {
   prepTime: number | null;
   nutrients: string | null;
   moodBenefits: string | null;
+  moodOrderStats: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -116,6 +117,15 @@ export const menuItemsApi = {
       unavailable: number;
       featured: number;
     }>>('/api/menu-items/stats');
+    return response.data;
+  },
+
+  // Track that items were shown for a mood
+  trackMoodViews: async (itemIds: string[], mood: string) => {
+    const response = await api.post<ApiResponse<void>>('/api/menu-items/track-views', {
+      itemIds,
+      mood
+    });
     return response.data;
   },
 };

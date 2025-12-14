@@ -9,6 +9,7 @@ import { Button } from '../../components/common/ui/button'
 import { ShoppingCart, Search, Loader2 } from 'lucide-react'
 import { menuItemsApi, type MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
+import { useSettingsStore } from '../../store/settingsStore'
 
 const CATEGORIES = ['all', 'best seller', 'PIZZA', 'APPETIZER', 'HOT_DRINKS', 'COLD_DRINKS', 'SMOOTHIE', 'PLATTER', 'SAVERS', 'VALUE_MEAL'] as const
 
@@ -29,6 +30,7 @@ export const POSPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const editingOrder = location.state?.editingOrder
+  const { markPaidOnConfirmOrder, markPaidOnPrintReceipt, printReceiptOnConfirmOrder } = useSettingsStore()
   
   // Transform order items from backend format to POS format
   const transformOrderItems = (items: any[]): OrderItem[] => {
@@ -159,6 +161,346 @@ export const POSPage = () => {
     setOrderType('DINE_IN')
   }
 
+  const printReceiptForOrder = (order: any) => {
+    const subtotal = order.subtotal
+    const tax = order.tax
+    const total = order.totalAmount
+    const items = orderItems.length > 0 ? orderItems : order.order_items || []
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      alert('Please allow popups to print receipt')
+      return
+    }
+
+    const receiptHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt - BEEHIVE</title>
+        <style>
+          @media print {
+            body { margin: 0; }
+          }
+          body {
+            font-family: 'Courier New', monospace;
+            width: 80mm;
+            margin: 0 auto;
+            padding: 10mm;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 10px;
+            border-bottom: 2px dashed #000;
+            padding-bottom: 10px;
+          }
+          .logo {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+          }
+          .info { margin: 10px 0; font-size: 12px; }
+          .items { margin: 15px 0; }
+          .item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 12px;
+          }
+          .item-name { flex: 1; }
+          .item-qty { width: 40px; text-align: center; }
+          .item-price { width: 60px; text-align: right; }
+          .totals {
+            border-top: 2px dashed #000;
+            padding-top: 10px;
+            margin-top: 10px;
+          }
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 12px;
+          }
+          .total-row.grand {
+            font-size: 16px;
+            font-weight: bold;
+            border-top: 2px solid #000;
+            padding-top: 5px;
+            margin-top: 5px;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            border-top: 2px dashed #000;
+            padding-top: 10px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo">🐝 BEEHIVE</div>
+          <div style="font-size: 10px;">Your Neighborhood Pizza & More</div>
+        </div>
+        
+        <div class="info">
+          <div>Order #: ${order.orderNumber}</div>
+          <div>Date: ${new Date(order.createdAt || Date.now()).toLocaleString()}</div>
+          ${order.customerName ? `<div>Customer: ${order.customerName}</div>` : ''}
+          ${order.tableNumber ? `<div>Table: ${order.tableNumber}</div>` : ''}
+          <div>Type: ${order.orderType || orderType}</div>
+          <div>Payment: ${order.paymentMethod || paymentMethod}</div>
+        </div>
+        
+        <div class="items">
+          ${items.map((item: any) => `
+            <div class="item">
+              <span class="item-name">${item.name}</span>
+              <span class="item-qty">${item.quantity}x</span>
+              <span class="item-price">₱${(item.price * item.quantity).toFixed(2)}</span>
+            </div>
+          `).join('')}
+        </div>
+        
+        <div class="totals">
+          <div class="total-row">
+            <span>Subtotal:</span>
+            <span>₱${subtotal.toFixed(2)}</span>
+          </div>
+          <div class="total-row">
+            <span>Tax (12%):</span>
+            <span>₱${tax.toFixed(2)}</span>
+          </div>
+          <div class="total-row grand">
+            <span>TOTAL:</span>
+            <span>₱${total.toFixed(2)}</span>
+          </div>
+        </div>
+        
+        <div class="footer">
+          <p>Thank you for your order!</p>
+          <p>Visit us again soon! 🐝</p>
+        </div>
+        
+        <script>
+          window.onload = function() {
+            window.print();
+            // Don't close automatically to allow user to see/save the receipt
+          }
+        </script>
+      </body>
+      </html>
+    `
+
+    printWindow.document.write(receiptHTML)
+    printWindow.document.close()
+  }
+
+  const printReceipt = async () => {
+    if (orderItems.length === 0) {
+      alert('No items to print')
+      return
+    }
+
+    // Confirm the order first (save to database)
+    try {
+      const orderData = {
+        customerName: customerName || undefined,
+        tableNumber: tableNumber || undefined,
+        orderType: orderType,
+        paymentMethod: paymentMethod,
+        items: orderItems.map(item => ({
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+          price: item.price
+        }))
+      }
+      
+      const createdOrder = await ordersApi.create(orderData)
+      
+      // Set status to PREPARING
+      await ordersApi.update(createdOrder.id, { status: 'PREPARING' })
+      
+      // Mark as paid if setting is enabled
+      if (markPaidOnPrintReceipt) {
+        await ordersApi.update(createdOrder.id, { paymentStatus: 'PAID' })
+      }
+      
+      // Clear the order after successful creation
+      clearOrder()
+    } catch (error: any) {
+      console.error('Failed to create order:', error)
+      alert(`Failed to create order: ${error.response?.data?.error || error.message}`)
+      return
+    }
+
+    const subtotal = orderItems.reduce((sum, item) => sum + item.subtotal, 0)
+    const tax = subtotal * 0.12
+    const total = subtotal + tax
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      alert('Please allow popups to print receipt')
+      return
+    }
+
+    const receiptHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt - BEEHIVE</title>
+        <style>
+          @media print {
+            body { margin: 0; }
+          }
+          body {
+            font-family: 'Courier New', monospace;
+            width: 80mm;
+            margin: 0 auto;
+            padding: 10mm;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 10px;
+            border-bottom: 2px dashed #000;
+            padding-bottom: 10px;
+          }
+          .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #F9C900;
+          }
+          .info {
+            margin: 10px 0;
+            font-size: 12px;
+          }
+          .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+          }
+          .items {
+            margin: 15px 0;
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+            padding: 10px 0;
+          }
+          .item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 12px;
+          }
+          .item-name {
+            flex: 1;
+          }
+          .item-qty {
+            width: 30px;
+            text-align: center;
+          }
+          .item-price {
+            width: 60px;
+            text-align: right;
+          }
+          .totals {
+            margin: 10px 0;
+          }
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 12px;
+          }
+          .total-row.grand {
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #000;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 2px dashed #000;
+            font-size: 11px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo">BEEHIVE</div>
+          <div style="font-size: 10px; margin-top: 5px;">Cafe & Restaurant</div>
+          <div style="font-size: 10px;">Enjoy your food with a relaxing ambiance</div>
+        </div>
+
+        <div class="info">
+          <div class="info-row">
+            <span>Date:</span>
+            <span>${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</span>
+          </div>
+          ${customerName ? `<div class="info-row"><span>Customer:</span><span>${customerName}</span></div>` : ''}
+          ${tableNumber && orderType === 'DINE_IN' ? `<div class="info-row"><span>Table:</span><span>${tableNumber}</span></div>` : ''}
+          <div class="info-row">
+            <span>Order Type:</span>
+            <span>${orderType === 'DINE_IN' ? 'Dine In' : orderType === 'TAKEOUT' ? 'Take Away' : 'Delivery'}</span>
+          </div>
+          <div class="info-row">
+            <span>Payment:</span>
+            <span>${paymentMethod}</span>
+          </div>
+        </div>
+
+        <div class="items">
+          ${orderItems.map(item => `
+            <div class="item">
+              <span class="item-name">${item.name}</span>
+              <span class="item-qty">x${item.quantity}</span>
+              <span class="item-price">₱${item.subtotal.toFixed(2)}</span>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="totals">
+          <div class="total-row">
+            <span>Subtotal:</span>
+            <span>₱${subtotal.toFixed(2)}</span>
+          </div>
+          <div class="total-row">
+            <span>Tax (12%):</span>
+            <span>₱${tax.toFixed(2)}</span>
+          </div>
+          <div class="total-row grand">
+            <span>TOTAL:</span>
+            <span>₱${total.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>Thank you for dining with us!</div>
+          <div style="margin-top: 5px;">Please come again</div>
+          <div style="margin-top: 10px; font-size: 9px;">
+            Facebook: BEEHIVECAFEANDRESTO
+          </div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+            // Close window after printing or canceling
+            window.onafterprint = function() {
+              window.close();
+            }
+          }
+        </script>
+      </body>
+      </html>
+    `
+
+    printWindow.document.write(receiptHTML)
+    printWindow.document.close()
+  }
+
   const confirmOrder = async () => {
     if (isEditMode && editingOrder) {
       // Update order by deleting old and creating new with same order number
@@ -208,6 +550,19 @@ export const POSPage = () => {
         console.log('Sending order data:', orderData)
         
         const createdOrder = await ordersApi.create(orderData)
+        
+        // Set status to PREPARING
+        await ordersApi.update(createdOrder.id, { status: 'PREPARING' })
+        
+        // Mark as paid if setting is enabled
+        if (markPaidOnConfirmOrder) {
+          await ordersApi.update(createdOrder.id, { paymentStatus: 'PAID' })
+        }
+        
+        // Auto-print receipt if setting is enabled
+        if (printReceiptOnConfirmOrder) {
+          printReceiptForOrder(createdOrder)
+        }
         
         // Show success message with order number
         alert(`Order Created Successfully!\nOrder Number: ${createdOrder.orderNumber}\nTotal: ₱${createdOrder.totalAmount.toFixed(2)}`)
@@ -353,6 +708,7 @@ export const POSPage = () => {
             onRemove={removeItem}
             onClearOrder={clearOrder}
             onConfirmOrder={confirmOrder}
+            onPrintReceipt={printReceipt}
           />
         </div>
 
@@ -398,6 +754,7 @@ export const POSPage = () => {
                   confirmOrder()
                   setIsCartOpen(false)
                 }}
+                onPrintReceipt={printReceipt}
               />
             </div>
           </>

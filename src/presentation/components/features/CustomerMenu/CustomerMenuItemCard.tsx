@@ -11,14 +11,19 @@ interface CustomerMenuItemCardProps {
   onAddToCart: (item: MenuItem, event?: React.MouseEvent) => void
   currentMood?: MoodType | null
   compact?: boolean // For horizontal scroll sections (best sellers, recommendations)
+  getImageUrl?: (imagePath: string | null) => string | null
 }
 
-export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact = false }: CustomerMenuItemCardProps) => {
+export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact = false, getImageUrl }: CustomerMenuItemCardProps) => {
   const [showExplanation, setShowExplanation] = useState(false)
   
-  const moodExplanation = currentMood ? getMoodExplanation(item.name, currentMood) : null
+  // Pass moodBenefits from database to getMoodExplanation
+  const moodExplanation = currentMood ? getMoodExplanation(item.name, currentMood, item.moodBenefits) : null
   const nutrients = getItemNutrients(item.name)
   const hasScience = moodExplanation && nutrients.length > 0
+
+  // Get full image URL from backend
+  const imageUrl = getImageUrl ? getImageUrl(item.image) : item.image
 
   const handleAddToCart = (e: React.MouseEvent) => {
     onAddToCart(item, e)
@@ -27,9 +32,9 @@ export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact =
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-all relative">
       <div className="aspect-square bg-gray-100 relative overflow-hidden">
-        {item.image ? (
+        {imageUrl ? (
           <img
-            src={item.image}
+            src={imageUrl}
             alt={item.name}
             className="w-full h-full object-cover object-center"
             loading="lazy"

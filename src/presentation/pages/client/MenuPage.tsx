@@ -12,83 +12,15 @@ import { CheckoutForm } from '../../components/features/CustomerMenu/CheckoutFor
 import { OrderConfirmation } from '../../components/features/CustomerMenu/OrderConfirmation'
 import { MoodSelector } from '../../components/features/CustomerMenu/MoodSelector'
 import { MoodReflectionModal } from '../../components/features/CustomerMenu/MoodReflectionModal'
+import { CustomerDropdown } from '../../components/features/CustomerMenu/CustomerDropdown'
+import { MyOrdersModal } from '../../components/features/CustomerMenu/MyOrdersModal'
 import { Button } from '../../components/common/ui/button'
-import { ShoppingBag, Sparkles } from 'lucide-react'
+import { ShoppingBag, Sparkles, Loader2 } from 'lucide-react'
 import { generateOrderNumber } from '../../../shared/utils/orderUtils'
-import { useSearchParams } from 'react-router-dom'
-
-// Sample menu data - same as POS
-const MENU_ITEMS: MenuItem[] = [
-  // Pizza
-  { id: '1', name: 'Bacon Pepperoni', category: 'pizza', price: 299, image: '/src/assets/pizza/Bacon Pepperoni.jpg', available: true },
-  { id: '2', name: 'Beef Wagon', category: 'pizza', price: 329, image: '/src/assets/pizza/beef wagon.jpg', available: true },
-  { id: '3', name: 'Creamy Spinach', category: 'pizza', price: 279, image: '/src/assets/pizza/Creamy Spinach.jpg', available: true },
-  { id: '4', name: 'Ham & Cheese Hawaiian', category: 'pizza', price: 289, image: '/src/assets/pizza/Ham & Cheese Hawaiian.jpg', available: true },
-  
-  // Appetizers
-  { id: '5', name: 'Beef Burger', category: 'appetizer', price: 149, image: '/src/assets/appetizer/Beef Burger.jpg', available: true },
-  { id: '6', name: 'Chicken Burger', category: 'appetizer', price: 139, image: '/src/assets/appetizer/Chicken Burger.jpg', available: true },
-  { id: '7', name: 'Burger w/ Fries', category: 'appetizer', price: 179, image: '/src/assets/appetizer/Burger w Fries.jpg', available: true },
-  { id: '8', name: 'Cheesy Fries', category: 'appetizer', price: 99, image: '/src/assets/appetizer/Cheesy Fries.jpg', available: true },
-  { id: '9', name: 'Chili Fries', category: 'appetizer', price: 109, image: '/src/assets/appetizer/chili fries.jpg', available: true },
-  { id: '10', name: 'Meaty Chili Fries', category: 'appetizer', price: 129, image: '/src/assets/appetizer/Meaty Chili Fries.jpg', available: true },
-  { id: '11', name: 'Meaty Fries', category: 'appetizer', price: 119, image: '/src/assets/appetizer/meaty fries.jpg', available: true },
-  { id: '12', name: 'Nacho Fries', category: 'appetizer', price: 139, image: '/src/assets/appetizer/Nacho Fries.png', available: true },
-  { id: '13', name: 'Nachos', category: 'appetizer', price: 159, image: '/src/assets/appetizer/Nachos.jpg', available: true },
-  { id: '14', name: 'Lumpia Shanghai', category: 'appetizer', price: 89, image: '/src/assets/appetizer/Lumpia Shanghai.jpg', available: true },
-  { id: '15', name: 'Pancit Canton Chili Mansi', category: 'appetizer', price: 39, image: '/src/assets/appetizer/Pancit Canton Chili Mansi.jpg', available: true },
-  { id: '16', name: 'Pancit Canton Extra Hot', category: 'appetizer', price: 39, image: '/src/assets/appetizer/Pancit Canton Extra Hot.jpg', available: true },
-  
-  // Hot Drinks
-  { id: '17', name: 'Hot Coffee', category: 'hot drinks', price: 79, image: '/src/assets/hot drinks/hot coffee.png', available: true },
-  { id: '18', name: 'Hot Coffee with Milk', category: 'hot drinks', price: 89, image: '/src/assets/hot drinks/hot coffee with millk.png', available: true },
-  { id: '19', name: 'Hot Chocolate', category: 'hot drinks', price: 99, image: '/src/assets/hot drinks/hot chocolate.png', available: true },
-  { id: '20', name: 'Hot Matcha', category: 'hot drinks', price: 109, image: '/src/assets/hot drinks/hot matcha.png', available: true },
-  
-  // Cold Drinks
-  { id: '21', name: 'Caramel Macchiato', category: 'cold drinks', price: 119, image: '/src/assets/cold drinks/caramel machiato.png', available: true },
-  { id: '22', name: 'Caramel Matcha', category: 'cold drinks', price: 129, image: '/src/assets/cold drinks/caramel matahca.png', available: true },
-  { id: '23', name: 'Dirty Matcha Latte', category: 'cold drinks', price: 139, image: '/src/assets/cold drinks/dirty matcha latte.png', available: true },
-  { id: '24', name: 'Iced Americano', category: 'cold drinks', price: 99, image: '/src/assets/cold drinks/iced americano.png', available: true },
-  { id: '25', name: 'Iced Caramel Milk', category: 'cold drinks', price: 109, image: '/src/assets/cold drinks/iced caramel milk.png', available: true },
-  { id: '26', name: 'Iced Chocolate', category: 'cold drinks', price: 109, image: '/src/assets/cold drinks/iced chocolate.png', available: true },
-  { id: '27', name: 'Iced Coffee', category: 'cold drinks', price: 89, image: '/src/assets/cold drinks/iced coffee.png', available: true },
-  { id: '28', name: 'Iced Matcha', category: 'cold drinks', price: 119, image: '/src/assets/cold drinks/iceed matcha.png', available: true },
-  { id: '29', name: 'Salted Caramel', category: 'cold drinks', price: 129, image: '/src/assets/cold drinks/salted caramel.png', available: true },
-  { id: '30', name: 'Spanish Latte', category: 'cold drinks', price: 119, image: '/src/assets/cold drinks/spanish latte.png', available: true },
-  
-  // Smoothies
-  { id: '31', name: 'Blueberry Smoothie', category: 'smoothie', price: 149, image: '/src/assets/smoothie/blueberry.png', available: true },
-  { id: '32', name: 'Strawberry Smoothie', category: 'smoothie', price: 149, image: '/src/assets/smoothie/strawberry.png', available: true },
-  
-  // Platter
-  { id: '33', name: 'Beef Tapa', category: 'platter', price: 189, image: '/src/assets/platter/beeftapa.jpg', available: true },
-  { id: '34', name: 'Boneless Bangus', category: 'platter', price: 179, image: '/src/assets/platter/bonelessbangus.webp', available: true },
-  { id: '35', name: 'Chicharon Bulaklak', category: 'platter', price: 199, image: '/src/assets/platter/chicharonbulaklak.jpg', available: true },
-  { id: '36', name: 'Hungarian', category: 'platter', price: 159, image: '/src/assets/platter/hungarian.jpg', available: true },
-  { id: '37', name: 'Hungarian w/ Fries', category: 'platter', price: 189, image: '/src/assets/platter/hungarianwfries.jpg', available: true },
-  { id: '38', name: 'Pork Sisig', category: 'platter', price: 169, image: '/src/assets/platter/porksisig.png', available: true },
-  
-  // Savers
-  { id: '39', name: 'Beef Tapa', category: 'savers', price: 129, image: '/src/assets/savers/beef tapa.jpg', available: true },
-  { id: '40', name: 'Burger Steak', category: 'savers', price: 119, image: '/src/assets/savers/burger steak.png', available: true },
-  { id: '41', name: 'Cheesy Hungarian', category: 'savers', price: 109, image: '/src/assets/savers/cheesy hungarian.png', available: true },
-  { id: '42', name: 'Chicken Fillet', category: 'savers', price: 119, image: '/src/assets/savers/chicken fillet.png', available: true },
-  { id: '43', name: 'Fish Fillet', category: 'savers', price: 119, image: '/src/assets/savers/fishfillet.png', available: true },
-  { id: '44', name: 'Fried Liempo', category: 'savers', price: 129, image: '/src/assets/savers/fried liempo.png', available: true },
-  { id: '45', name: 'Garlic Pepper Beef', category: 'savers', price: 139, image: '/src/assets/savers/garlic pepper beef.png', available: true },
-  { id: '46', name: 'Grilled Liempo', category: 'savers', price: 129, image: '/src/assets/savers/grilled liempo.jpg', available: true },
-  { id: '47', name: 'Pork Sisig', category: 'savers', price: 119, image: '/src/assets/savers/pork sisig.jpg', available: true },
-  
-  // Value Meal
-  { id: '48', name: 'Boneless Bangus', category: 'value meal', price: 159, image: '/src/assets/value meal/Boneless Bangus.jpg', available: true },
-  { id: '49', name: 'Chicharon Bulaklak', category: 'value meal', price: 179, image: '/src/assets/value meal/chicharon bulaklak.png', available: true },
-  { id: '50', name: 'Hungarian', category: 'value meal', price: 149, image: '/src/assets/value meal/hungarian.png', available: true },
-  { id: '51', name: 'Pork BBQ Grilled', category: 'value meal', price: 169, image: '/src/assets/value meal/Pork BBQ Grilled.jpg', available: true },
-  { id: '52', name: 'Spare Ribs', category: 'value meal', price: 189, image: '/src/assets/value meal/spareribs.jpg', available: true },
-]
-
-const BEST_SELLER_IDS = ['1', '2', '13', '14', '33', '40']
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
+import { ordersApi } from '../../../infrastructure/api/orders.api'
+import { useAuthStore } from '../../store/authStore'
 
 const CATEGORIES = ['all', 'best seller', 'pizza', 'appetizer', 'hot drinks', 'cold drinks', 'smoothie', 'platter', 'savers', 'value meal'] as const
 
@@ -96,12 +28,18 @@ type ViewState = 'menu' | 'checkout' | 'confirmation'
 
 export const MenuPage = () => {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const { user, isAuthenticated } = useAuthStore()
   
   // Initialize selectedMood from URL parameter
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(() => {
     const moodParam = searchParams.get('mood') as MoodType | null
     return (moodParam && getMoodByValue(moodParam)) ? moodParam : null
   })
+  
+  // Fetch menu items from API
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   
   const [cartItems, setCartItems] = useState<OrderItem[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
@@ -111,6 +49,27 @@ export const MenuPage = () => {
   const [showMoodSelector, setShowMoodSelector] = useState(false)
   const [showMoodReflection, setShowMoodReflection] = useState(false)
   const [flyingItem, setFlyingItem] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showMyOrders, setShowMyOrders] = useState(false)
+
+  // Fetch menu items on mount
+  useEffect(() => {
+    const fetchMenuItems = async () => {
+      try {
+        setIsLoading(true)
+        const response = await menuItemsApi.getAll()
+        // API returns { success, data }, so we need response.data
+        const items = Array.isArray(response) ? response : response.data || []
+        setMenuItems(items)
+      } catch (error) {
+        console.error('Failed to fetch menu items:', error)
+        setMenuItems([]) // Ensure it's always an array
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchMenuItems()
+  }, [])
 
   // Scroll to top when component mounts or mood changes from URL
   useEffect(() => {
@@ -120,6 +79,14 @@ export const MenuPage = () => {
   const currentMood = selectedMood ? getMoodByValue(selectedMood) : null
   const timeContext = getTimeContext()
   const weatherContext = getWeatherContext()
+
+  // Helper function to get full image URL from backend
+  const getImageUrl = (imagePath: string | null) => {
+    if (!imagePath) return null
+    if (imagePath.startsWith('http')) return imagePath
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+    return `${API_BASE_URL}${imagePath}`
+  }
 
   const addToCart = (menuItem: MenuItem, event?: React.MouseEvent) => {
     // Get click position for animation
@@ -194,38 +161,57 @@ export const MenuPage = () => {
     setIsCartOpen(false)
   }
 
-  const handleSubmitOrder = (data: { customerName: string; tableNumber: string; notes: string }) => {
-    const subtotal = cartItems.reduce((sum, item) => sum + item.subtotal, 0)
-    const tax = subtotal * 0.12
-    const total = subtotal + tax
+  const handleSubmitOrder = async (data: { customerName: string; tableNumber: string; notes: string; orderType: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY' }) => {
+    try {
+      setIsSubmitting(true)
+      
+      // Prepare order items for API
+      const orderItems = cartItems.map(item => ({
+        menuItemId: item.menuItemId,
+        quantity: item.quantity,
+        price: item.price
+      }))
 
-    const order: CustomerOrder = {
-      id: Date.now().toString(),
-      orderNumber: generateOrderNumber(),
-      items: cartItems,
-      subtotal,
-      tax,
-      total,
-      status: 'pending',
-      customerName: data.customerName || undefined,
-      tableNumber: data.tableNumber || undefined,
-      notes: data.notes || undefined,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }
+      // Create order via API
+      const response = await ordersApi.create({
+        customerName: data.customerName || user?.name || undefined,
+        tableNumber: data.tableNumber || undefined,
+        orderType: data.orderType,
+        moodContext: selectedMood || undefined,
+        items: orderItems
+      })
 
-    setConfirmedOrder(order)
-    setViewState('confirmation')
-    
-    // Store order in localStorage for demo purposes
-    const existingOrders = JSON.parse(localStorage.getItem('customerOrders') || '[]')
-    localStorage.setItem('customerOrders', JSON.stringify([...existingOrders, order]))
+      // Convert API response to CustomerOrder format for display
+      const order: CustomerOrder = {
+        id: response.id,
+        orderNumber: response.orderNumber,
+        items: cartItems,
+        subtotal: response.subtotal,
+        tax: response.tax,
+        total: response.totalAmount,
+        status: response.status.toLowerCase() as 'pending',
+        customerName: response.customerName || undefined,
+        tableNumber: response.tableNumber || undefined,
+        notes: data.notes || undefined,
+        createdAt: new Date(response.createdAt),
+        updatedAt: new Date(response.updatedAt),
+      }
 
-    // Show mood reflection if mood was selected
-    if (selectedMood) {
-      setTimeout(() => {
-        setShowMoodReflection(true)
-      }, 2000)
+      setConfirmedOrder(order)
+      setViewState('confirmation')
+      setCartItems([]) // Clear cart after successful order
+
+      // Show mood reflection if mood was selected
+      if (selectedMood) {
+        setTimeout(() => {
+          setShowMoodReflection(true)
+        }, 2000)
+      }
+    } catch (error) {
+      console.error('Failed to submit order:', error)
+      alert('Failed to place order. Please try again.')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -243,8 +229,11 @@ export const MenuPage = () => {
     // Get AI-based recommendations from past successes
     const { topItems } = analyzeMoodEffectiveness(selectedMood)
     
-    // Start with all available items
-    const recommended = MENU_ITEMS.filter(item => {
+    // Ensure menuItems is an array
+    const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
+    
+    // Start with all available items from API
+    const recommended = safeMenuItems.filter(item => {
       // Exclude categories based on mood (e.g., no cold drinks for sad mood)
       if (moodConfig.excludeCategories?.includes(item.category)) return false
       return item.available
@@ -254,23 +243,45 @@ export const MenuPage = () => {
     const scoredItems = recommended.map(item => {
       let score = 0
       
-      // HIGHEST PRIORITY: Boost items with scientific explanations for this mood
-      const hasExplanation = getMoodExplanation(item.name, selectedMood)
-      if (hasExplanation) {
-        score += 20 // Prioritize items that can show scientific mood benefits
+      // HISTORICAL ORDER-BASED SCORE (10 points max)
+      // Parse moodOrderStats from database
+      if (item.moodOrderStats) {
+        try {
+          const stats = typeof item.moodOrderStats === 'string' 
+            ? JSON.parse(item.moodOrderStats) 
+            : item.moodOrderStats
+          
+          if (stats[selectedMood]) {
+            const { shown, ordered } = stats[selectedMood]
+            if (shown > 0) {
+              // Order rate: percentage of times customers chose this when shown
+              const orderRate = ordered / shown
+              score += orderRate * 10 // Convert to 0-10 score
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing moodOrderStats:', e)
+        }
       }
       
-      // Preferred categories get high score
+      // HIGHEST PRIORITY: Boost items with scientific explanations for this mood (20 points)
+      // Pass moodBenefits from database to getMoodExplanation
+      const hasExplanation = getMoodExplanation(item.name, selectedMood, item.moodBenefits)
+      if (hasExplanation) {
+        score += 20
+      }
+      
+      // Preferred categories get high score (10 points)
       if (moodConfig.preferredCategories?.includes(item.category)) {
         score += 10
       }
       
-      // Items from successful past orders get bonus
+      // Items from successful past orders get bonus (15 points)
       if (topItems.includes(item.name)) {
         score += 15
       }
       
-      // Context-based scoring
+      // Context-based scoring (5 points each)
       if (timeContext === 'morning' && (item.category === 'hot drinks' || item.category === 'appetizer')) {
         score += 5
       } else if ((timeContext === 'evening' || timeContext === 'night') && 
@@ -288,10 +299,20 @@ export const MenuPage = () => {
     })
 
     // Sort by score and return top items
-    return scoredItems
+    const topRecommended = scoredItems
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
       .map(scored => scored.item)
+    
+    // Track that these items were shown for this mood
+    if (topRecommended.length > 0) {
+      const itemIds = topRecommended.map(item => item.id)
+      menuItemsApi.trackMoodViews(itemIds, selectedMood).catch(err => {
+        console.error('Failed to track mood views:', err)
+      })
+    }
+    
+    return topRecommended
   }
 
   const handleNewOrder = () => {
@@ -307,11 +328,19 @@ export const MenuPage = () => {
     setViewState('menu')
   }
 
+  // Ensure menuItems is always an array
+  const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
+  
+  // Convert display category to database format (e.g., 'hot drinks' -> 'HOT_DRINKS')
+  const categoryToDbFormat = (category: string): string => {
+    return category.toUpperCase().replace(/ /g, '_')
+  }
+  
   const filteredItems = selectedCategory === 'all' 
-    ? MENU_ITEMS 
+    ? safeMenuItems 
     : selectedCategory === 'best seller'
-    ? MENU_ITEMS.filter(item => BEST_SELLER_IDS.includes(item.id))
-    : MENU_ITEMS.filter((item) => item.category === selectedCategory)
+    ? safeMenuItems.filter(item => item.featured) // Use featured flag for best sellers
+    : safeMenuItems.filter((item) => item.category === categoryToDbFormat(selectedCategory))
   const recommendedItems = getRecommendedItems()
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
 
@@ -321,6 +350,7 @@ export const MenuPage = () => {
         items={cartItems}
         onSubmit={handleSubmitOrder}
         onBack={handleBackToMenu}
+        isSubmitting={isSubmitting}
       />
     )
   }
@@ -345,7 +375,15 @@ export const MenuPage = () => {
                 <h1 className="text-2xl font-bold" style={{ color: '#F9C900' }}>BEEHIVE Menu</h1>
                 <p className="text-sm text-gray-600">Order from your phone</p>
               </div>
-              <img src="/src/assets/logo.png" alt="BEEHIVE" className="h-12 w-12 object-contain" />
+              <div className="flex items-center gap-3">
+                <CustomerDropdown onViewOrders={() => setShowMyOrders(true)} />
+                <img 
+                  src="/src/assets/logo.png" 
+                  alt="BEEHIVE" 
+                  className="h-12 w-12 object-contain cursor-pointer hover:opacity-80 transition-opacity" 
+                  onClick={() => navigate('/')}
+                />
+              </div>
             </div>
 
             {/* Mood Selector Button */}
@@ -427,7 +465,7 @@ export const MenuPage = () => {
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                   {recommendedItems.map((item) => (
                     <div key={item.id} className="shrink-0" style={{ width: '140px' }}>
-                      <CustomerMenuItemCard item={item} onAddToCart={addToCart} currentMood={selectedMood} compact />
+                      <CustomerMenuItemCard item={item} onAddToCart={addToCart} currentMood={selectedMood} compact getImageUrl={getImageUrl} />
                     </div>
                   ))}
                 </div>
@@ -441,11 +479,18 @@ export const MenuPage = () => {
                   🔥 Best Sellers
                 </h3>
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                  {MENU_ITEMS.filter(item => BEST_SELLER_IDS.includes(item.id)).map((item) => (
-                    <div key={item.id} className="shrink-0" style={{ width: '140px' }}>
-                      <CustomerMenuItemCard item={item} onAddToCart={addToCart} currentMood={selectedMood} compact />
+                  {isLoading ? (
+                    <div className="flex items-center gap-2 text-gray-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Loading menu...</span>
                     </div>
-                  ))}
+                  ) : (
+                    menuItems.filter(item => item.featured).map((item) => (
+                      <div key={item.id} className="shrink-0" style={{ width: '140px' }}>
+                        <CustomerMenuItemCard item={item} onAddToCart={addToCart} currentMood={selectedMood} compact getImageUrl={getImageUrl} />
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             )}
@@ -474,16 +519,28 @@ export const MenuPage = () => {
 
         {/* Menu Items */}
         <div className="px-4 py-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {filteredItems.map((item) => (
-              <CustomerMenuItemCard
-                key={item.id}
-                item={item}
-                onAddToCart={addToCart}
-                currentMood={selectedMood}
-              />
-            ))}
-          </div>
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+              <Loader2 className="h-8 w-8 animate-spin mb-3" style={{ color: '#F9C900' }} />
+              <p className="text-sm">Loading delicious menu...</p>
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <p className="text-sm">No items found</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {filteredItems.map((item) => (
+                <CustomerMenuItemCard
+                  key={item.id}
+                  item={item}
+                  onAddToCart={addToCart}
+                  currentMood={selectedMood}
+                  getImageUrl={getImageUrl}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Floating Cart Button */}
@@ -574,6 +631,12 @@ export const MenuPage = () => {
             onClose={() => setShowMoodReflection(false)}
           />
         )}
+
+        {/* My Orders Modal */}
+        <MyOrdersModal
+          open={showMyOrders}
+          onOpenChange={setShowMyOrders}
+        />
       </div>
     </ClientLayout>
   )

@@ -7,6 +7,8 @@ export interface MenuItem {
   description?: string
   available: boolean
   featured?: boolean
+  moodBenefits?: string | null
+  moodOrderStats?: string | Record<string, { shown: number; ordered: number }> | null
   nutritionalBenefits?: {
     nutrients: string[]
     moodBenefits: {

@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useEffect } from 'react'
-import { Link, useLocation } from 'react-router-dom'
-import { Menu, X } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Menu, X, LogOut, User } from 'lucide-react'
+import { useAuthStore } from '../../store/authStore'
 
 interface AdminLayoutProps {
   children: ReactNode
@@ -16,7 +17,16 @@ interface AdminLayoutProps {
 export const AdminLayout = ({ children, hideHeader = false }: AdminLayoutProps) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAuthStore()
+
+  const handleLogout = () => {
+    logout()
+    setDropdownOpen(false)
+    navigate('/auth/login')
+  }
 
   // Detect mobile screen size
   useEffect(() => {
@@ -42,7 +52,6 @@ export const AdminLayout = ({ children, hideHeader = false }: AdminLayoutProps) 
   }, [location.pathname, isMobile])
 
   const menuItems = [
-    { icon: '🏠', label: 'Home (Dev)', path: '/' },
     { icon: '📊', label: 'Dashboard', path: '/admin' },
     { icon: '💳', label: 'POS', path: '/admin/pos' },
     { icon: '📦', label: 'Orders', path: '/admin/orders' },
@@ -125,13 +134,44 @@ export const AdminLayout = ({ children, hideHeader = false }: AdminLayoutProps) 
             })}
           </nav>
 
-          {/* Bottom Section */}
+          {/* Bottom Section - User Info & Logout */}
           {(sidebarOpen || isMobile) && (
-            <div className="border-t border-gray-800 pt-4 mt-4">
-              <div className="px-4 py-3 rounded-lg text-xs text-gray-400">
-                <p className="mb-1">© 2025 BEEHIVE</p>
+            <div className="border-t border-gray-800 pt-4 mt-4 space-y-3">
+              <div className="px-4 py-3 rounded-lg bg-gray-800/50">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-black font-bold" style={{ backgroundColor: '#F9C900' }}>
+                    {user?.name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{user?.name || 'User'}</p>
+                    <p className="text-xs text-gray-400">{user?.role || 'Role'}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </button>
+              </div>
+              <div className="px-4 py-2 text-xs text-gray-500">
+                <p>© 2025 BEEHIVE</p>
                 <p>Version 1.0.0</p>
               </div>
+            </div>
+          )}
+          
+          {/* Collapsed state - logout button only */}
+          {!sidebarOpen && !isMobile && (
+            <div className="border-t border-gray-800 pt-4 mt-4">
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center p-3 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-red-400 transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="h-5 w-5" />
+              </button>
             </div>
           )}
         </div>
@@ -170,15 +210,49 @@ export const AdminLayout = ({ children, hideHeader = false }: AdminLayoutProps) 
                   <span className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ backgroundColor: '#F9C900' }}></span>
                 </button>
                 
-                {/* User Profile */}
-                <div className="flex items-center gap-2 lg:gap-3 px-2 lg:px-4 py-2 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors">
-                  <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full flex items-center justify-center text-white font-bold" style={{ backgroundColor: '#F9C900', color: '#000000' }}>
-                    A
-                  </div>
-                  <div className="text-left hidden lg:block">
-                    <p className="text-sm font-semibold text-gray-800">Admin User</p>
-                    <p className="text-xs text-gray-500">Administrator</p>
-                  </div>
+                {/* User Profile Dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setDropdownOpen(!dropdownOpen)}
+                    className="flex items-center gap-2 lg:gap-3 px-2 lg:px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full flex items-center justify-center text-white font-bold" style={{ backgroundColor: '#F9C900', color: '#000000' }}>
+                      {user?.name?.charAt(0).toUpperCase() || 'U'}
+                    </div>
+                    <div className="text-left hidden lg:block">
+                      <p className="text-sm font-semibold text-gray-800">{user?.name || 'User'}</p>
+                      <p className="text-xs text-gray-500 capitalize">{user?.role?.toLowerCase() || 'Role'}</p>
+                    </div>
+                  </button>
+
+                  {dropdownOpen && (
+                    <>
+                      {/* Backdrop */}
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setDropdownOpen(false)}
+                      />
+                      
+                      {/* Dropdown Menu */}
+                      <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
+                        <div className="px-4 py-3 border-b border-gray-200">
+                          <p className="text-sm font-semibold text-gray-900">{user?.name}</p>
+                          <p className="text-xs text-gray-500">{user?.email}</p>
+                          <p className="text-xs text-gray-600 mt-1 capitalize">Role: {user?.role?.toLowerCase()}</p>
+                        </div>
+
+                        <div className="py-1">
+                          <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <LogOut className="h-4 w-4" />
+                            Sign Out
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

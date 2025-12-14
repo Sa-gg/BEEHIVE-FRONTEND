@@ -1,20 +1,31 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { OrderItem } from '../../../../core/domain/entities/Order.entity'
 import { Button } from '../../common/ui/button'
 import { Input } from '../../common/ui/input'
 import { Label } from '../../common/ui/label'
 import { ArrowLeft } from 'lucide-react'
+import { useAuthStore } from '../../../store/authStore'
 
 interface CheckoutFormProps {
   items: OrderItem[]
-  onSubmit: (data: { customerName: string; tableNumber: string; notes: string }) => void
+  onSubmit: (data: { customerName: string; tableNumber: string; notes: string; orderType: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY' }) => void
   onBack: () => void
+  isSubmitting?: boolean
 }
 
-export const CheckoutForm = ({ items, onSubmit, onBack }: CheckoutFormProps) => {
+export const CheckoutForm = ({ items, onSubmit, onBack, isSubmitting = false }: CheckoutFormProps) => {
+  const { user, isAuthenticated } = useAuthStore()
   const [customerName, setCustomerName] = useState('')
   const [tableNumber, setTableNumber] = useState('')
   const [notes, setNotes] = useState('')
+  const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEOUT' | 'DELIVERY'>('DINE_IN')
+
+  // Pre-fill customer name if user is authenticated
+  useEffect(() => {
+    if (isAuthenticated && user?.name) {
+      setCustomerName(user.name)
+    }
+  }, [isAuthenticated, user])
 
   const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0)
   const tax = subtotal * 0.12
@@ -22,7 +33,7 @@ export const CheckoutForm = ({ items, onSubmit, onBack }: CheckoutFormProps) => 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSubmit({ customerName, tableNumber, notes })
+    onSubmit({ customerName, tableNumber, notes, orderType })
   }
 
   return (
@@ -80,6 +91,45 @@ export const CheckoutForm = ({ items, onSubmit, onBack }: CheckoutFormProps) => 
             <h2 className="font-bold">Your Information</h2>
             
             <div className="space-y-2">
+              <Label>Order Type</Label>
+              <div className="flex gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="orderType"
+                    value="DINE_IN"
+                    checked={orderType === 'DINE_IN'}
+                    onChange={(e) => setOrderType(e.target.value as 'DINE_IN')}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">🍽️ Dine In</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="orderType"
+                    value="TAKEOUT"
+                    checked={orderType === 'TAKEOUT'}
+                    onChange={(e) => setOrderType(e.target.value as 'TAKEOUT')}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">🥡 Takeout</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="orderType"
+                    value="DELIVERY"
+                    checked={orderType === 'DELIVERY'}
+                    onChange={(e) => setOrderType(e.target.value as 'DELIVERY')}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">🛵 Delivery</span>
+                </label>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
               <Label htmlFor="customerName">Name (Optional)</Label>
               <Input
                 id="customerName"
@@ -117,9 +167,10 @@ export const CheckoutForm = ({ items, onSubmit, onBack }: CheckoutFormProps) => 
               type="submit"
               className="w-full"
               size="lg"
+              disabled={isSubmitting}
               style={{ backgroundColor: '#F9C900', color: '#000000' }}
             >
-              Place Order
+              {isSubmitting ? 'Placing Order...' : 'Place Order'}
             </Button>
           </div>
         </form>

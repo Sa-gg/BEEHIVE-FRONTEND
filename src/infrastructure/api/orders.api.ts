@@ -10,6 +10,7 @@ export interface CreateOrderRequest {
   customerName?: string;
   tableNumber?: string;
   orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
+  moodContext?: string;
   items: OrderItem[];
   paymentMethod?: string;
 }

@@ -37,18 +37,18 @@ export const CartDrawer = ({
 
       {/* Drawer */}
       <div
-        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-90 transition-transform duration-300 ${
+        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-90 transition-transform duration-300 flex flex-col ${
           isOpen ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{ maxHeight: '80vh' }}
       >
         {/* Handle */}
-        <div className="flex justify-center pt-3 pb-2">
+        <div className="flex justify-center pt-3 pb-2 shrink-0">
           <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
         </div>
 
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200">
+        <div className="px-6 py-4 border-b border-gray-200 shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShoppingBag className="h-5 w-5" style={{ color: '#F9C900' }} />
@@ -74,7 +74,7 @@ export const CartDrawer = ({
         </div>
 
         {/* Cart Items */}
-        <div className="overflow-y-auto px-6 py-4" style={{ maxHeight: 'calc(80vh - 250px)' }}>
+        <div className="overflow-y-auto px-6 py-4 flex-1 min-h-0">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-400">
               <ShoppingBag className="h-16 w-16 mb-4" />
@@ -128,7 +128,7 @@ export const CartDrawer = ({
 
         {/* Footer with Totals and Checkout */}
         {items.length > 0 && (
-          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0">
             <div className="space-y-2 mb-4">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Subtotal</span>

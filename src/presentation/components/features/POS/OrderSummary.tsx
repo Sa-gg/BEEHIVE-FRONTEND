@@ -3,7 +3,7 @@ import { Button } from '../../common/ui/button'
 import { Input } from '../../common/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../common/ui/select'
 import { OrderItemRow } from './OrderItemRow'
-import { ShoppingCart, User, Hash, CreditCard, UtensilsCrossed, Package, Bike } from 'lucide-react'
+import { ShoppingCart, User, Hash, CreditCard, UtensilsCrossed, Package, Bike, Printer } from 'lucide-react'
 import { Badge } from '../../common/ui/badge'
 
 interface OrderSummaryProps {
@@ -20,6 +20,7 @@ interface OrderSummaryProps {
   onRemove: (menuItemId: string) => void
   onClearOrder: () => void
   onConfirmOrder: () => void
+  onPrintReceipt?: () => void
 }
 
 export const OrderSummary = ({
@@ -36,6 +37,7 @@ export const OrderSummary = ({
   onRemove,
   onClearOrder,
   onConfirmOrder,
+  onPrintReceipt,
 }: OrderSummaryProps) => {
   const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0)
   const tax = subtotal * 0.12 // 12% VAT
@@ -191,20 +193,32 @@ export const OrderSummary = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={onClearOrder}
-              className="flex-1 h-11 rounded-full border-gray-300 hover:bg-gray-100 text-sm font-medium"
-            >
-              Clear
-            </Button>
-            <Button
-              onClick={onConfirmOrder}
-              className="flex-[2] h-11 rounded-full bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium shadow-sm"
-            >
-              Confirm Order
-            </Button>
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={onClearOrder}
+                className="flex-1 h-11 rounded-full border-gray-300 hover:bg-gray-100 text-sm font-medium"
+              >
+                Clear
+              </Button>
+              <Button
+                onClick={onConfirmOrder}
+                className="flex-[2] h-11 rounded-full bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium shadow-sm"
+              >
+                Confirm Order
+              </Button>
+            </div>
+            {onPrintReceipt && (
+              <Button
+                variant="outline"
+                onClick={onPrintReceipt}
+                className="w-full h-11 rounded-full border-gray-300 hover:bg-gray-100 text-sm font-medium flex items-center justify-center gap-2"
+              >
+                <Printer className="h-4 w-4" />
+                Print Receipt
+              </Button>
+            )}
           </div>
         </div>
       )}

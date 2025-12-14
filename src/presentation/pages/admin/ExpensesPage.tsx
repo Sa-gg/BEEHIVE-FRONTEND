@@ -9,91 +9,49 @@ import {
   Pencil, 
   Trash2, 
   X, 
-  Upload,
   TrendingUp,
   DollarSign,
   Calendar,
-  FileText
+  FileText,
+  Loader2
 } from 'lucide-react'
-
-interface Expense {
-  id: string
-  category: string
-  date: string
-  amount: number
-  description: string
-  frequency: string
-  attachment?: string
-  createdAt: number
-}
+import { 
+  expensesApi, 
+  type Expense, 
+  type CreateExpenseDTO,
+  type UpdateExpenseDTO,
+  ExpenseCategory, 
+  ExpenseFrequency,
+  getCategoryDisplay,
+  getFrequencyDisplay
+} from '../../../infrastructure/api/expenses.api'
 
 const EXPENSE_CATEGORIES = [
-  'Rent/Lease',
-  'Utilities (Water/Electricity/Gas)',
-  'Administrative Salaries',
-  'Software/Subscriptions',
-  'Maintenance',
-  'Other'
+  { value: ExpenseCategory.RENT_LEASE, label: 'Rent/Lease' },
+  { value: ExpenseCategory.UTILITIES, label: 'Utilities (Water/Electricity/Gas)' },
+  { value: ExpenseCategory.ADMINISTRATIVE_SALARIES, label: 'Administrative Salaries' },
+  { value: ExpenseCategory.SOFTWARE_SUBSCRIPTIONS, label: 'Software/Subscriptions' },
+  { value: ExpenseCategory.MAINTENANCE, label: 'Maintenance' },
+  { value: ExpenseCategory.OTHER, label: 'Other' }
 ]
 
-const FREQUENCIES = ['One-Time', 'Monthly', 'Quarterly', 'Annual']
-
-// Sample data
-const SAMPLE_EXPENSES: Expense[] = [
-  {
-    id: '1',
-    category: 'Rent/Lease',
-    date: '2025-12-01',
-    amount: 25000,
-    description: 'December Rent Payment',
-    frequency: 'Monthly',
-    createdAt: Date.now() - 10 * 24 * 60 * 60 * 1000
-  },
-  {
-    id: '2',
-    category: 'Utilities (Water/Electricity/Gas)',
-    date: '2025-12-05',
-    amount: 4500,
-    description: 'November Electricity Bill',
-    frequency: 'Monthly',
-    createdAt: Date.now() - 6 * 24 * 60 * 60 * 1000
-  },
-  {
-    id: '3',
-    category: 'Software/Subscriptions',
-    date: '2025-12-07',
-    amount: 2999,
-    description: 'POS System Monthly Subscription',
-    frequency: 'Monthly',
-    createdAt: Date.now() - 4 * 24 * 60 * 60 * 1000
-  },
-  {
-    id: '4',
-    category: 'Maintenance',
-    date: '2025-12-09',
-    amount: 3500,
-    description: 'Coffee Machine Repair',
-    frequency: 'One-Time',
-    createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000
-  },
-  {
-    id: '5',
-    category: 'Administrative Salaries',
-    date: '2025-12-10',
-    amount: 15000,
-    description: 'Manager Salary - December',
-    frequency: 'Monthly',
-    createdAt: Date.now() - 1 * 24 * 60 * 60 * 1000
-  }
+const FREQUENCIES = [
+  { value: ExpenseFrequency.ONE_TIME, label: 'One-Time' },
+  { value: ExpenseFrequency.MONTHLY, label: 'Monthly' },
+  { value: ExpenseFrequency.QUARTERLY, label: 'Quarterly' },
+  { value: ExpenseFrequency.ANNUAL, label: 'Annual' }
 ]
 
 export const ExpensesPage = () => {
-  const [expenses, setExpenses] = useState<Expense[]>(SAMPLE_EXPENSES)
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortField, setSortField] = useState<keyof Expense>('date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [submitting, setSubmitting] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -101,8 +59,7 @@ export const ExpensesPage = () => {
     date: '',
     amount: '',
     description: '',
-    frequency: '',
-    attachment: null as File | null
+    frequency: ''
   })
 
   // Calculate monthly totals
@@ -111,11 +68,30 @@ export const ExpensesPage = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   })
 
+  useEffect(() => {
+    loadExpenses()
+  }, [])
+
+  const loadExpenses = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await expensesApi.getAll()
+      setExpenses(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load expenses')
+      console.error('Error loading expenses:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const monthlyExpenses = expenses.filter(exp => exp.date.startsWith(currentMonth))
   const totalMonthlyOverhead = monthlyExpenses.reduce((sum, exp) => sum + exp.amount, 0)
 
   const expensesByCategory = monthlyExpenses.reduce((acc, exp) => {
-    acc[exp.category] = (acc[exp.category] || 0) + exp.amount
+    const displayCategory = getCategoryDisplay(exp.category)
+    acc[displayCategory] = (acc[displayCategory] || 0) + exp.amount
     return acc
   }, {} as Record<string, number>)
 
@@ -124,10 +100,11 @@ export const ExpensesPage = () => {
 
   // Filter and sort expenses
   const filteredExpenses = expenses
-    .filter(exp => 
-      exp.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      exp.description.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    .filter(exp => {
+      const categoryDisplay = getCategoryDisplay(exp.category)
+      return categoryDisplay.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        exp.description.toLowerCase().includes(searchQuery.toLowerCase())
+    })
     .sort((a, b) => {
       const aVal = a[sortField]
       const bVal = b[sortField]
@@ -148,7 +125,7 @@ export const ExpensesPage = () => {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!formData.category || !formData.date || !formData.amount || !formData.frequency) {
@@ -156,34 +133,38 @@ export const ExpensesPage = () => {
       return
     }
 
-    if (editingExpense) {
-      const updatedExpense: Expense = {
-        ...editingExpense,
-        category: formData.category,
-        date: formData.date,
-        amount: parseFloat(formData.amount),
-        description: formData.description,
-        frequency: formData.frequency
-      }
-      setExpenses(prev => prev.map(exp => exp.id === editingExpense.id ? updatedExpense : exp))
-    } else {
-      setExpenses(prev => {
-        const timestamp = Date.now()
-        const newExpense: Expense = {
-          id: timestamp.toString(),
-          category: formData.category,
+    try {
+      setSubmitting(true)
+
+      if (editingExpense) {
+        const updateData: UpdateExpenseDTO = {
+          category: formData.category as ExpenseCategory,
           date: formData.date,
           amount: parseFloat(formData.amount),
           description: formData.description,
-          frequency: formData.frequency,
-          createdAt: timestamp
+          frequency: formData.frequency as ExpenseFrequency
         }
-        return [newExpense, ...prev]
-      })
-    }
+        await expensesApi.update(editingExpense.id, updateData)
+      } else {
+        const createData: CreateExpenseDTO = {
+          category: formData.category as ExpenseCategory,
+          date: formData.date,
+          amount: parseFloat(formData.amount),
+          description: formData.description,
+          frequency: formData.frequency as ExpenseFrequency
+        }
+        await expensesApi.create(createData)
+      }
 
-    resetForm()
-    setIsModalOpen(false)
+      await loadExpenses()
+      resetForm()
+      setIsModalOpen(false)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save expense')
+      console.error('Error saving expense:', err)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const resetForm = () => {
@@ -192,8 +173,7 @@ export const ExpensesPage = () => {
       date: '',
       amount: '',
       description: '',
-      frequency: '',
-      attachment: null
+      frequency: ''
     })
     setEditingExpense(null)
   }
@@ -202,19 +182,47 @@ export const ExpensesPage = () => {
     setEditingExpense(expense)
     setFormData({
       category: expense.category,
-      date: expense.date,
+      date: expense.date.split('T')[0], // Format date for input
       amount: expense.amount.toString(),
       description: expense.description,
-      frequency: expense.frequency,
-      attachment: null
+      frequency: expense.frequency
     })
     setIsModalOpen(true)
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this expense record?')) {
-      setExpenses(prev => prev.filter(exp => exp.id !== id))
+      try {
+        await expensesApi.delete(id)
+        await loadExpenses()
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Failed to delete expense')
+        console.error('Error deleting expense:', err)
+      }
     }
+  }
+
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-yellow-500" />
+        </div>
+      </AdminLayout>
+    )
+  }
+
+  if (error) {
+    return (
+      <AdminLayout>
+        <div className="p-6">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800">Error: {error}</p>
+            <Button onClick={loadExpenses} className="mt-2">Retry</Button>
+          </div>
+        </div>
+      </AdminLayout>
+    )
   }
 
   return (
@@ -335,7 +343,7 @@ export const ExpensesPage = () => {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {expense.category}
+                          {getCategoryDisplay(expense.category)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
@@ -345,7 +353,7 @@ export const ExpensesPage = () => {
                         ₱{expense.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {expense.frequency}
+                        {getFrequencyDisplay(expense.frequency)}
                       </td>
                       <td className="px-4 py-3 text-sm text-center">
                         <div className="flex items-center justify-center gap-2">
@@ -408,7 +416,7 @@ export const ExpensesPage = () => {
                     >
                       <option value="">Select category...</option>
                       {EXPENSE_CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
+                        <option key={cat.value} value={cat.value}>{cat.label}</option>
                       ))}
                     </select>
                   </div>
@@ -460,7 +468,7 @@ export const ExpensesPage = () => {
                     >
                       <option value="">Select frequency...</option>
                       {FREQUENCIES.map(freq => (
-                        <option key={freq} value={freq}>{freq}</option>
+                        <option key={freq.value} value={freq.value}>{freq.label}</option>
                       ))}
                     </select>
                   </div>
@@ -481,35 +489,6 @@ export const ExpensesPage = () => {
                   />
                 </div>
 
-                {/* File Upload */}
-                <div>
-                  <Label htmlFor="attachment" className="text-sm font-semibold text-gray-700 mb-2 block">
-                    Attachments (Receipts/Invoices)
-                  </Label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
-                    <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                    <label htmlFor="attachment" className="cursor-pointer">
-                      <span className="text-sm text-blue-600 font-medium hover:text-blue-700">
-                        Click to upload
-                      </span>
-                      <span className="text-sm text-gray-500"> or drag and drop</span>
-                      <input
-                        id="attachment"
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={(e) => setFormData({ ...formData, attachment: e.target.files?.[0] || null })}
-                        className="hidden"
-                      />
-                    </label>
-                    <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG up to 5MB</p>
-                    {formData.attachment && (
-                      <p className="text-xs text-green-600 mt-2 font-medium">
-                        📎 {formData.attachment.name}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
                 {/* Form Actions */}
                 <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
                   <Button
@@ -519,6 +498,7 @@ export const ExpensesPage = () => {
                       setIsModalOpen(false)
                       resetForm()
                     }}
+                    disabled={submitting}
                   >
                     Cancel
                   </Button>
@@ -526,8 +506,16 @@ export const ExpensesPage = () => {
                     type="submit"
                     className="px-6"
                     style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                    disabled={submitting}
                   >
-                    {editingExpense ? 'Update Expense' : 'Save Expense'}
+                    {submitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        {editingExpense ? 'Updating...' : 'Saving...'}
+                      </>
+                    ) : (
+                      editingExpense ? 'Update Expense' : 'Save Expense'
+                    )}
                   </Button>
                 </div>
               </form>

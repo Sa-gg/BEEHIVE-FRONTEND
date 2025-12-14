@@ -1,58 +1,130 @@
-import { AuthLayout } from '../../components/layout/AuthLayout'
+import { useState, useEffect } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { useAuthStore } from '../../store/authStore'
 import { Button } from '../../components/common/ui/button'
-import { useNavigate } from 'react-router-dom'
+import { Input } from '../../components/common/ui/input'
+import { Label } from '../../components/common/ui/label'
+import { Loader2, LogIn } from 'lucide-react'
 
 export const LoginPage = () => {
   const navigate = useNavigate()
+  const { login, isAuthenticated, isLoading, user } = useAuthStore()
+  
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      // Redirect based on role
+      if (user.role === 'CUSTOMER') {
+        navigate('/client/home')
+      } else if (user.role === 'CASHIER' || user.role === 'MANAGER') {
+        navigate('/admin/pos')
+      } else if (user.role === 'COOK') {
+        navigate('/admin/orders')
+      }
+    }
+  }, [isAuthenticated, user, navigate])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+
+    if (!email || !password) {
+      setError('Please fill in all fields')
+      return
+    }
+
+    try {
+      await login(email, password)
+    } catch (err: any) {
+      setError(err.message || 'Login failed. Please try again.')
+    }
+  }
 
   return (
-    <AuthLayout>
-      <div className="space-y-6">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900">Sign In</h2>
-          <p className="text-sm text-gray-600 mt-2">
-            Enter your credentials to access your account
-          </p>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #FFFBF0 0%, #FFF8E1 100%)' }}>
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-6 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/')}>
+            <img src="/src/assets/logo.png" alt="BEEHIVE" className="h-16 w-16 object-contain" />
+            <div>
+              <h1 className="text-3xl font-bold" style={{ color: '#F9C900' }}>BEEHIVE</h1>
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome Back</h2>
+          <p className="text-gray-600">Sign in to your account</p>
         </div>
 
-        <form className="space-y-4">
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-6">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">Email</label>
-            <input
+            <Label htmlFor="email">Email</Label>
+            <Input
               id="email"
               type="email"
               placeholder="you@example.com"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isLoading}
+              className="h-11"
             />
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">Password</label>
-            <input
+            <Label htmlFor="password">Password</Label>
+            <Input
               id="password"
               type="password"
               placeholder="••••••••"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isLoading}
+              className="h-11"
             />
           </div>
 
-          <Button type="submit" className="w-full">
-            Sign In
+          <Button
+            type="submit"
+            disabled={isLoading}
+            className="w-full h-11 font-medium text-black hover:shadow-lg transition-all"
+            style={{ backgroundColor: '#F9C900' }}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Signing in...
+              </>
+            ) : (
+              'Sign In'
+            )}
           </Button>
         </form>
 
-        <div className="text-center text-sm">
-          <span className="text-gray-600">Don't have an account? </span>
-          <button
-            onClick={() => navigate('/register')}
-            className="text-blue-600 hover:text-blue-800 font-medium"
-          >
+        <div className="mt-6 text-center text-sm text-gray-600">
+          Don't have an account?{' '}
+          <Link to="/auth/register" className="font-medium hover:underline" style={{ color: '#F9C900' }}>
             Sign up
-          </button>
+          </Link>
+        </div>
+
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <p className="text-xs text-gray-500 text-center mb-3">Test Accounts:</p>
+          <div className="space-y-1 text-xs text-gray-600">
+            <p>👔 Manager: manager@beehive.com</p>
+            <p>💰 Cashier: cashier@beehive.com</p>
+            <p>👨‍🍳 Cook: cook@beehive.com</p>
+            <p>👤 Customer: customer@beehive.com</p>
+            <p className="text-center mt-2 font-medium">Password: password123</p>
+          </div>
         </div>
       </div>
-    </AuthLayout>
+    </div>
   )
 }

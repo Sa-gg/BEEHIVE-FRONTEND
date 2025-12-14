@@ -21,7 +21,7 @@ export const MoodSelector = ({ onSelectMood, onClose }: MoodSelectorProps) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-100 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg sm:w-full shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] animate-slide-up sm:animate-none">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-2xl shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] animate-slide-up sm:animate-none">
         {/* Header */}
         <div className="bg-white border-b px-4 py-3 sm:p-5 flex items-center justify-between rounded-t-3xl sm:rounded-t-2xl shrink-0">
           <div className="flex-1">
@@ -37,26 +37,20 @@ export const MoodSelector = ({ onSelectMood, onClose }: MoodSelectorProps) => {
         </div>
 
         {/* Mood Options - Scrollable */}
-        <div className="p-3 sm:p-4 grid grid-cols-2 gap-2 sm:gap-3 overflow-y-auto">
+        <div className="p-4 sm:p-6 overflow-y-auto">
+          <div className="grid grid-cols-3 gap-3">
           {MOOD_OPTIONS.map((mood) => (
-            <div key={mood.value} className="relative">
+            <div key={mood.value} className="relative flex justify-center">
               <button
                 onClick={() => handleSelectMood(mood)}
-                className={`w-full p-3 sm:p-4 rounded-xl border-2 transition-all active:scale-95 ${
+                className={`w-full max-w-[120px] p-2 rounded-lg border-2 transition-all active:scale-95 flex flex-col items-center justify-center ${
                   selectedMood === mood.value
                     ? 'border-yellow-400 bg-yellow-50 shadow-lg'
-                    : 'border-gray-200 active:border-yellow-300'
+                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                <div className="text-3xl sm:text-4xl mb-1.5 sm:mb-2">{mood.emoji}</div>
-                <h3 className="font-bold text-sm sm:text-base mb-0.5">{mood.label}</h3>
-                <p className="text-[10px] sm:text-xs text-gray-600 line-clamp-1">{mood.description}</p>
-                
-                {mood.supportMessage && (
-                  <div className="mt-2 p-1.5 bg-blue-50 rounded-lg">
-                    <p className="text-[9px] sm:text-xs text-blue-700 line-clamp-2">{mood.supportMessage}</p>
-                  </div>
-                )}
+                <div className="text-2xl mb-1.5">{mood.emoji}</div>
+                <h3 className="font-bold text-xs text-center">{mood.label}</h3>
               </button>
               
               {/* Science Info Button */}
@@ -69,7 +63,7 @@ export const MoodSelector = ({ onSelectMood, onClose }: MoodSelectorProps) => {
                   className="absolute top-1.5 right-1.5 p-1 bg-white rounded-full shadow-md hover:bg-blue-50 transition-colors border border-gray-200"
                   title="View scientific explanation"
                 >
-                  <Info className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-blue-600" />
+                  <Info className="h-3 w-3 text-blue-600" />
                 </button>
               )}
               
@@ -88,7 +82,7 @@ export const MoodSelector = ({ onSelectMood, onClose }: MoodSelectorProps) => {
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <p className="text-[10px] sm:text-xs text-gray-700 leading-relaxed mb-2">
+                  <p className="text-xs text-gray-700 leading-relaxed mb-2">
                     {mood.scientificExplanation}
                   </p>
                   {mood.beneficialNutrients && mood.beneficialNutrients.length > 0 && (
@@ -110,6 +104,7 @@ export const MoodSelector = ({ onSelectMood, onClose }: MoodSelectorProps) => {
               )}
             </div>
           ))}
+          </div>
         </div>
 
         {/* Footer */}

@@ -1,5 +1,8 @@
-import { type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { type ReactNode, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../../store/authStore'
+import { CustomerDropdown } from '../features/CustomerMenu/CustomerDropdown'
+import { MyOrdersModal } from '../features/CustomerMenu/MyOrdersModal'
 
 interface ClientLayoutProps {
   children: ReactNode
@@ -13,6 +16,9 @@ interface ClientLayoutProps {
  * Used for: Home, Menu, About, etc.
  */
 export const ClientLayout = ({ children, hideHeader = false }: ClientLayoutProps) => {
+  const { isAuthenticated, user } = useAuthStore()
+  const [showMyOrders, setShowMyOrders] = useState(false)
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -34,24 +40,29 @@ export const ClientLayout = ({ children, hideHeader = false }: ClientLayoutProps
               <Link to="/" className="text-gray-700 hover:text-[#F9C900] font-medium transition-colors">Home</Link>
               <Link to="/menu" className="text-gray-700 hover:text-[#F9C900] font-medium transition-colors">Menu</Link>
               <Link to="/about" className="text-gray-700 hover:text-[#F9C900] font-medium transition-colors">About</Link>
-              <Link to="/admin" className="text-[#FF9A00] hover:text-[#F9C900] font-semibold transition-colors">Admin (Dev)</Link>
             </div>
 
-            {/* Auth Buttons */}
-            <div className="flex gap-2">
-              <Link
-                to="/login"
-                className="px-4 py-2 text-gray-700 hover:text-[#F9C900] font-medium transition-colors"
-              >
-                Sign In
-              </Link>
-              <Link
-                to="/register"
-                className="px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg"
-                style={{ backgroundColor: '#F9C900', color: '#000000' }}
-              >
-                Register
-              </Link>
+            {/* Auth Section */}
+            <div className="flex items-center gap-3">
+              {isAuthenticated ? (
+                <CustomerDropdown onViewOrders={() => setShowMyOrders(true)} />
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    className="px-4 py-2 text-gray-700 hover:text-[#F9C900] font-medium transition-colors"
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg"
+                    style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                  >
+                    Register
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </nav>
@@ -125,6 +136,12 @@ export const ClientLayout = ({ children, hideHeader = false }: ClientLayoutProps
           </div>
         </div>
       </footer>
+
+      {/* My Orders Modal */}
+      <MyOrdersModal
+        open={showMyOrders}
+        onOpenChange={setShowMyOrders}
+      />
     </div>
   )
 }

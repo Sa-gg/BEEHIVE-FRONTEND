@@ -2,132 +2,26 @@ import { useState, useEffect } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Search, Plus, Edit, Trash2, Package, AlertTriangle, CheckCircle, TrendingUp, TrendingDown } from 'lucide-react'
+import { Search, Plus, Edit, Trash2, Package, AlertTriangle, CheckCircle, TrendingUp } from 'lucide-react'
+import { inventoryApi, type CreateInventoryItemRequest, type InventoryStats } from '../../../infrastructure/api/inventory.api'
 
 interface InventoryItem {
   id: string
   name: string
-  category: string
+  category: 'INGREDIENTS' | 'BEVERAGES' | 'PACKAGING' | 'SUPPLIES'
   currentStock: number
   minStock: number
   maxStock: number
   unit: string
   costPerUnit: number
   supplier: string
-  lastRestocked: Date
-  status: 'in-stock' | 'low-stock' | 'out-of-stock'
+  lastRestocked: Date | null
+  status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK'
 }
 
-// Sample data
-const SAMPLE_INVENTORY: InventoryItem[] = [
-  {
-    id: '1',
-    name: 'Pizza Dough',
-    category: 'ingredients',
-    currentStock: 50,
-    minStock: 20,
-    maxStock: 100,
-    unit: 'kg',
-    costPerUnit: 80,
-    supplier: 'Manila Flour Co.',
-    lastRestocked: new Date(Date.now() - 2 * 24 * 60 * 60000),
-    status: 'in-stock',
-  },
-  {
-    id: '2',
-    name: 'Mozzarella Cheese',
-    category: 'ingredients',
-    currentStock: 15,
-    minStock: 20,
-    maxStock: 80,
-    unit: 'kg',
-    costPerUnit: 450,
-    supplier: 'Dairy Fresh Supplies',
-    lastRestocked: new Date(Date.now() - 5 * 24 * 60 * 60000),
-    status: 'low-stock',
-  },
-  {
-    id: '3',
-    name: 'Coffee Beans',
-    category: 'beverages',
-    currentStock: 25,
-    minStock: 15,
-    maxStock: 60,
-    unit: 'kg',
-    costPerUnit: 650,
-    supplier: 'Premium Coffee Traders',
-    lastRestocked: new Date(Date.now() - 3 * 24 * 60 * 60000),
-    status: 'in-stock',
-  },
-  {
-    id: '4',
-    name: 'Pepperoni',
-    category: 'ingredients',
-    currentStock: 0,
-    minStock: 10,
-    maxStock: 40,
-    unit: 'kg',
-    costPerUnit: 380,
-    supplier: 'Meat Masters Inc.',
-    lastRestocked: new Date(Date.now() - 10 * 24 * 60 * 60000),
-    status: 'out-of-stock',
-  },
-  {
-    id: '5',
-    name: 'French Fries',
-    category: 'ingredients',
-    currentStock: 30,
-    minStock: 25,
-    maxStock: 100,
-    unit: 'kg',
-    costPerUnit: 120,
-    supplier: 'Potato Paradise',
-    lastRestocked: new Date(Date.now() - 1 * 24 * 60 * 60000),
-    status: 'in-stock',
-  },
-  {
-    id: '6',
-    name: 'Milk',
-    category: 'beverages',
-    currentStock: 18,
-    minStock: 20,
-    maxStock: 80,
-    unit: 'liters',
-    costPerUnit: 85,
-    supplier: 'Dairy Fresh Supplies',
-    lastRestocked: new Date(Date.now() - 4 * 24 * 60 * 60000),
-    status: 'low-stock',
-  },
-  {
-    id: '7',
-    name: 'Matcha Powder',
-    category: 'beverages',
-    currentStock: 8,
-    minStock: 5,
-    maxStock: 20,
-    unit: 'kg',
-    costPerUnit: 1200,
-    supplier: 'Premium Coffee Traders',
-    lastRestocked: new Date(Date.now() - 7 * 24 * 60 * 60000),
-    status: 'in-stock',
-  },
-  {
-    id: '8',
-    name: 'Beef',
-    category: 'ingredients',
-    currentStock: 22,
-    minStock: 15,
-    maxStock: 50,
-    unit: 'kg',
-    costPerUnit: 420,
-    supplier: 'Meat Masters Inc.',
-    lastRestocked: new Date(Date.now() - 1 * 24 * 60 * 60000),
-    status: 'in-stock',
-  },
-]
-
 export const InventoryPage = () => {
-  const [inventory, setInventory] = useState<InventoryItem[]>(SAMPLE_INVENTORY)
+  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [stats, setStats] = useState<InventoryStats>({ totalItems: 0, lowStock: 0, outOfStock: 0, totalValue: 0 })
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
@@ -135,6 +29,36 @@ export const InventoryPage = () => {
   const [isAdding, setIsAdding] = useState(false)
   const [newItem, setNewItem] = useState<Partial<InventoryItem>>({})
   const [currentTime, setCurrentTime] = useState(() => Date.now())
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch inventory data
+  const loadInventory = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const filters = {
+        category: selectedCategory !== 'all' ? selectedCategory.toUpperCase() : undefined,
+        search: searchQuery || undefined
+      }
+      const [items, statsData] = await Promise.all([
+        inventoryApi.getAll(filters),
+        inventoryApi.getStats()
+      ])
+      setInventory(items)
+      setStats(statsData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load inventory')
+      console.error('Error loading inventory:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadInventory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory])
 
   // Update time every minute
   useEffect(() => {
@@ -147,81 +71,72 @@ export const InventoryPage = () => {
   const categories = ['all', 'ingredients', 'beverages', 'packaging', 'supplies']
 
   const statusConfig = {
-    'in-stock': { label: 'In Stock', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle },
-    'low-stock': { label: 'Low Stock', color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: AlertTriangle },
-    'out-of-stock': { label: 'Out of Stock', color: 'bg-red-100 text-red-800 border-red-200', icon: AlertTriangle },
+    'IN_STOCK': { label: 'In Stock', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle },
+    'LOW_STOCK': { label: 'Low Stock', color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: AlertTriangle },
+    'OUT_OF_STOCK': { label: 'Out of Stock', color: 'bg-red-100 text-red-800 border-red-200', icon: Package },
   }
 
-  const filteredInventory = inventory.filter(item => {
-    const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory
-    const matchesSearch = searchQuery.trim() === '' ||
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.supplier.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchesCategory && matchesSearch
-  })
-
-  const stats = {
-    totalItems: inventory.length,
-    lowStock: inventory.filter(i => i.status === 'low-stock').length,
-    outOfStock: inventory.filter(i => i.status === 'out-of-stock').length,
-    totalValue: inventory.reduce((sum, item) => sum + (item.currentStock * item.costPerUnit), 0),
+  const handleSearch = () => {
+    loadInventory()
   }
 
-  const updateStock = (itemId: string, newStock: number) => {
-    setInventory(prev => prev.map(item => {
-      if (item.id === itemId) {
-        let status: InventoryItem['status'] = 'in-stock'
-        if (newStock === 0) status = 'out-of-stock'
-        else if (newStock <= item.minStock) status = 'low-stock'
-        
-        return { ...item, currentStock: newStock, status, lastRestocked: new Date() }
-      }
-      return item
-    }))
-  }
-
-  const deleteItem = (itemId: string) => {
-    if (confirm('Are you sure you want to delete this item?')) {
-      setInventory(prev => prev.filter(item => item.id !== itemId))
+  const updateStock = async (id: string, newStock: number) => {
+    try {
+      await inventoryApi.updateStock(id, newStock)
+      await loadInventory()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update stock')
+      console.error('Error updating stock:', err)
     }
   }
 
-  const addNewItem = () => {
-    if (!newItem.name || !newItem.category || !newItem.currentStock || !newItem.minStock || !newItem.maxStock || !newItem.unit || !newItem.costPerUnit || !newItem.supplier) {
+  const deleteItem = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this item?')) return
+    
+    try {
+      await inventoryApi.delete(id)
+      await loadInventory()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete item')
+      console.error('Error deleting item:', err)
+    }
+  }
+
+  const addNewItem = async () => {
+    if (!newItem.name || !newItem.category || newItem.currentStock === undefined || 
+        newItem.minStock === undefined || newItem.maxStock === undefined || 
+        !newItem.unit || newItem.costPerUnit === undefined || !newItem.supplier) {
       alert('Please fill in all required fields')
       return
     }
 
-    const stock = newItem.currentStock || 0
-    const minStock = newItem.minStock || 0
-    let status: InventoryItem['status'] = 'in-stock'
-    if (stock === 0) status = 'out-of-stock'
-    else if (stock <= minStock) status = 'low-stock'
-
-    const item: InventoryItem = {
-      id: Date.now().toString(),
-      name: newItem.name,
-      category: newItem.category,
-      currentStock: stock,
-      minStock: newItem.minStock,
-      maxStock: newItem.maxStock || 100,
-      unit: newItem.unit,
-      costPerUnit: newItem.costPerUnit,
-      supplier: newItem.supplier,
-      lastRestocked: new Date(),
-      status,
+    try {
+      const itemData: CreateInventoryItemRequest = {
+        name: newItem.name,
+        category: newItem.category,
+        currentStock: newItem.currentStock,
+        minStock: newItem.minStock,
+        maxStock: newItem.maxStock,
+        unit: newItem.unit,
+        costPerUnit: newItem.costPerUnit,
+        supplier: newItem.supplier
+      }
+      await inventoryApi.create(itemData)
+      setIsAdding(false)
+      setNewItem({})
+      await loadInventory()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to add item')
+      console.error('Error adding item:', err)
     }
-
-    setInventory(prev => [...prev, item])
-    setNewItem({})
-    setIsAdding(false)
   }
 
   const getStockPercentage = (item: InventoryItem) => {
     return Math.round((item.currentStock / item.maxStock) * 100)
   }
 
-  const getDaysAgo = (date: Date) => {
+  const getDaysAgo = (date: Date | null) => {
+    if (!date) return 'Never'
     const days = Math.floor((currentTime - date.getTime()) / (24 * 60 * 60000))
     if (days === 0) return 'Today'
     if (days === 1) return 'Yesterday'
@@ -280,11 +195,15 @@ export const InventoryPage = () => {
                 placeholder="Search by name or supplier..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
               />
               {searchQuery && (
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => {
+                    setSearchQuery('')
+                    loadInventory()
+                  }}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   ×
@@ -307,6 +226,17 @@ export const InventoryPage = () => {
               ))}
             </div>
 
+            {/* Search Button */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSearch}
+              className="whitespace-nowrap"
+            >
+              <Search className="h-4 w-4 mr-2" />
+              Search
+            </Button>
+
             {/* Add New Button */}
             <Button
               size="sm"
@@ -322,31 +252,45 @@ export const InventoryPage = () => {
 
         {/* Inventory Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Item</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden md:table-cell">Category</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Stock</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden lg:table-cell">Supplier</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredInventory.length === 0 ? (
+          {loading ? (
+            <div className="px-4 py-12 text-center">
+              <div className="animate-spin h-8 w-8 border-4 border-yellow-400 border-t-transparent rounded-full mx-auto mb-3"></div>
+              <p className="text-gray-500">Loading inventory...</p>
+            </div>
+          ) : error ? (
+            <div className="px-4 py-12 text-center">
+              <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-3" />
+              <p className="text-red-600">{error}</p>
+              <Button onClick={loadInventory} className="mt-4" size="sm" variant="outline">
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center">
-                      <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">No items found</p>
-                      {searchQuery && (
-                        <p className="text-sm text-gray-400 mt-2">Try adjusting your search</p>
-                      )}
-                    </td>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Item</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden md:table-cell">Category</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Stock</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden lg:table-cell">Supplier</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                   </tr>
-                ) : (
-                  filteredInventory.map(item => {
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {inventory.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-12 text-center">
+                        <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                        <p className="text-gray-500">No items found</p>
+                        {searchQuery && (
+                          <p className="text-sm text-gray-400 mt-2">Try adjusting your search</p>
+                        )}
+                      </td>
+                    </tr>
+                  ) : (
+                  inventory.map(item => {
                     const StatusIcon = statusConfig[item.status].icon
                     const percentage = getStockPercentage(item)
                     
@@ -360,7 +304,7 @@ export const InventoryPage = () => {
                         </td>
                         <td className="px-4 py-4 hidden md:table-cell">
                           <Badge variant="outline" className="capitalize text-xs">
-                            {item.category}
+                            {item.category.toLowerCase()}
                           </Badge>
                         </td>
                         <td className="px-4 py-4">
@@ -422,6 +366,7 @@ export const InventoryPage = () => {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       </div>
 
@@ -563,14 +508,14 @@ export const InventoryPage = () => {
                     </label>
                     <select
                       value={newItem.category || ''}
-                      onChange={(e) => setNewItem(prev => ({ ...prev, category: e.target.value }))}
+                      onChange={(e) => setNewItem(prev => ({ ...prev, category: e.target.value as 'INGREDIENTS' | 'BEVERAGES' | 'PACKAGING' | 'SUPPLIES' }))}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
                     >
                       <option value="">Select category</option>
-                      <option value="ingredients">Ingredients</option>
-                      <option value="beverages">Beverages</option>
-                      <option value="packaging">Packaging</option>
-                      <option value="supplies">Supplies</option>
+                      <option value="INGREDIENTS">Ingredients</option>
+                      <option value="BEVERAGES">Beverages</option>
+                      <option value="PACKAGING">Packaging</option>
+                      <option value="SUPPLIES">Supplies</option>
                     </select>
                   </div>
 
