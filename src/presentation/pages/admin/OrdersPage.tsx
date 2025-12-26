@@ -3,10 +3,20 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Clock, CheckCircle, XCircle, Package, Search, Filter, Eye, Loader2, Printer } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Package, Search, Filter, Eye, Loader2, Printer, Merge, X, Grid3X3, LayoutGrid } from 'lucide-react'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { useSettingsStore } from '../../store/settingsStore'
+
+// Helper to format order number - removes date prefix for cleaner display
+// ORD-20251227-00001 -> ORD-00001
+const formatOrderNumber = (orderNumber: string): string => {
+  const match = orderNumber.match(/ORD-\d{8}-(\d+)/)
+  if (match) {
+    return `ORD-${match[1]}`
+  }
+  return orderNumber
+}
 
 interface OrderItem {
   id: string
@@ -48,6 +58,43 @@ export const OrdersPage = () => {
   const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('')
   const { markPaidOnPrintReceipt } = useSettingsStore()
+  
+  // Merge orders state
+  const [selectedOrdersForMerge, setSelectedOrdersForMerge] = useState<Set<string>>(new Set())
+  const [showMergeModal, setShowMergeModal] = useState(false)
+  const [mergeMode, setMergeMode] = useState(false)
+  const [mergedOrderData, setMergedOrderData] = useState<{
+    mergedOrderIds: string[];
+    orderNumbers: string[];
+    customerName: string | null;
+    tableNumber: string | null;
+    items: Array<{ menuItemId: string; name: string; quantity: number; price: number; subtotal: number }>;
+    subtotal: number;
+    tax: number;
+    totalAmount: number;
+    orderType: string;
+  } | null>(null)
+  const [mergePaymentMethod, setMergePaymentMethod] = useState<string>('CASH')
+  
+  // Grid layout configuration
+  const [gridColumns, setGridColumns] = useState<number>(() => {
+    const saved = localStorage.getItem('orderGridColumns')
+    return saved ? parseInt(saved) : 1
+  })
+
+  // Save grid columns preference
+  useEffect(() => {
+    localStorage.setItem('orderGridColumns', gridColumns.toString())
+  }, [gridColumns])
+
+  // Status color configuration for left border
+  const statusBorderColors = {
+    PENDING: 'border-l-yellow-500',
+    PREPARING: 'border-l-blue-500',
+    READY: 'border-l-purple-500',
+    COMPLETED: 'border-l-green-500',
+    CANCELLED: 'border-l-red-500',
+  }
 
   // Fetch menu items for mapping IDs to names
   useEffect(() => {
@@ -94,7 +141,12 @@ export const OrdersPage = () => {
           })
         }))
         
-        setOrders(ordersWithNames)
+        // Filter out completed and paid orders (they go to Sales page)
+        const activeOrders = ordersWithNames.filter(
+          order => !(order.status === 'COMPLETED' && order.paymentStatus === 'PAID')
+        )
+        
+        setOrders(activeOrders)
       } catch (error) {
         console.error('Failed to fetch orders:', error)
       } finally {
@@ -129,7 +181,8 @@ export const OrdersPage = () => {
   const statusConfig = {
     PENDING: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: Clock },
     PREPARING: { label: 'Preparing', color: 'bg-blue-100 text-blue-800 border-blue-200', icon: Package },
-    COMPLETED: { label: 'Completed', color: 'bg-gray-100 text-gray-800 border-gray-200', icon: CheckCircle },
+    READY: { label: 'Ready', color: 'bg-purple-100 text-purple-800 border-purple-200', icon: CheckCircle },
+    COMPLETED: { label: 'Completed', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle },
     CANCELLED: { label: 'Cancelled', color: 'bg-red-100 text-red-800 border-red-200', icon: XCircle },
   }
 
@@ -187,6 +240,162 @@ export const OrdersPage = () => {
     }
   }
 
+  // Toggle order selection for merge
+  const toggleOrderForMerge = (orderId: string) => {
+    setSelectedOrdersForMerge(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId)
+      } else {
+        newSet.add(orderId)
+      }
+      return newSet
+    })
+  }
+
+  // Merge selected orders
+  const handleMergeOrders = async () => {
+    if (selectedOrdersForMerge.size < 2) {
+      alert('Please select at least 2 orders to merge')
+      return
+    }
+
+    try {
+      const orderIds = Array.from(selectedOrdersForMerge)
+      const response = await ordersApi.mergeOrders(orderIds)
+      setMergedOrderData(response.data)
+      setShowMergeModal(true)
+    } catch (error: any) {
+      console.error('Failed to merge orders:', error)
+      alert(`Failed to merge orders: ${error.response?.data?.error || error.message}`)
+    }
+  }
+
+  // Process merged order payment and print receipt
+  const handleMergedPayment = async () => {
+    if (!mergedOrderData) return
+
+    try {
+      await ordersApi.markMergedOrdersAsPaid(mergedOrderData.mergedOrderIds, mergePaymentMethod)
+      
+      // Print merged receipt
+      printMergedReceipt()
+      
+      // Remove merged orders from list (they're now paid)
+      setOrders(prev => prev.filter(o => !mergedOrderData.mergedOrderIds.includes(o.id)))
+      
+      // Reset merge state
+      setShowMergeModal(false)
+      setMergedOrderData(null)
+      setSelectedOrdersForMerge(new Set())
+      setMergeMode(false)
+      
+      alert('Orders merged and paid successfully!')
+    } catch (error: any) {
+      console.error('Failed to process merged payment:', error)
+      alert(`Failed to process payment: ${error.response?.data?.error || error.message}`)
+    }
+  }
+
+  // Print merged receipt
+  const printMergedReceipt = () => {
+    if (!mergedOrderData) return
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      alert('Please allow popups to print receipt')
+      return
+    }
+
+    const receiptHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Merged Receipt - ${mergedOrderData.orderNumbers.join(', ')}</title>
+        <style>
+          @media print { body { margin: 0; } }
+          body { font-family: 'Courier New', monospace; width: 80mm; margin: 0 auto; padding: 10mm; }
+          .header { text-align: center; margin-bottom: 10px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+          .logo { font-size: 24px; font-weight: bold; }
+          .merged-notice { background: #f0f0f0; padding: 5px; margin: 10px 0; text-align: center; font-size: 11px; }
+          .info { margin: 10px 0; font-size: 12px; }
+          .items { margin: 15px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 10px 0; }
+          .item { display: flex; justify-content: space-between; margin: 5px 0; font-size: 12px; }
+          .item-name { flex: 1; }
+          .item-qty { width: 30px; text-align: center; }
+          .item-price { width: 60px; text-align: right; }
+          .totals { margin: 10px 0; }
+          .total-row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 12px; }
+          .total-row.grand { font-size: 14px; font-weight: bold; margin-top: 10px; padding-top: 10px; border-top: 1px solid #000; }
+          .footer { text-align: center; margin-top: 20px; padding-top: 10px; border-top: 2px dashed #000; font-size: 11px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo">🐝 BEEHIVE</div>
+          <div style="font-size: 10px;">Restaurant & Cafe</div>
+        </div>
+
+        <div class="merged-notice">
+          <strong>MERGED RECEIPT</strong><br/>
+          Orders: ${mergedOrderData.orderNumbers.map(n => formatOrderNumber(n)).join(' + ')}
+        </div>
+
+        <div class="info">
+          <div>Date: ${new Date().toLocaleString()}</div>
+          ${mergedOrderData.customerName ? `<div>Customer: ${mergedOrderData.customerName}</div>` : ''}
+          ${mergedOrderData.tableNumber ? `<div>Table: ${mergedOrderData.tableNumber}</div>` : ''}
+          <div>Type: ${mergedOrderData.orderType === 'DINE_IN' ? 'Dine In' : mergedOrderData.orderType === 'TAKEOUT' ? 'Takeout' : 'Delivery'}</div>
+          <div>Payment: ${mergePaymentMethod}</div>
+        </div>
+
+        <div class="items">
+          <div style="display: flex; font-weight: bold; margin-bottom: 5px; font-size: 11px;">
+            <span style="flex: 1;">Item</span>
+            <span style="width: 30px; text-align: center;">Qty</span>
+            <span style="width: 60px; text-align: right;">Amount</span>
+          </div>
+          ${mergedOrderData.items.map(item => `
+            <div class="item">
+              <span class="item-name">${item.name}</span>
+              <span class="item-qty">${item.quantity}</span>
+              <span class="item-price">₱${item.subtotal.toFixed(2)}</span>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="totals">
+          <div class="total-row">
+            <span>Subtotal:</span>
+            <span>₱${mergedOrderData.subtotal.toFixed(2)}</span>
+          </div>
+          <div class="total-row">
+            <span>VAT (12%):</span>
+            <span>₱${mergedOrderData.tax.toFixed(2)}</span>
+          </div>
+          <div class="total-row grand">
+            <span>TOTAL:</span>
+            <span>₱${mergedOrderData.totalAmount.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div class="footer">
+          <p>Thank you for dining with us!</p>
+          <p>Please come again 🐝</p>
+        </div>
+      </body>
+      </html>
+    `
+
+    printWindow.document.write(receiptHTML)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => {
+      printWindow.print()
+      printWindow.close()
+    }, 250)
+  }
+
   // const updateOrderItems = (orderId: string, items: OrderItem[]) => {
   //   setOrders(prev => prev.map(order => {
   //     if (order.id === orderId) {
@@ -201,6 +410,11 @@ export const OrdersPage = () => {
     if (order.status === 'PENDING') {
       navigate('/admin/pos', { state: { editingOrder: order } })
     }
+  }
+
+  const handleReorder = (order: Order) => {
+    // Navigate to POS with order items pre-filled and linkedOrderId
+    navigate('/admin/pos', { state: { reorderFrom: order } })
   }
 
   const printReceipt = async (order: Order) => {
@@ -320,7 +534,7 @@ export const OrdersPage = () => {
         <div class="info">
           <div class="info-row">
             <span>Order #:</span>
-            <span>${order.orderNumber}</span>
+            <span>${formatOrderNumber(order.orderNumber)}</span>
           </div>
           <div class="info-row">
             <span>Date:</span>
@@ -388,13 +602,37 @@ export const OrdersPage = () => {
 
 
 
-  const filteredOrders = orders.filter(order => {
-    const matchesStatus = selectedStatus === 'all' || order.status.toLowerCase() === selectedStatus.toLowerCase()
-    const matchesSearch = searchQuery.trim() === '' || 
-      order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (order.customerName && order.customerName.toLowerCase().includes(searchQuery.toLowerCase()))
-    return matchesStatus && matchesSearch
-  })
+  // Get today's date for filtering cancelled orders
+  const today = new Date().toISOString().split('T')[0]
+  
+  const filteredOrders = orders
+    .filter(order => {
+      const matchesStatus = selectedStatus === 'all' || order.status.toLowerCase() === selectedStatus.toLowerCase()
+      const matchesSearch = searchQuery.trim() === '' || 
+        formatOrderNumber(order.orderNumber).toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (order.customerName && order.customerName.toLowerCase().includes(searchQuery.toLowerCase()))
+      
+      // Only show cancelled orders from today
+      if (order.status === 'CANCELLED') {
+        const orderDate = new Date(order.createdAt).toISOString().split('T')[0]
+        if (orderDate !== today) return false
+      }
+      
+      return matchesStatus && matchesSearch
+    })
+    // Sort: PENDING first, then PREPARING, then COMPLETED, then CANCELLED
+    .sort((a, b) => {
+      const statusPriority: Record<string, number> = {
+        PENDING: 0,
+        PREPARING: 1,
+        COMPLETED: 2,
+        CANCELLED: 3
+      }
+      const priorityDiff = statusPriority[a.status] - statusPriority[b.status]
+      if (priorityDiff !== 0) return priorityDiff
+      // Within same status, sort by most recent first
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
 
   const getTimeAgo = (dateString: string) => {
     const date = new Date(dateString)
@@ -409,7 +647,6 @@ export const OrdersPage = () => {
   const stats = {
     pending: orders.filter(o => o.status === 'PENDING').length,
     preparing: orders.filter(o => o.status === 'PREPARING').length,
-    ready: orders.filter(o => o.status === 'READY').length,
     completed: orders.filter(o => o.status === 'COMPLETED').length,
   }
 
@@ -423,7 +660,7 @@ export const OrdersPage = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+        <div className="grid grid-cols-3 gap-3 lg:gap-4">
           <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <Clock className="h-5 w-5 text-yellow-600" />
@@ -441,16 +678,9 @@ export const OrdersPage = () => {
           <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle className="h-5 w-5 text-green-600" />
-              <span className="text-sm font-medium text-green-900">Ready</span>
+              <span className="text-sm font-medium text-green-900">Completed</span>
             </div>
-            <p className="text-2xl lg:text-3xl font-bold text-green-900">{stats.ready}</p>
-          </div>
-          <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle className="h-5 w-5 text-gray-600" />
-              <span className="text-sm font-medium text-gray-900">Completed</span>
-            </div>
-            <p className="text-2xl lg:text-3xl font-bold text-gray-900">{stats.completed}</p>
+            <p className="text-2xl lg:text-3xl font-bold text-green-900">{stats.completed}</p>
           </div>
         </div>
 
@@ -505,14 +735,6 @@ export const OrdersPage = () => {
                 Preparing
               </Button>
               <Button
-                variant={selectedStatus === 'ready' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedStatus('ready')}
-                className="whitespace-nowrap"
-              >
-                Ready
-              </Button>
-              <Button
                 variant={selectedStatus === 'completed' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setSelectedStatus('completed')}
@@ -520,19 +742,99 @@ export const OrdersPage = () => {
               >
                 Completed
               </Button>
+              
+              {/* Merge Orders Button */}
+              <div className="border-l border-gray-300 pl-2 ml-2">
+                {mergeMode ? (
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-amber-100 text-amber-700 border border-amber-200">
+                      {selectedOrdersForMerge.size} selected
+                    </Badge>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleMergeOrders}
+                      disabled={selectedOrdersForMerge.size < 2}
+                      className="whitespace-nowrap bg-amber-500 hover:bg-amber-600"
+                    >
+                      <Merge className="h-3 w-3 mr-1" />
+                      Merge Orders
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMergeMode(false)
+                        setSelectedOrdersForMerge(new Set())
+                      }}
+                      className="whitespace-nowrap"
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setMergeMode(true)}
+                    className="whitespace-nowrap"
+                  >
+                    <Merge className="h-3 w-3 mr-1" />
+                    Merge Orders
+                  </Button>
+                )}
+                
+                {/* Grid Layout Toggle */}
+                <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-1">
+                  <button
+                    onClick={() => setGridColumns(1)}
+                    className={`p-1.5 rounded ${gridColumns === 1 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="List view"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setGridColumns(2)}
+                    className={`p-1.5 rounded ${gridColumns === 2 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="2 columns"
+                  >
+                    <Grid3X3 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setGridColumns(3)}
+                    className={`p-1.5 rounded ${gridColumns === 3 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="3 columns"
+                  >
+                    <span className="text-xs font-bold">3</span>
+                  </button>
+                  <button
+                    onClick={() => setGridColumns(4)}
+                    className={`p-1.5 rounded ${gridColumns === 4 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="4 columns"
+                  >
+                    <span className="text-xs font-bold">4</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Orders List */}
-        <div className="space-y-3">
+        <div className={`grid gap-3 ${
+          gridColumns === 1 ? 'grid-cols-1' :
+          gridColumns === 2 ? 'grid-cols-1 md:grid-cols-2' :
+          gridColumns === 3 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' :
+          'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+        }`}>
           {loading ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+            <div className={`bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center ${gridColumns > 1 ? 'col-span-full' : ''}`}>
               <Loader2 className="h-16 w-16 text-yellow-400 mx-auto mb-4 animate-spin" />
               <p className="text-gray-500">Loading orders...</p>
             </div>
           ) : filteredOrders.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+            <div className={`bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center ${gridColumns > 1 ? 'col-span-full' : ''}`}>
               <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500">No orders found</p>
               {searchQuery && (
@@ -543,13 +845,37 @@ export const OrdersPage = () => {
             filteredOrders.map(order => {
               const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.PREPARING
               const StatusIcon = statusInfo.icon
+              const isSelectedForMerge = selectedOrdersForMerge.has(order.id)
+              const canMerge = order.paymentStatus !== 'PAID' && order.status !== 'CANCELLED'
+              const statusBorderColor = statusBorderColors[order.status as keyof typeof statusBorderColors] || 'border-l-gray-300'
+              
               return (
-                <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 lg:p-6 hover:shadow-md transition-shadow">
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div 
+                  key={order.id} 
+                  className={`bg-white rounded-xl shadow-sm border border-gray-200 border-l-4 ${statusBorderColor} p-4 hover:shadow-md transition-all ${
+                    isSelectedForMerge ? 'ring-2 ring-amber-400 bg-amber-50' : ''
+                  }`}
+                  onClick={mergeMode && canMerge ? () => toggleOrderForMerge(order.id) : undefined}
+                  style={{ cursor: mergeMode && canMerge ? 'pointer' : 'default' }}
+                >
+                  <div className={`flex flex-col ${gridColumns === 1 ? 'lg:flex-row lg:items-center' : ''} justify-between gap-4`}>
+                    {/* Merge Checkbox */}
+                    {mergeMode && (
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelectedForMerge}
+                          onChange={() => canMerge && toggleOrderForMerge(order.id)}
+                          disabled={!canMerge}
+                          className="h-5 w-5 rounded border-gray-300 text-amber-500 focus:ring-amber-500 disabled:opacity-50"
+                        />
+                      </div>
+                    )}
+                    
                     {/* Order Info */}
                     <div className="flex-1 space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-lg font-bold text-gray-900">{order.orderNumber}</h3>
+                        <h3 className="text-lg font-bold text-gray-900">{formatOrderNumber(order.orderNumber)}</h3>
                         <Badge className={`${statusInfo.color} border`}>
                           <StatusIcon className="h-3 w-3 mr-1" />
                           {statusInfo.label}
@@ -564,6 +890,11 @@ export const OrdersPage = () => {
                             {order.orderType === 'DINE_IN' ? '🍽️ Dine-In' : 
                              order.orderType === 'TAKEOUT' ? '🛍️ Takeout' : 
                              '🚚 Delivery'}
+                          </Badge>
+                        )}
+                        {!canMerge && mergeMode && (
+                          <Badge variant="outline" className="text-xs text-gray-400">
+                            Cannot merge
                           </Badge>
                         )}
                       </div>
@@ -632,11 +963,22 @@ export const OrdersPage = () => {
                         <Button
                           size="sm"
                           onClick={() => printReceipt(order)}
-                          className="flex items-center gap-1 lg:min-w-[120px]"
+                          className="flex items-center gap-1 lg:min-w-[140px]"
                           style={{ backgroundColor: '#F9C900', color: '#000000' }}
                         >
                           <Printer className="h-4 w-4" />
-                          Print Receipt
+                          {order.paymentStatus === 'PAID' ? 'Print Receipt' : 'Mark Paid & Print'}
+                        </Button>
+                      )}
+                      {/* Reorder button for non-pending, non-paid orders */}
+                      {order.status !== 'PENDING' && order.status !== 'CANCELLED' && order.paymentStatus !== 'PAID' && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleReorder(order)}
+                          variant="outline"
+                          className="flex-1 lg:flex-none lg:min-w-[120px] border-green-300 text-green-600 hover:bg-green-50"
+                        >
+                          Reorder
                         </Button>
                       )}
                       <Button
@@ -687,7 +1029,7 @@ export const OrdersPage = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Order Number</p>
-                    <p className="font-semibold">{selectedOrder.orderNumber}</p>
+                    <p className="font-semibold">{formatOrderNumber(selectedOrder.orderNumber)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Customer</p>
@@ -782,30 +1124,6 @@ export const OrdersPage = () => {
                         Print Receipt
                       </Button>
                     )}
-                    
-                    {/* Mark as Unpaid button (only if paid - for refund situations) */}
-                    {selectedOrder.paymentStatus === 'PAID' && (
-                      <Button
-                        onClick={async () => {
-                          const confirmed = window.confirm('Mark this order as UNPAID? (Use for refunds or payment issues)')
-                          if (!confirmed) return
-                          try {
-                            await ordersApi.update(selectedOrder.id, { paymentStatus: 'UNPAID' })
-                            setOrders(prev => prev.map(order => 
-                              order.id === selectedOrder.id ? { ...order, paymentStatus: 'UNPAID' } : order
-                            ))
-                            setSelectedOrder({ ...selectedOrder, paymentStatus: 'UNPAID' })
-                            alert('Order marked as UNPAID')
-                          } catch (error: any) {
-                            alert(`Failed to update payment status: ${error.message}`)
-                          }
-                        }}
-                        variant="outline"
-                        className="w-full border-red-300 text-red-600 hover:bg-red-50"
-                      >
-                        Mark as Unpaid
-                      </Button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -828,7 +1146,7 @@ export const OrdersPage = () => {
             </div>
             <div className="p-6">
               <p className="text-sm text-gray-600 mb-4">
-                Order: <span className="font-semibold">{selectedOrder.orderNumber}</span>
+                Order: <span className="font-semibold">{formatOrderNumber(selectedOrder.orderNumber)}</span>
               </p>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">Select Payment Method</label>
@@ -872,6 +1190,136 @@ export const OrdersPage = () => {
             </div>
           </div>
         </div>
-      )}    </AdminLayout>
+      )}
+
+      {/* Merge Orders Modal */}
+      {showMergeModal && mergedOrderData && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    <Merge className="h-5 w-5 text-amber-500" />
+                    Merged Orders Receipt
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {mergedOrderData.orderNumbers.length} orders combined
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowMergeModal(false)
+                    setMergedOrderData(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600 text-2xl font-bold w-8 h-8 flex items-center justify-center"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Order Numbers */}
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500 mb-2 uppercase tracking-wide">Orders Being Merged</p>
+                <div className="flex flex-wrap gap-2">
+                  {mergedOrderData.orderNumbers.map(num => (
+                    <Badge key={num} variant="outline">{formatOrderNumber(num)}</Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Customer Info */}
+              {(mergedOrderData.customerName || mergedOrderData.tableNumber) && (
+                <div className="grid grid-cols-2 gap-4">
+                  {mergedOrderData.customerName && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Customer</p>
+                      <p className="font-semibold">{mergedOrderData.customerName}</p>
+                    </div>
+                  )}
+                  {mergedOrderData.tableNumber && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Table</p>
+                      <p className="font-semibold">{mergedOrderData.tableNumber}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Items */}
+              <div>
+                <p className="text-sm font-semibold mb-2">Combined Items</p>
+                <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                  {mergedOrderData.items.map((item, index) => (
+                    <div key={index} className="flex justify-between items-center text-sm">
+                      <span>{item.name} × {item.quantity}</span>
+                      <span className="font-medium">₱{item.subtotal.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="bg-amber-50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Subtotal</span>
+                  <span>₱{mergedOrderData.subtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>VAT (12%)</span>
+                  <span>₱{mergedOrderData.tax.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-lg font-bold pt-2 border-t border-amber-200">
+                  <span>Total Amount</span>
+                  <span className="text-amber-600">₱{mergedOrderData.totalAmount.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Payment Method */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Payment Method</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {['CASH', 'GCASH', 'CARD', 'PAYMAYA'].map(method => (
+                    <button
+                      key={method}
+                      onClick={() => setMergePaymentMethod(method)}
+                      className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
+                        mergePaymentMethod === method
+                          ? 'border-amber-400 bg-amber-50 text-amber-700'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {method}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex gap-3">
+              <Button
+                onClick={() => {
+                  setShowMergeModal(false)
+                  setMergedOrderData(null)
+                }}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleMergedPayment}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Pay & Print Receipt
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AdminLayout>
   )
 }

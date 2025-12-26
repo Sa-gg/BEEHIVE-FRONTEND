@@ -21,9 +21,12 @@ export const CartDrawer = ({
   isOpen,
   onClose,
 }: CartDrawerProps) => {
-  const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0)
-  const tax = subtotal * 0.12
-  const total = subtotal + tax
+  // Total is the sum of item prices (which already include VAT)
+  const total = items.reduce((sum, item) => sum + item.subtotal, 0)
+  // VAT is 12% of the total
+  const vat = total * 0.12
+  // Subtotal is total minus VAT
+  const subtotal = total - vat
 
   return (
     <>
@@ -135,8 +138,8 @@ export const CartDrawer = ({
                 <span className="font-medium">₱{subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Tax (12%)</span>
-                <span className="font-medium">₱{tax.toFixed(2)}</span>
+                <span className="text-gray-600">VAT (12%)</span>
+                <span className="font-medium">₱{vat.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
                 <span>Total</span>

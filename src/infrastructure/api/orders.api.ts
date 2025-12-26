@@ -11,6 +11,7 @@ export interface CreateOrderRequest {
   tableNumber?: string;
   orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
   moodContext?: string;
+  linkedOrderId?: string;
   items: OrderItem[];
   paymentMethod?: string;
 }
@@ -36,6 +37,7 @@ export interface OrderResponse {
   totalAmount: number;
   paymentMethod: string | null;
   paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
+  linkedOrderId: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -92,5 +94,42 @@ export const ordersApi = {
   markAsPaid: async (id: string, paymentMethod: string): Promise<OrderResponse> => {
     const response = await api.patch(`/api/orders/${id}/payment`, { paymentMethod });
     return response.data;
+  },
+
+  // Get linked orders (reorders)
+  getLinkedOrders: async (id: string): Promise<OrderResponse[]> => {
+    const response = await api.get(`/api/orders/${id}/linked`);
+    return response.data;
+  },
+
+  // Merge orders for single receipt/payment
+  mergeOrders: async (orderIds: string[]): Promise<{
+    success: boolean;
+    data: {
+      mergedOrderIds: string[];
+      orderNumbers: string[];
+      customerName: string | null;
+      tableNumber: string | null;
+      items: Array<{
+        menuItemId: string;
+        name: string;
+        quantity: number;
+        price: number;
+        subtotal: number;
+      }>;
+      subtotal: number;
+      tax: number;
+      totalAmount: number;
+      orderType: string;
+    };
+  }> => {
+    const response = await api.post('/api/orders/merge', { orderIds });
+    return response.data;
+  },
+
+  // Mark merged orders as paid
+  markMergedOrdersAsPaid: async (orderIds: string[], paymentMethod: string): Promise<OrderResponse[]> => {
+    const response = await api.post('/api/orders/merge/pay', { orderIds, paymentMethod });
+    return response.data.data;
   },
 };

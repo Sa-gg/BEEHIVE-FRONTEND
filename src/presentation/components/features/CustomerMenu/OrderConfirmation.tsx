@@ -97,11 +97,11 @@ export const OrderConfirmation = ({ order, onNewOrder }: OrderConfirmationProps)
           <div className="border-t pt-3 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Subtotal</span>
-              <span>₱{order.subtotal.toFixed(2)}</span>
+              <span>₱{(order.total - order.total * 0.12).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Tax (12%)</span>
-              <span>₱{order.tax.toFixed(2)}</span>
+              <span className="text-gray-600">VAT (12%)</span>
+              <span>₱{(order.total * 0.12).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-lg font-bold pt-2 border-t">
               <span>Total</span>

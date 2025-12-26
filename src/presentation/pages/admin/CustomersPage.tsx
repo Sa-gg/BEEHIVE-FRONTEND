@@ -16,7 +16,9 @@ import {
   Loader2,
   CreditCard,
   Mail,
-  Phone
+  Phone,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import { 
   customersApi, 
@@ -37,6 +39,11 @@ export const CustomersPage = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [submitting, setSubmitting] = useState(false)
   const [filterActive, setFilterActive] = useState<boolean | undefined>(undefined)
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(10)
+  const itemsPerPageOptions = [5, 10, 25, 50, 'all'] as const
 
   // Form state
   const [formData, setFormData] = useState({
@@ -62,6 +69,11 @@ export const CustomersPage = () => {
     loadStats()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterActive])
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, filterActive])
 
   const loadCustomers = async () => {
     try {
@@ -107,6 +119,23 @@ export const CustomersPage = () => {
       }
       return String(aVal).localeCompare(String(bVal)) * multiplier
     })
+
+  // Pagination logic
+  const totalItems = filteredCustomers.length
+  const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(totalItems / itemsPerPage)
+  const startIndex = itemsPerPage === 'all' ? 0 : (currentPage - 1) * itemsPerPage
+  const endIndex = itemsPerPage === 'all' ? totalItems : startIndex + itemsPerPage
+  const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex)
+
+  // Reset to page 1 when filters change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)))
+  }
+
+  const handleItemsPerPageChange = (value: number | 'all') => {
+    setItemsPerPage(value)
+    setCurrentPage(1)
+  }
 
   const handleSort = (field: keyof Customer) => {
     if (sortField === field) {
@@ -243,57 +272,34 @@ export const CustomersPage = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Total Customers</p>
-                <h3 className="text-2xl font-bold text-gray-900 mt-1">{stats.totalCustomers}</h3>
-              </div>
-              <div className="bg-blue-100 rounded-full p-3">
-                <Users className="h-6 w-6 text-blue-600" />
-              </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Users className="h-5 w-5 text-blue-600" />
+              <span className="text-sm font-medium text-blue-900">Total Customers</span>
             </div>
+            <p className="text-2xl lg:text-3xl font-bold text-blue-900">{stats.totalCustomers}</p>
           </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Active Customers</p>
-                <h3 className="text-2xl font-bold text-gray-900 mt-1">{stats.activeCustomers}</h3>
-              </div>
-              <div className="bg-green-100 rounded-full p-3">
-                <UserCheck className="h-6 w-6 text-green-600" />
-              </div>
+          <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <UserCheck className="h-5 w-5 text-green-600" />
+              <span className="text-sm font-medium text-green-900">Active Customers</span>
             </div>
+            <p className="text-2xl lg:text-3xl font-bold text-green-900">{stats.activeCustomers}</p>
           </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Total Loyalty Points</p>
-                <h3 className="text-2xl font-bold text-gray-900 mt-1">
-                  {stats.totalLoyaltyPoints.toLocaleString()}
-                </h3>
-              </div>
-              <div className="bg-yellow-100 rounded-full p-3">
-                <Award className="h-6 w-6 text-yellow-600" />
-              </div>
+          <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Award className="h-5 w-5 text-yellow-600" />
+              <span className="text-sm font-medium text-yellow-900">Total Loyalty Points</span>
             </div>
+            <p className="text-2xl lg:text-3xl font-bold text-yellow-900">{stats.totalLoyaltyPoints.toLocaleString()}</p>
           </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Avg Loyalty Points</p>
-                <h3 className="text-2xl font-bold text-gray-900 mt-1">
-                  {stats.averageLoyaltyPoints.toFixed(0)}
-                </h3>
-              </div>
-              <div className="bg-purple-100 rounded-full p-3">
-                <TrendingUp className="h-6 w-6 text-purple-600" />
-              </div>
+          <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="h-5 w-5 text-purple-600" />
+              <span className="text-sm font-medium text-purple-900">Avg Loyalty Points</span>
             </div>
+            <p className="text-2xl lg:text-3xl font-bold text-purple-900">{stats.averageLoyaltyPoints.toFixed(0)}</p>
           </div>
         </div>
 
@@ -400,14 +406,14 @@ export const CustomersPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredCustomers.length === 0 ? (
+                {paginatedCustomers.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                       No customers found
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((customer) => (
+                  paginatedCustomers.map((customer) => (
                     <tr key={customer.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="font-medium text-gray-900">{customer.name}</div>
@@ -481,25 +487,101 @@ export const CustomersPage = () => {
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination */}
+          <div className="px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span>Show</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => handleItemsPerPageChange(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              >
+                {itemsPerPageOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'all' ? 'All' : option}
+                  </option>
+                ))}
+              </select>
+              <span>entries</span>
+              <span className="ml-2 text-gray-500">
+                (Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems})
+              </span>
+            </div>
+            
+            {itemsPerPage !== 'all' && totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="p-2"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number
+                  if (totalPages <= 5) {
+                    pageNum = i + 1
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i
+                  } else {
+                    pageNum = currentPage - 2 + i
+                  }
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => handlePageChange(pageNum)}
+                      className="min-w-[36px]"
+                      style={currentPage === pageNum ? { backgroundColor: '#F9C900', color: '#000000' } : {}}
+                    >
+                      {pageNum}
+                    </Button>
+                  )
+                })}
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="p-2"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Add/Edit Customer Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">
-                {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
-              </h2>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="sticky top-0 bg-gradient-to-r from-amber-50 to-white border-b border-gray-100 px-6 py-5 flex items-center justify-between rounded-t-2xl">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {editingCustomer ? 'Update customer details' : 'Register a new customer account'}
+                </p>
+              </div>
               <button
                 onClick={() => {
                   setIsModalOpen(false)
                   resetForm()
                 }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
               >
-                <X className="h-5 w-5" />
+                <X className="h-5 w-5 text-gray-500" />
               </button>
             </div>
 

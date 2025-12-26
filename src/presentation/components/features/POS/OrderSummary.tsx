@@ -38,9 +38,12 @@ export const OrderSummary = ({
   onConfirmOrder,
   onPrintReceipt,
 }: OrderSummaryProps) => {
-  const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0)
-  const tax = subtotal * 0.12 // 12% VAT
-  const total = subtotal + tax
+  // Total is the sum of item prices (which already include VAT)
+  const total = items.reduce((sum, item) => sum + item.subtotal, 0)
+  // VAT is 12% of the total
+  const vat = total * 0.12
+  // Subtotal is total minus VAT
+  const subtotal = total - vat
 
   // const getOrderTypeIcon = () => {
   //   switch (orderType) {
@@ -182,8 +185,8 @@ export const OrderSummary = ({
               <span className="font-medium text-gray-900">₱{subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center text-sm">
-              <span className="text-gray-600">Tax (12%)</span>
-              <span className="font-medium text-gray-900">₱{tax.toFixed(2)}</span>
+              <span className="text-gray-600">VAT (12%)</span>
+              <span className="font-medium text-gray-900">₱{vat.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center pt-2 border-t border-gray-200">
               <span className="text-base font-semibold text-gray-900">Total</span>
@@ -215,7 +218,7 @@ export const OrderSummary = ({
                 className="w-full h-11 rounded-full border-gray-300 hover:bg-gray-100 text-sm font-medium flex items-center justify-center gap-2"
               >
                 <Printer className="h-4 w-4" />
-                Print Receipt
+                Mark as Paid & Print Receipt
               </Button>
             )}
           </div>

@@ -354,16 +354,11 @@ export const MenuPage = () => {
   // Ensure menuItems is always an array
   const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
   
-  // Convert display category to database format (e.g., 'hot drinks' -> 'HOT_DRINKS')
-  const categoryToDbFormat = (category: string): string => {
-    return category.toUpperCase().replace(/ /g, '_')
-  }
-  
   const filteredItems = selectedCategory === 'all' 
     ? safeMenuItems 
     : selectedCategory === 'best seller'
     ? safeMenuItems.filter(item => item.featured) // Use featured flag for best sellers
-    : safeMenuItems.filter((item) => item.category === categoryToDbFormat(selectedCategory))
+    : safeMenuItems.filter((item) => item.category === selectedCategory)
   const recommendedItems = getRecommendedItems()
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
 

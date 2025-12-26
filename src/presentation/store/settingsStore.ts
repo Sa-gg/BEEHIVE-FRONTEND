@@ -5,9 +5,11 @@ interface SettingsState {
   markPaidOnConfirmOrder: boolean
   markPaidOnPrintReceipt: boolean
   printReceiptOnConfirmOrder: boolean
+  printKitchenCopy: boolean  // Print 2 receipts (one for kitchen)
   setMarkPaidOnConfirmOrder: (value: boolean) => void
   setMarkPaidOnPrintReceipt: (value: boolean) => void
   setPrintReceiptOnConfirmOrder: (value: boolean) => void
+  setPrintKitchenCopy: (value: boolean) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -17,6 +19,7 @@ export const useSettingsStore = create<SettingsState>()(
       markPaidOnConfirmOrder: true,
       markPaidOnPrintReceipt: true,
       printReceiptOnConfirmOrder: false,
+      printKitchenCopy: false,
       
       // Actions
       setMarkPaidOnConfirmOrder: (value: boolean) => 
@@ -27,6 +30,9 @@ export const useSettingsStore = create<SettingsState>()(
       
       setPrintReceiptOnConfirmOrder: (value: boolean) => 
         set({ printReceiptOnConfirmOrder: value }),
+      
+      setPrintKitchenCopy: (value: boolean) => 
+        set({ printKitchenCopy: value }),
     }),
     {
       name: 'beehive-settings',

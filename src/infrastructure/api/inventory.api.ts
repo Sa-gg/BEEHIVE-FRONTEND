@@ -114,5 +114,28 @@ export const inventoryApi = {
   async getStats(): Promise<InventoryStats> {
     const response = await api.get(`${API_URL}/stats`);
     return response.data;
+  },
+
+  async getAlerts(): Promise<{
+    lowStock: InventoryItemDTO[];
+    outOfStock: InventoryItemDTO[];
+    total: number;
+  }> {
+    const response = await api.get(`${API_URL}/alerts`);
+    return {
+      lowStock: response.data.lowStock.map((item: InventoryItemDTO) => ({
+        ...item,
+        createdAt: new Date(item.createdAt),
+        updatedAt: new Date(item.updatedAt),
+        lastRestocked: item.lastRestocked ? new Date(item.lastRestocked) : null
+      })),
+      outOfStock: response.data.outOfStock.map((item: InventoryItemDTO) => ({
+        ...item,
+        createdAt: new Date(item.createdAt),
+        updatedAt: new Date(item.updatedAt),
+        lastRestocked: item.lastRestocked ? new Date(item.lastRestocked) : null
+      })),
+      total: response.data.total
+    };
   }
 };

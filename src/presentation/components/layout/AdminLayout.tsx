@@ -1,7 +1,8 @@
 import { type ReactNode, useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, X, LogOut } from 'lucide-react'
+import { Menu, X, LogOut, Bell } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
+import { useNotificationStore } from '../../store/notificationStore'
 
 interface AdminLayoutProps {
   children: ReactNode
@@ -22,6 +23,16 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
+  const { pendingOrderCount, stockAlertCount, fetchNotifications } = useNotificationStore()
+  const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false)
+  const { pendingOrders, lowStockItems, outOfStockItems } = useNotificationStore()
+
+  // Fetch notifications on mount and periodically
+  useEffect(() => {
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 30000) // Every 30 seconds
+    return () => clearInterval(interval)
+  }, [fetchNotifications])
 
   const handleLogout = () => {
     logout()
@@ -53,16 +64,20 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
   }, [location.pathname, isMobile])
 
   const menuItems = [
-    { icon: '📊', label: 'Dashboard', path: '/admin' },
-    { icon: '💳', label: 'POS', path: '/admin/pos' },
-    { icon: '📦', label: 'Orders', path: '/admin/orders' },
-    { icon: '📋', label: 'Inventory', path: '/admin/inventory' },
-    { icon: '📈', label: 'Sales', path: '/admin/sales' },
-    { icon: '💰', label: 'Expenses', path: '/admin/expenses' },
-    { icon: '🏷️', label: 'Products', path: '/admin/products' },
-    { icon: '👥', label: 'Customers', path: '/admin/customers' },
-    { icon: '⚙️', label: 'Settings', path: '/admin/settings' },
+    { icon: '📊', label: 'Dashboard', path: '/admin', badge: null },
+    { icon: '💳', label: 'POS', path: '/admin/pos', badge: null },
+    { icon: '📦', label: 'Orders', path: '/admin/orders', badge: pendingOrderCount > 0 ? pendingOrderCount : null, badgeColor: 'bg-red-500' },
+    { icon: '📋', label: 'Inventory', path: '/admin/inventory', badge: stockAlertCount > 0 ? stockAlertCount : null, badgeColor: 'bg-orange-500' },
+    { icon: '👨‍🍳', label: 'Recipes', path: '/admin/recipes', badge: null },
+    { icon: '📈', label: 'Sales', path: '/admin/sales', badge: null },
+    { icon: '📑', label: 'Reports', path: '/admin/reports', badge: null },
+    { icon: '💵', label: 'Expenses', path: '/admin/expenses', badge: null },
+    { icon: '🏷️', label: 'Products', path: '/admin/products', badge: null },
+    { icon: '👥', label: 'Customers', path: '/admin/customers', badge: null },
+    { icon: '⚙️', label: 'Settings', path: '/admin/settings', badge: null },
   ]
+
+  const totalNotifications = pendingOrderCount + stockAlertCount
 
   return (
     <div className="min-h-screen flex overflow-hidden" style={{ background: 'linear-gradient(135deg, #FFFBF0 0%, #FFF8E1 100%)' }}>
@@ -120,7 +135,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center ${sidebarOpen || isMobile ? 'gap-3' : 'justify-center'} px-4 py-3 rounded-lg transition-all ${
+                  className={`relative flex items-center ${sidebarOpen || isMobile ? 'gap-3' : 'justify-center'} px-4 py-3 rounded-lg transition-all ${
                     isActive
                       ? 'text-[#000000] font-semibold shadow-lg'
                       : 'text-gray-300 hover:text-white hover:bg-gray-800'
@@ -128,8 +143,26 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                   style={isActive ? { backgroundColor: '#F9C900' } : {}}
                   title={!sidebarOpen && !isMobile ? item.label : undefined}
                 >
-                  <span className="text-xl flex-shrink-0">{item.icon}</span>
-                  {(sidebarOpen || isMobile) && <span className="text-sm">{item.label}</span>}
+                  <span className="text-xl flex-shrink-0 relative">
+                    {item.icon}
+                    {/* Badge for collapsed sidebar */}
+                    {!sidebarOpen && !isMobile && item.badge && (
+                      <span className={`absolute -top-1 -right-1 w-4 h-4 ${item.badgeColor} text-white text-[10px] font-bold rounded-full flex items-center justify-center`}>
+                        {item.badge > 9 ? '9+' : item.badge}
+                      </span>
+                    )}
+                  </span>
+                  {(sidebarOpen || isMobile) && (
+                    <>
+                      <span className="text-sm flex-1">{item.label}</span>
+                      {/* Badge for expanded sidebar */}
+                      {item.badge && (
+                        <span className={`${item.badgeColor} text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center animate-pulse`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </>
+                  )}
                 </Link>
               )
             })}
@@ -205,11 +238,124 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
               </div>
               
               <div className="flex items-center gap-2 lg:gap-4">
-                {/* Notifications */}
-                <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
-                  <span className="text-2xl">🔔</span>
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ backgroundColor: '#F9C900' }}></span>
-                </button>
+                {/* Notifications Bell with Dropdown */}
+                <div className="relative">
+                  <button 
+                    onClick={() => setNotificationDropdownOpen(!notificationDropdownOpen)}
+                    className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <Bell className="h-6 w-6 text-gray-600" />
+                    {totalNotifications > 0 && (
+                      <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
+                        {totalNotifications > 9 ? '9+' : totalNotifications}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Notification Dropdown */}
+                  {notificationDropdownOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setNotificationDropdownOpen(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
+                        <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-white border-b border-gray-100">
+                          <h3 className="font-bold text-gray-900">Notifications</h3>
+                          <p className="text-xs text-gray-500">{totalNotifications} alerts require attention</p>
+                        </div>
+                        
+                        <div className="max-h-80 overflow-y-auto">
+                          {/* Pending Orders */}
+                          {pendingOrders.length > 0 && (
+                            <div className="px-4 py-2 border-b border-gray-100">
+                              <p className="text-xs font-semibold text-red-600 uppercase mb-2">📦 Pending Orders</p>
+                              {pendingOrders.slice(0, 3).map(order => (
+                                <Link
+                                  key={order.id}
+                                  to="/admin/orders"
+                                  onClick={() => setNotificationDropdownOpen(false)}
+                                  className="block px-3 py-2 rounded-lg hover:bg-red-50 transition-colors mb-1"
+                                >
+                                  <p className="text-sm font-medium text-gray-900">{order.orderNumber}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {order.orderType} • ₱{order.totalAmount.toFixed(2)}
+                                  </p>
+                                </Link>
+                              ))}
+                              {pendingOrders.length > 3 && (
+                                <Link
+                                  to="/admin/orders"
+                                  onClick={() => setNotificationDropdownOpen(false)}
+                                  className="text-xs text-amber-600 font-medium hover:underline"
+                                >
+                                  +{pendingOrders.length - 3} more orders
+                                </Link>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Stock Alerts */}
+                          {(lowStockItems.length > 0 || outOfStockItems.length > 0) && (
+                            <div className="px-4 py-2">
+                              <p className="text-xs font-semibold text-orange-600 uppercase mb-2">📋 Stock Alerts</p>
+                              {outOfStockItems.slice(0, 2).map(item => (
+                                <Link
+                                  key={item.id}
+                                  to="/admin/inventory"
+                                  onClick={() => setNotificationDropdownOpen(false)}
+                                  className="block px-3 py-2 rounded-lg hover:bg-red-50 transition-colors mb-1 bg-red-50/50"
+                                >
+                                  <p className="text-sm font-medium text-red-700">{item.name}</p>
+                                  <p className="text-xs text-red-600">Out of Stock!</p>
+                                </Link>
+                              ))}
+                              {lowStockItems.slice(0, 2).map(item => (
+                                <Link
+                                  key={item.id}
+                                  to="/admin/inventory"
+                                  onClick={() => setNotificationDropdownOpen(false)}
+                                  className="block px-3 py-2 rounded-lg hover:bg-orange-50 transition-colors mb-1"
+                                >
+                                  <p className="text-sm font-medium text-gray-900">{item.name}</p>
+                                  <p className="text-xs text-orange-600">
+                                    Low Stock: {item.currentStock}/{item.minStock}
+                                  </p>
+                                </Link>
+                              ))}
+                              {(lowStockItems.length + outOfStockItems.length) > 4 && (
+                                <Link
+                                  to="/admin/inventory"
+                                  onClick={() => setNotificationDropdownOpen(false)}
+                                  className="text-xs text-amber-600 font-medium hover:underline"
+                                >
+                                  +{(lowStockItems.length + outOfStockItems.length) - 4} more alerts
+                                </Link>
+                              )}
+                            </div>
+                          )}
+
+                          {totalNotifications === 0 && (
+                            <div className="px-4 py-8 text-center">
+                              <span className="text-4xl">✅</span>
+                              <p className="text-sm text-gray-500 mt-2">All caught up!</p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                          <Link
+                            to="/admin/orders"
+                            onClick={() => setNotificationDropdownOpen(false)}
+                            className="block text-center text-sm font-medium text-amber-600 hover:text-amber-700"
+                          >
+                            View All Activity
+                          </Link>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
                 
                 {/* User Profile Dropdown */}
                 <div className="relative">

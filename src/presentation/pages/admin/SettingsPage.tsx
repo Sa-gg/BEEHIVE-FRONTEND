@@ -1,15 +1,57 @@
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { useSettingsStore } from '../../store/settingsStore'
+import { settingsApi } from '../../../infrastructure/api/settings.api'
+import type { Settings } from '../../../infrastructure/api/settings.api'
+import { useEffect, useState } from 'react'
 
 export const SettingsPage = () => {
   const {
     markPaidOnConfirmOrder,
     markPaidOnPrintReceipt,
     printReceiptOnConfirmOrder,
+    printKitchenCopy,
     setMarkPaidOnConfirmOrder,
     setMarkPaidOnPrintReceipt,
     setPrintReceiptOnConfirmOrder,
+    setPrintKitchenCopy,
   } = useSettingsStore()
+
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [openTime, setOpenTime] = useState('08:00')
+  const [closeTime, setCloseTime] = useState('22:00')
+
+  // Sync with backend settings on mount
+  useEffect(() => {
+    const syncSettings = async () => {
+      try {
+        const backendSettings = await settingsApi.getSettings()
+        setOpenTime(backendSettings.openTime)
+        setCloseTime(backendSettings.closeTime)
+      } catch (error) {
+        console.error('Failed to sync settings:', error)
+      }
+    }
+    syncSettings()
+  }, [])
+
+  const handleTimeChange = async (field: 'openTime' | 'closeTime', value: string) => {
+    setIsSyncing(true)
+    try {
+      const settings: Partial<Settings> = { [field]: value }
+      const updated = await settingsApi.updateSettings(settings)
+      
+      if (field === 'openTime') {
+        setOpenTime(updated.openTime)
+      } else {
+        setCloseTime(updated.closeTime)
+      }
+    } catch (error) {
+      console.error('Failed to update time:', error)
+      alert('Failed to update time. Please try again.')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   return (
     <AdminLayout>
@@ -108,6 +150,87 @@ export const SettingsPage = () => {
                   />
                 </button>
               </div>
+
+              {/* Print Kitchen Copy */}
+              <div className="px-6 py-5 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                <div className="flex-1 pr-4">
+                  <h3 className="text-base font-medium text-gray-900 mb-1">
+                    Print Kitchen Copy (2 Receipts)
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Print an extra receipt for the kitchen when using "Mark as Paid & Print Receipt" button. 
+                    Helps speed up kitchen workflow by providing a separate copy.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setPrintKitchenCopy(!printKitchenCopy)}
+                  className={`relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#F9C900] focus:ring-offset-2 ${
+                    printKitchenCopy ? 'bg-[#F9C900]' : 'bg-gray-200'
+                  }`}
+                  role="switch"
+                  aria-checked={printKitchenCopy}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      printKitchenCopy ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Store Hours Settings Section */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mt-6">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h2 className="text-xl font-semibold text-gray-900">Store Operating Hours</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Configure when your store opens and closes each day
+              </p>
+            </div>
+
+            <div className="divide-y divide-gray-200">
+              {/* Open Time */}
+              <div className="px-6 py-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 pr-4">
+                    <h3 className="text-base font-medium text-gray-900 mb-1">
+                      Opening Time
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      The time your store opens for business each day
+                    </p>
+                  </div>
+                  <input
+                    type="time"
+                    value={openTime}
+                    onChange={(e) => handleTimeChange('openTime', e.target.value)}
+                    disabled={isSyncing}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F9C900] focus:border-[#F9C900] disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              {/* Close Time */}
+              <div className="px-6 py-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 pr-4">
+                    <h3 className="text-base font-medium text-gray-900 mb-1">
+                      Closing Time
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      The time your store closes for business each day
+                    </p>
+                  </div>
+                  <input
+                    type="time"
+                    value={closeTime}
+                    onChange={(e) => handleTimeChange('closeTime', e.target.value)}
+                    disabled={isSyncing}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F9C900] focus:border-[#F9C900] disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -120,19 +243,24 @@ export const SettingsPage = () => {
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-blue-800">About Payment Settings</h3>
+                <h3 className="text-sm font-medium text-blue-800">About Settings</h3>
                 <div className="mt-2 text-sm text-blue-700">
-                  <p>
-                    These settings control the automatic payment status updates:
+                  <p className="mb-2">
+                    <strong>Payment Settings:</strong> Control the automatic payment status updates
                   </p>
-                  <ul className="list-disc ml-5 mt-2 space-y-1">
-                    <li><strong>Mark Paid on Confirm:</strong> When enabled, orders are marked as paid immediately upon confirmation in POS</li>
-                    <li><strong>Mark Paid on Print Receipt:</strong> When enabled, orders are marked as paid when printing receipts from the Orders page</li>
-                    <li><strong>Print Receipt on Confirm:</strong> When enabled, receipts are automatically printed after confirming orders in POS (independent of payment status)</li>
+                  <ul className="list-disc ml-5 space-y-1">
+                    <li><strong>Mark Paid on Confirm:</strong> Orders are marked as paid immediately upon confirmation in POS</li>
+                    <li><strong>Mark Paid on Print Receipt:</strong> Orders are marked as paid when printing receipts from the Orders page</li>
+                    <li><strong>Print Receipt on Confirm:</strong> Receipts are automatically printed after confirming orders in POS</li>
+                    <li><strong>Print Kitchen Copy:</strong> Prints 2 receipts - one for customer and one for kitchen when using the print button</li>
                   </ul>
-                  <p className="mt-2">
-                    You can still manually change payment status in the Orders page if needed.
+                  <p className="mt-3 mb-2">
+                    <strong>Store Hours:</strong> Set your operating hours
                   </p>
+                  <ul className="list-disc ml-5 space-y-1">
+                    <li>Order numbers automatically reset daily when a new day begins</li>
+                    <li>Use the opening/closing times to track your business hours</li>
+                  </ul>
                 </div>
               </div>
             </div>

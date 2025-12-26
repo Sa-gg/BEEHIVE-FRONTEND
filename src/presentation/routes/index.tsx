@@ -30,7 +30,9 @@ const DashboardPage = lazy(() => import('../pages/admin/DashboardPage').then(m =
 const POSPage = lazy(() => import('../pages/admin/POSPage').then(m => ({ default: m.POSPage })))
 const OrdersPage = lazy(() => import('../pages/admin/OrdersPage').then(m => ({ default: m.OrdersPage })))
 const InventoryPage = lazy(() => import('../pages/admin/InventoryPage').then(m => ({ default: m.InventoryPage })))
+const RecipesPage = lazy(() => import('../pages/admin/RecipesPage').then(m => ({ default: m.RecipesPage })))
 const SalesPage = lazy(() => import('../pages/admin/SalesPage').then(m => ({ default: m.SalesPage })))
+const ReportsPage = lazy(() => import('../pages/admin/ReportsPage').then(m => ({ default: m.ReportsPage })))
 const ExpensesPage = lazy(() => import('../pages/admin/ExpensesPage').then(m => ({ default: m.ExpensesPage })))
 const CustomersPage = lazy(() => import('../pages/admin/CustomersPage').then(m => ({ default: m.CustomersPage })))
 const ProductsPage = lazy(() => import('../pages/admin/ProductsPage').then(m => ({ default: m.ProductsPage })))
@@ -147,11 +149,31 @@ export const routes: RouteObject[] = [
             ),
           },
           {
+            path: 'recipes',
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <ProtectedRoute allowedRoles={['MANAGER']}>
+                  <RecipesPage />
+                </ProtectedRoute>
+              </Suspense>
+            ),
+          },
+          {
             path: 'sales',
             element: (
               <Suspense fallback={<LoadingFallback />}>
                 <ProtectedRoute allowedRoles={['MANAGER']}>
                   <SalesPage />
+                </ProtectedRoute>
+              </Suspense>
+            ),
+          },
+          {
+            path: 'reports',
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <ProtectedRoute allowedRoles={['MANAGER']}>
+                  <ReportsPage />
                 </ProtectedRoute>
               </Suspense>
             ),

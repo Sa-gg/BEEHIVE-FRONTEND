@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Search, Plus, Edit, Trash2, Package, AlertTriangle, CheckCircle, TrendingUp } from 'lucide-react'
-import { inventoryApi, type CreateInventoryItemRequest, type InventoryStats } from '../../../infrastructure/api/inventory.api'
+import { Search, Plus, Package, AlertTriangle, CheckCircle, TrendingUp, ArrowUpDown, Trash2, Pencil, ChevronLeft, ChevronRight } from 'lucide-react'
+import { inventoryApi, type CreateInventoryItemRequest, type InventoryStats, type UpdateInventoryItemRequest } from '../../../infrastructure/api/inventory.api'
+import { StockManagementModal } from '../../components/features/Admin/StockManagementModal'
+import { formatSmartStock } from '../../../shared/utils/stockFormat'
 
 interface InventoryItem {
   id: string
@@ -24,13 +26,20 @@ export const InventoryPage = () => {
   const [stats, setStats] = useState<InventoryStats>({ totalItems: 0, lowStock: 0, outOfStock: 0, totalValue: 0 })
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
-  const [isEditing, setIsEditing] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [newItem, setNewItem] = useState<Partial<InventoryItem>>({})
   const [currentTime, setCurrentTime] = useState(() => Date.now())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showStockModal, setShowStockModal] = useState(false)
+  const [selectedItemForStock, setSelectedItemForStock] = useState<InventoryItem | null>(null)
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(10)
+  const itemsPerPageOptions = [5, 10, 25, 50, 'all'] as const
 
   // Fetch inventory data
   const loadInventory = async () => {
@@ -60,6 +69,27 @@ export const InventoryPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory])
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, selectedCategory])
+
+  // Pagination logic
+  const totalItems = inventory.length
+  const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(totalItems / itemsPerPage)
+  const startIndex = itemsPerPage === 'all' ? 0 : (currentPage - 1) * (itemsPerPage as number)
+  const endIndex = itemsPerPage === 'all' ? totalItems : startIndex + (itemsPerPage as number)
+  const paginatedInventory = inventory.slice(startIndex, endIndex)
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)))
+  }
+
+  const handleItemsPerPageChange = (value: number | 'all') => {
+    setItemsPerPage(value)
+    setCurrentPage(1)
+  }
+
   // Update time every minute
   useEffect(() => {
     const interval = setInterval(() => {
@@ -80,32 +110,10 @@ export const InventoryPage = () => {
     loadInventory()
   }
 
-  const updateStock = async (id: string, newStock: number) => {
-    try {
-      await inventoryApi.updateStock(id, newStock)
-      await loadInventory()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update stock')
-      console.error('Error updating stock:', err)
-    }
-  }
-
-  const deleteItem = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this item?')) return
-    
-    try {
-      await inventoryApi.delete(id)
-      await loadInventory()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete item')
-      console.error('Error deleting item:', err)
-    }
-  }
-
   const addNewItem = async () => {
     if (!newItem.name || !newItem.category || newItem.currentStock === undefined || 
         newItem.minStock === undefined || newItem.maxStock === undefined || 
-        !newItem.unit || newItem.costPerUnit === undefined || !newItem.supplier) {
+        !newItem.unit || newItem.costPerUnit === undefined) {
       alert('Please fill in all required fields')
       return
     }
@@ -128,6 +136,45 @@ export const InventoryPage = () => {
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to add item')
       console.error('Error adding item:', err)
+    }
+  }
+
+  const deleteItem = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this item?')) return
+    try {
+      await inventoryApi.delete(id)
+      await loadInventory()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete item')
+      console.error('Error deleting item:', err)
+    }
+  }
+
+  const openEditModal = (item: InventoryItem) => {
+    setEditingItem(item)
+    setIsEditing(true)
+  }
+
+  const updateItem = async () => {
+    if (!editingItem) return
+    
+    try {
+      const updateData: UpdateInventoryItemRequest = {
+        name: editingItem.name,
+        category: editingItem.category,
+        minStock: editingItem.minStock,
+        maxStock: editingItem.maxStock,
+        unit: editingItem.unit,
+        costPerUnit: editingItem.costPerUnit,
+        supplier: editingItem.supplier
+      }
+      await inventoryApi.update(editingItem.id, updateData)
+      setIsEditing(false)
+      setEditingItem(null)
+      await loadInventory()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update item')
+      console.error('Error updating item:', err)
     }
   }
 
@@ -266,8 +313,9 @@ export const InventoryPage = () => {
               </Button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Item</th>
@@ -279,7 +327,7 @@ export const InventoryPage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {inventory.length === 0 ? (
+                  {paginatedInventory.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-12 text-center">
                         <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
@@ -290,7 +338,7 @@ export const InventoryPage = () => {
                       </td>
                     </tr>
                   ) : (
-                  inventory.map(item => {
+                  paginatedInventory.map(item => {
                     const StatusIcon = statusConfig[item.status].icon
                     const percentage = getStockPercentage(item)
                     
@@ -310,7 +358,7 @@ export const InventoryPage = () => {
                         <td className="px-4 py-4">
                           <div className="space-y-1">
                             <p className="font-semibold text-sm">
-                              {item.currentStock} {item.unit}
+                              {formatSmartStock(item.currentStock, item.unit)}
                             </p>
                             <div className="w-24 bg-gray-200 rounded-full h-2">
                               <div
@@ -340,20 +388,29 @@ export const InventoryPage = () => {
                           <div className="flex items-center gap-2">
                             <Button
                               size="sm"
-                              variant="outline"
                               onClick={() => {
-                                setSelectedItem(item)
-                                setIsEditing(true)
+                                setSelectedItemForStock(item)
+                                setShowStockModal(true)
                               }}
-                              className="h-8 w-8 p-0"
+                              className="h-9 px-4 font-medium"
+                              style={{ backgroundColor: '#F9C900', color: '#000000' }}
                             >
-                              <Edit className="h-4 w-4" />
+                              <ArrowUpDown className="h-4 w-4 mr-2" />
+                              Manage Stock
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openEditModal(item)}
+                              className="h-9 px-3 text-blue-600 hover:bg-blue-50 border-blue-200"
+                            >
+                              <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => deleteItem(item.id)}
-                              className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
+                              className="h-9 px-3 text-red-600 hover:bg-red-50 border-red-200"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -366,99 +423,81 @@ export const InventoryPage = () => {
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination */}
+          <div className="px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span>Show</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => handleItemsPerPageChange(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                  className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                >
+                  {itemsPerPageOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option === 'all' ? 'All' : option}
+                    </option>
+                  ))}
+                </select>
+                <span>entries</span>
+                <span className="ml-2 text-gray-500">
+                  (Showing {totalItems > 0 ? startIndex + 1 : 0}-{Math.min(endIndex, totalItems)} of {totalItems})
+                </span>
+              </div>
+              
+              {itemsPerPage !== 'all' && totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="p-2"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum: number
+                    if (totalPages <= 5) {
+                      pageNum = i + 1
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i
+                    } else {
+                      pageNum = currentPage - 2 + i
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => handlePageChange(pageNum)}
+                        className="min-w-[36px]"
+                        style={currentPage === pageNum ? { backgroundColor: '#F9C900', color: '#000000' } : {}}
+                      >
+                        {pageNum}
+                      </Button>
+                    )
+                  })}
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="p-2"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+            </>
           )}
         </div>
       </div>
-
-      {/* Restock Modal */}
-      {isEditing && selectedItem && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/50 z-50"
-            onClick={() => {
-              setIsEditing(false)
-              setSelectedItem(null)
-            }}
-          />
-          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-bold">Update Stock</h2>
-                  <button
-                    onClick={() => {
-                      setIsEditing(false)
-                      setSelectedItem(null)
-                    }}
-                    className="text-gray-400 hover:text-gray-600 text-2xl"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Item Name</p>
-                  <p className="font-semibold text-lg">{selectedItem.name}</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">Current Stock</p>
-                    <p className="font-semibold">{selectedItem.currentStock} {selectedItem.unit}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">Min Stock</p>
-                    <p className="font-semibold">{selectedItem.minStock} {selectedItem.unit}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    New Stock Amount
-                  </label>
-                  <input
-                    type="number"
-                    defaultValue={selectedItem.currentStock}
-                    min={0}
-                    max={selectedItem.maxStock}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                    onChange={(e) => {
-                      const newStock = parseInt(e.target.value) || 0
-                      updateStock(selectedItem.id, newStock)
-                    }}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Max: {selectedItem.maxStock} {selectedItem.unit}</p>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    className="flex-1"
-                    variant="outline"
-                    onClick={() => {
-                      setIsEditing(false)
-                      setSelectedItem(null)
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    style={{ backgroundColor: '#F9C900', color: '#000000' }}
-                    onClick={() => {
-                      setIsEditing(false)
-                      setSelectedItem(null)
-                    }}
-                  >
-                    Save Changes
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
 
       {/* Add Item Modal */}
       {isAdding && (
@@ -537,13 +576,23 @@ export const InventoryPage = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Unit *
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={newItem.unit || ''}
                       onChange={(e) => setNewItem(prev => ({ ...prev, unit: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                      placeholder="e.g., kg, liters, pcs"
-                    />
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white"
+                    >
+                      <option value="">Select unit...</option>
+                      <option value="kg">kg (Kilogram)</option>
+                      <option value="g">g (Gram)</option>
+                      <option value="L">L (Liter)</option>
+                      <option value="mL">mL (Milliliter)</option>
+                      <option value="pcs">pcs (Pieces)</option>
+                      <option value="pack">pack (Pack)</option>
+                      <option value="box">box (Box)</option>
+                      <option value="bottle">bottle (Bottle)</option>
+                      <option value="can">can (Can)</option>
+                      <option value="bag">bag (Bag)</option>
+                    </select>
                   </div>
 
                   <div>
@@ -591,7 +640,7 @@ export const InventoryPage = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Supplier *
+                      Supplier (Optional)
                     </label>
                     <input
                       type="text"
@@ -620,6 +669,195 @@ export const InventoryPage = () => {
                     onClick={addNewItem}
                   >
                     Add Item
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Stock Management Modal */}
+      {selectedItemForStock && (
+        <StockManagementModal
+          item={selectedItemForStock}
+          isOpen={showStockModal}
+          onClose={() => {
+            setShowStockModal(false)
+            setSelectedItemForStock(null)
+          }}
+          onSuccess={() => {
+            loadInventory()
+          }}
+        />
+      )}
+
+      {/* Edit Item Modal */}
+      {isEditing && editingItem && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={() => {
+              setIsEditing(false)
+              setEditingItem(null)
+            }}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold">Edit Item</h2>
+                  <button
+                    onClick={() => {
+                      setIsEditing(false)
+                      setEditingItem(null)
+                    }}
+                    className="text-gray-400 hover:text-gray-600 text-2xl"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Item Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={editingItem.name}
+                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, name: e.target.value } : null)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      placeholder="e.g., Pizza Dough"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Category *
+                    </label>
+                    <select
+                      value={editingItem.category}
+                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, category: e.target.value as 'INGREDIENTS' | 'BEVERAGES' | 'PACKAGING' | 'SUPPLIES' } : null)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    >
+                      <option value="">Select category</option>
+                      <option value="INGREDIENTS">Ingredients</option>
+                      <option value="BEVERAGES">Beverages</option>
+                      <option value="PACKAGING">Packaging</option>
+                      <option value="SUPPLIES">Supplies</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Current Stock
+                    </label>
+                    <div className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-600">
+                      {formatSmartStock(editingItem.currentStock, editingItem.unit)}
+                      <span className="text-xs ml-2 text-gray-400">(Use "Manage Stock" to adjust)</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Unit *
+                    </label>
+                    <select
+                      value={editingItem.unit}
+                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, unit: e.target.value } : null)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white"
+                    >
+                      <option value="">Select unit...</option>
+                      <option value="kg">kg (Kilogram)</option>
+                      <option value="g">g (Gram)</option>
+                      <option value="L">L (Liter)</option>
+                      <option value="mL">mL (Milliliter)</option>
+                      <option value="pcs">pcs (Pieces)</option>
+                      <option value="pack">pack (Pack)</option>
+                      <option value="box">box (Box)</option>
+                      <option value="bottle">bottle (Bottle)</option>
+                      <option value="can">can (Can)</option>
+                      <option value="bag">bag (Bag)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Min Stock *
+                    </label>
+                    <input
+                      type="number"
+                      value={editingItem.minStock}
+                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, minStock: parseInt(e.target.value) || 0 } : null)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      placeholder="0"
+                      min={0}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Max Stock *
+                    </label>
+                    <input
+                      type="number"
+                      value={editingItem.maxStock}
+                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, maxStock: parseInt(e.target.value) || 0 } : null)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      placeholder="0"
+                      min={0}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Cost per Unit *
+                    </label>
+                    <input
+                      type="number"
+                      value={editingItem.costPerUnit}
+                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, costPerUnit: parseFloat(e.target.value) || 0 } : null)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      placeholder="0.00"
+                      min={0}
+                      step="0.01"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Supplier (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={editingItem.supplier || ''}
+                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, supplier: e.target.value } : null)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      placeholder="e.g., Manila Flour Co."
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    className="flex-1"
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditing(false)
+                      setEditingItem(null)
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                    onClick={updateItem}
+                  >
+                    Save Changes
                   </Button>
                 </div>
               </div>

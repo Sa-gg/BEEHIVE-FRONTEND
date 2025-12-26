@@ -9,7 +9,17 @@ import { Button } from '../../components/common/ui/button'
 import { ShoppingCart, Search, Loader2 } from 'lucide-react'
 import { menuItemsApi, type MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
+import { recipeApi } from '../../../infrastructure/api/recipe.api'
 import { useSettingsStore } from '../../store/settingsStore'
+
+// Helper to format order number - removes date prefix for cleaner display
+const formatOrderNumber = (orderNumber: string): string => {
+  const match = orderNumber.match(/ORD-\d{8}-(\d+)/)
+  if (match) {
+    return `ORD-${match[1]}`
+  }
+  return orderNumber
+}
 
 const CATEGORIES = ['all', 'best seller', 'PIZZA', 'APPETIZER', 'HOT_DRINKS', 'COLD_DRINKS', 'SMOOTHIE', 'PLATTER', 'SAVERS', 'VALUE_MEAL'] as const
 
@@ -30,7 +40,8 @@ export const POSPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const editingOrder = location.state?.editingOrder
-  const { markPaidOnConfirmOrder, markPaidOnPrintReceipt, printReceiptOnConfirmOrder } = useSettingsStore()
+  const reorderFrom = location.state?.reorderFrom
+  const { markPaidOnConfirmOrder, markPaidOnPrintReceipt, printReceiptOnConfirmOrder, printKitchenCopy } = useSettingsStore()
   
   // Transform order items from backend format to POS format
   const transformOrderItems = (items: any[]): OrderItem[] => {
@@ -46,17 +57,30 @@ export const POSPage = () => {
   
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [orderItems, setOrderItems] = useState<OrderItem[]>(transformOrderItems(editingOrder?.items || []))
+  const [orderItems, setOrderItems] = useState<OrderItem[]>(
+    transformOrderItems((editingOrder?.items || reorderFrom?.items) || [])
+  )
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isEditMode] = useState(!!editingOrder)
+  const [isReordering] = useState(!!reorderFrom)
+  const [linkedOrderId] = useState(reorderFrom?.id || null)
+  const [maxServings, setMaxServings] = useState<Record<string, number>>({})
   
-  // Order details state
-  const [customerName, setCustomerName] = useState(editingOrder?.customerName || '')
-  const [tableNumber, setTableNumber] = useState(editingOrder?.tableNumber || '')
-  const [paymentMethod, setPaymentMethod] = useState(editingOrder?.paymentMethod || 'CASH')
-  const [orderType, setOrderType] = useState(editingOrder?.orderType || 'DINE_IN')
+  // Order details state - pre-fill from reorder if available
+  const [customerName, setCustomerName] = useState(
+    editingOrder?.customerName || reorderFrom?.customerName || ''
+  )
+  const [tableNumber, setTableNumber] = useState(
+    editingOrder?.tableNumber || reorderFrom?.tableNumber || ''
+  )
+  const [paymentMethod, setPaymentMethod] = useState(
+    editingOrder?.paymentMethod || reorderFrom?.paymentMethod || 'CASH'
+  )
+  const [orderType, setOrderType] = useState(
+    editingOrder?.orderType || reorderFrom?.orderType || 'DINE_IN'
+  )
 
   // Helper function to get full image URL
   const getImageUrl = (imagePath: string | null) => {
@@ -66,12 +90,45 @@ export const POSPage = () => {
     return `${API_BASE_URL}${imagePath}`
   }
 
-  // Fetch menu items from API
+  // Function to refresh max servings data (accounts for cart items with shared ingredients)
+  const refreshMaxServings = async (cartItems?: OrderItem[]) => {
+    try {
+      const items = cartItems || orderItems
+      if (items.length > 0) {
+        // Use cart-aware endpoint for shared ingredient calculation
+        const servingsData = await recipeApi.getMaxServingsWithCart(
+          items.map(item => ({ menuItemId: item.menuItemId, quantity: item.quantity }))
+        )
+        setMaxServings(servingsData)
+      } else {
+        // No cart items, use regular endpoint
+        const servingsData = await recipeApi.getAllMaxServings()
+        setMaxServings(servingsData)
+      }
+    } catch (error) {
+      console.error('Failed to refresh max servings:', error)
+    }
+  }
+
+  // Refresh max servings when cart changes (for shared ingredient calculation)
+  useEffect(() => {
+    // Debounce to avoid too many API calls
+    const timeoutId = setTimeout(() => {
+      refreshMaxServings(orderItems)
+    }, 300)
+    return () => clearTimeout(timeoutId)
+  }, [orderItems])
+
+  // Fetch menu items and max servings from API
   useEffect(() => {
     const fetchMenuItems = async () => {
       try {
         setLoading(true)
-        const response = await menuItemsApi.getAll({ available: true })
+        const [response, servingsData] = await Promise.all([
+          menuItemsApi.getAll({ available: true }),
+          recipeApi.getAllMaxServings()
+        ])
+        
         // Convert API DTOs to MenuItem format
         const items: MenuItem[] = response.data.map((item: MenuItemDTO) => ({
           id: item.id,
@@ -83,6 +140,7 @@ export const POSPage = () => {
           featured: item.featured
         }))
         setMenuItems(items)
+        setMaxServings(servingsData)
       } catch (error) {
         console.error('Failed to fetch menu items:', error)
         alert('Failed to load menu items. Please try again.')
@@ -94,9 +152,9 @@ export const POSPage = () => {
     fetchMenuItems()
   }, [])
 
-  // Open cart automatically when editing an order
+  // Open cart automatically when editing or reordering
   useEffect(() => {
-    if (editingOrder && orderItems.length > 0) {
+    if ((editingOrder || reorderFrom) && orderItems.length > 0) {
       setIsCartOpen(true)
     }
   }, [])
@@ -162,10 +220,11 @@ export const POSPage = () => {
   }
 
   const printReceiptForOrder = (order: any) => {
-    const subtotal = order.subtotal
-    const tax = order.tax
-    const total = order.totalAmount
     const items = orderItems.length > 0 ? orderItems : order.order_items || []
+    // Calculate VAT from total (12% inclusive)
+    const total = order.totalAmount
+    const vat = total * 0.12
+    const subtotal = total - vat
 
     const printWindow = window.open('', '_blank')
     if (!printWindow) {
@@ -244,7 +303,7 @@ export const POSPage = () => {
         </div>
         
         <div class="info">
-          <div>Order #: ${order.orderNumber}</div>
+          <div>Order #: ${formatOrderNumber(order.orderNumber)}</div>
           <div>Date: ${new Date(order.createdAt || Date.now()).toLocaleString()}</div>
           ${order.customerName ? `<div>Customer: ${order.customerName}</div>` : ''}
           ${order.tableNumber ? `<div>Table: ${order.tableNumber}</div>` : ''}
@@ -268,8 +327,8 @@ export const POSPage = () => {
             <span>₱${subtotal.toFixed(2)}</span>
           </div>
           <div class="total-row">
-            <span>Tax (12%):</span>
-            <span>₱${tax.toFixed(2)}</span>
+            <span>VAT (12%):</span>
+            <span>₱${vat.toFixed(2)}</span>
           </div>
           <div class="total-row grand">
             <span>TOTAL:</span>
@@ -302,13 +361,40 @@ export const POSPage = () => {
       return
     }
 
-    // Confirm the order first (save to database)
+    // Handle edit mode differently
+    if (isEditMode && editingOrder) {
+      try {
+        // Update order details
+        const updateData: any = {
+          customerName: customerName || undefined,
+          tableNumber: tableNumber || undefined,
+          orderType: orderType,
+          paymentMethod: paymentMethod
+        }
+        
+        await ordersApi.update(editingOrder.id, updateData)
+        
+        // Print the receipt with existing order data
+        printReceiptForOrder(editingOrder)
+        
+        // Clear order state and navigate back
+        clearOrder()
+        navigate('/admin/orders', { replace: true })
+      } catch (error: any) {
+        console.error('Failed to update order:', error)
+        alert(`Failed to update order: ${error.response?.data?.error || error.message}`)
+      }
+      return
+    }
+
+    // Confirm the order first (save to database) for new orders
     try {
       const orderData = {
         customerName: customerName || undefined,
         tableNumber: tableNumber || undefined,
         orderType: orderType,
         paymentMethod: paymentMethod,
+        linkedOrderId: linkedOrderId || undefined, // Link to original order if reordering
         items: orderItems.map(item => ({
           menuItemId: item.menuItemId,
           quantity: item.quantity,
@@ -321,6 +407,9 @@ export const POSPage = () => {
       // Set status to PREPARING
       await ordersApi.update(createdOrder.id, { status: 'PREPARING' })
       
+      // Refresh max servings to account for new PREPARING order
+      await refreshMaxServings()
+      
       // Mark as paid if setting is enabled
       if (markPaidOnPrintReceipt) {
         await ordersApi.update(createdOrder.id, { paymentStatus: 'PAID' })
@@ -328,15 +417,22 @@ export const POSPage = () => {
       
       // Clear the order after successful creation
       clearOrder()
+      
+      // Navigate back if reordering
+      if (isReordering) {
+        navigate('/admin/orders', { replace: true })
+        return
+      }
     } catch (error: any) {
       console.error('Failed to create order:', error)
       alert(`Failed to create order: ${error.response?.data?.error || error.message}`)
       return
     }
 
-    const subtotal = orderItems.reduce((sum, item) => sum + item.subtotal, 0)
-    const tax = subtotal * 0.12
-    const total = subtotal + tax
+    const total = orderItems.reduce((sum, item) => sum + item.subtotal, 0)
+    // Calculate VAT from total (12% inclusive)
+    const vat = total * 0.12
+    const subtotal = total - vat
 
     const printWindow = window.open('', '_blank')
     if (!printWindow) {
@@ -467,8 +563,8 @@ export const POSPage = () => {
             <span>₱${subtotal.toFixed(2)}</span>
           </div>
           <div class="total-row">
-            <span>Tax (12%):</span>
-            <span>₱${tax.toFixed(2)}</span>
+            <span>VAT (12%):</span>
+            <span>₱${vat.toFixed(2)}</span>
           </div>
           <div class="total-row grand">
             <span>TOTAL:</span>
@@ -499,35 +595,122 @@ export const POSPage = () => {
 
     printWindow.document.write(receiptHTML)
     printWindow.document.close()
+
+    // If kitchen copy setting is enabled, print a second receipt for kitchen
+    if (printKitchenCopy) {
+      setTimeout(() => {
+        const kitchenWindow = window.open('', '_blank')
+        if (kitchenWindow) {
+          const kitchenReceiptHTML = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Kitchen Copy - BEEHIVE</title>
+              <style>
+                @media print { body { margin: 0; } }
+                body {
+                  font-family: 'Courier New', monospace;
+                  width: 80mm;
+                  margin: 0 auto;
+                  padding: 10mm;
+                }
+                .header {
+                  text-align: center;
+                  margin-bottom: 10px;
+                  border-bottom: 2px dashed #000;
+                  padding-bottom: 10px;
+                }
+                .kitchen-label {
+                  font-size: 20px;
+                  font-weight: bold;
+                  background: #000;
+                  color: #fff;
+                  padding: 5px 10px;
+                  margin-bottom: 10px;
+                }
+                .info {
+                  margin: 10px 0;
+                  font-size: 12px;
+                }
+                .items {
+                  margin: 15px 0;
+                  border-top: 1px dashed #000;
+                  border-bottom: 1px dashed #000;
+                  padding: 10px 0;
+                }
+                .item {
+                  display: flex;
+                  justify-content: space-between;
+                  margin: 8px 0;
+                  font-size: 14px;
+                  font-weight: bold;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="header">
+                <div class="kitchen-label">🍳 KITCHEN COPY</div>
+                <div style="font-size: 10px;">Order for Kitchen</div>
+              </div>
+
+              <div class="info">
+                <div style="font-size: 14px; font-weight: bold;">Order Type: ${orderType === 'DINE_IN' ? 'DINE IN' : orderType === 'TAKEOUT' ? 'TAKE AWAY' : 'DELIVERY'}</div>
+                ${customerName ? `<div>Customer: ${customerName}</div>` : ''}
+                ${tableNumber && orderType === 'DINE_IN' ? `<div style="font-size: 16px; font-weight: bold;">TABLE: ${tableNumber}</div>` : ''}
+                <div>Time: ${new Date().toLocaleTimeString()}</div>
+              </div>
+
+              <div class="items">
+                ${orderItems.map(item => `
+                  <div class="item">
+                    <span>${item.quantity}x ${item.name}</span>
+                  </div>
+                `).join('')}
+              </div>
+
+              <script>
+                window.onload = function() {
+                  window.print();
+                  window.onafterprint = function() {
+                    window.close();
+                  }
+                }
+              </script>
+            </body>
+            </html>
+          `
+          kitchenWindow.document.write(kitchenReceiptHTML)
+          kitchenWindow.document.close()
+        }
+      }, 500) // Small delay to allow first print to complete
+    }
   }
 
   const confirmOrder = async () => {
     if (isEditMode && editingOrder) {
-      // Update order by deleting old and creating new with same order number
+      // Update existing order
       try {
-        // Delete the old order
-        await ordersApi.delete(editingOrder.id)
-        
-        // Create new order with updated items
-        const orderData = {
+        // Update order details
+        const updateData: any = {
           customerName: customerName || undefined,
           tableNumber: tableNumber || undefined,
           orderType: orderType,
-          paymentMethod: paymentMethod,
-          items: orderItems.map(item => ({
-            menuItemId: item.menuItemId,
-            quantity: item.quantity,
-            price: item.price
-          }))
+          paymentMethod: paymentMethod
         }
         
-        const updatedOrder = await ordersApi.create(orderData)
+        await ordersApi.update(editingOrder.id, updateData)
+        
+        // Note: For a full implementation, you would need a backend endpoint 
+        // to update order items. For now, we're only updating order metadata.
         
         // Show success message
-        alert(`Order Updated Successfully!\nOrder Number: ${updatedOrder.orderNumber}\nTotal: ₱${updatedOrder.totalAmount.toFixed(2)}`)
+        alert(`Order Updated Successfully!\nOrder Number: ${editingOrder.orderNumber}`)
+        
+        // Clear order state
+        clearOrder()
         
         // Navigate back to orders page
-        navigate('/admin/orders')
+        navigate('/admin/orders', { replace: true })
       } catch (error: any) {
         console.error('Failed to update order:', error)
         alert(`Failed to update order: ${error.response?.data?.error || error.message}`)
@@ -540,6 +723,7 @@ export const POSPage = () => {
           tableNumber: tableNumber || undefined,
           orderType: orderType,
           paymentMethod: paymentMethod,
+          linkedOrderId: linkedOrderId || undefined, // Link to original order if reordering
           items: orderItems.map(item => ({
             menuItemId: item.menuItemId,
             quantity: item.quantity,
@@ -553,6 +737,9 @@ export const POSPage = () => {
         
         // Set status to PREPARING
         await ordersApi.update(createdOrder.id, { status: 'PREPARING' })
+        
+        // Refresh max servings to account for new PREPARING order
+        await refreshMaxServings()
         
         // Mark as paid if setting is enabled
         if (markPaidOnConfirmOrder) {
@@ -568,8 +755,10 @@ export const POSPage = () => {
         alert(`Order Created Successfully!\nOrder Number: ${createdOrder.orderNumber}\nTotal: ₱${createdOrder.totalAmount.toFixed(2)}`)
         clearOrder()
         
-        // Optionally navigate to orders page
-        // navigate('/admin/orders')
+        // Navigate to orders page if reordering
+        if (isReordering) {
+          navigate('/admin/orders', { replace: true })
+        }
       } catch (error: any) {
         console.error('Failed to create order:', error)
         console.error('Error response:', error.response?.data)
@@ -620,10 +809,29 @@ export const POSPage = () => {
               </Button>
             </div>
           )}
+          {/* Reorder Mode Banner */}
+          {isReordering && (
+            <div className="bg-green-600 text-white px-4 py-2 flex items-center justify-between flex-shrink-0">
+              <div>
+                <p className="text-sm font-medium">Reordering from: {reorderFrom?.orderNumber}</p>
+                <p className="text-xs opacity-90">Original order - You can modify items before confirming</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate('/admin/orders')}
+                className="bg-white text-green-600 border-white hover:bg-green-50 font-medium"
+              >
+                Cancel Reorder
+              </Button>
+            </div>
+          )}
           {/* Category Tabs */}
           <div className="bg-white border-b border-gray-200 p-3 lg:p-4 flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg lg:text-xl font-bold">{isEditMode ? 'Edit Order - Menu' : 'Menu'}</h2>
+              <h2 className="text-lg lg:text-xl font-bold">
+                {isEditMode ? 'Edit Order - Menu' : isReordering ? 'Reorder - Menu' : 'Menu'}
+              </h2>
               {/* Search Bar */}
               <div className="relative flex-1 max-w-xs ml-4">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -676,6 +884,7 @@ export const POSPage = () => {
                       key={item.id}
                       item={item}
                       onAddToOrder={addToOrder}
+                      maxServings={maxServings[item.id]}
                     />
                   ))}
                 </div>
