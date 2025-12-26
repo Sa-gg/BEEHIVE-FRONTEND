@@ -1,6 +1,6 @@
-import axios from 'axios';
+import { api } from './axiosConfig';
 
-const API_URL = 'http://localhost:3000/api/sales';
+const API_URL = '/api/sales';
 
 export interface SalesMetrics {
   totalRevenue: number;
@@ -62,7 +62,7 @@ export const salesApi = {
     if (filters.startDate) params.append('startDate', filters.startDate);
     if (filters.endDate) params.append('endDate', filters.endDate);
 
-    const response = await axios.get(`${API_URL}/report?${params.toString()}`);
+    const response = await api.get(`${API_URL}/report?${params.toString()}`);
     return response.data;
   }
 };

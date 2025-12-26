@@ -11,7 +11,6 @@ import {
   X, 
   TrendingUp,
   DollarSign,
-  Calendar,
   FileText,
   Loader2
 } from 'lucide-react'

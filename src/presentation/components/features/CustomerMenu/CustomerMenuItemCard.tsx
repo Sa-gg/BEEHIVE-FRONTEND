@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { MenuItem } from '../../../../core/domain/entities/MenuItem.entity'
 import type { MoodType } from '../../../../shared/utils/moodSystem'
-import { Button } from '../../common/ui/button'
 import { Badge } from '../../common/ui/badge'
 import { Plus, Sparkles, Info, X } from 'lucide-react'
 import { getMoodExplanation, getItemNutrients } from '../../../../shared/utils/nutritionalBenefits'
@@ -17,13 +16,13 @@ interface CustomerMenuItemCardProps {
 export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact = false, getImageUrl }: CustomerMenuItemCardProps) => {
   const [showExplanation, setShowExplanation] = useState(false)
   
-  // Pass moodBenefits from database to getMoodExplanation
+  // Use database moodBenefits and nutrients (database-only, no static fallback)
   const moodExplanation = currentMood ? getMoodExplanation(item.name, currentMood, item.moodBenefits) : null
-  const nutrients = getItemNutrients(item.name)
+  const nutrients = getItemNutrients(item.nutrients)
   const hasScience = moodExplanation && nutrients.length > 0
 
   // Get full image URL from backend
-  const imageUrl = getImageUrl ? getImageUrl(item.image) : item.image
+  const imageUrl = getImageUrl ? getImageUrl(item.image || null) : item.image
 
   const handleAddToCart = (e: React.MouseEvent) => {
     onAddToCart(item, e)

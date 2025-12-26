@@ -21,7 +21,7 @@ export const HomePage = () => {
       <section 
         className="relative py-20 bg-cover bg-center"
         style={{ 
-          backgroundImage: 'url(/src/assets/background.jpg)',
+          backgroundImage: 'url(/assets/background.jpg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center'
         }}
@@ -40,7 +40,7 @@ export const HomePage = () => {
             {/* Left Content */}
             <div className="backdrop-blur-md p-8 rounded-2xl shadow-2xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.6)' }}>
               <div className="flex items-center gap-3 mb-4">
-                <img src="/src/assets/logo.png" alt="BEEHIVE" className="h-20 w-20 object-contain" />
+                <img src="/assets/logo.png" alt="BEEHIVE" className="h-20 w-20 object-contain" />
                 <h1 className="text-5xl md:text-6xl font-bold" style={{ color: '#000000' }}>
                   BEEHIVE
                 </h1>
@@ -69,18 +69,18 @@ export const HomePage = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-4">
                 <div className="h-48 rounded-lg overflow-hidden shadow-2xl">
-                  <img src="/src/assets/menu1.jpg" alt="Delicious Menu" className="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
+                  <img src="/assets/menu1.jpg" alt="Delicious Menu" className="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
                 </div>
                 <div className="h-64 rounded-lg overflow-hidden shadow-2xl">
-                  <img src="/src/assets/people wearing christmast outfit in beehive place 2.jpg" alt="Happy Customers" className="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
+                  <img src="/assets/people wearing christmast outfit in beehive place 2.jpg" alt="Happy Customers" className="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
                 </div>
               </div>
               <div className="space-y-4 pt-8">
                 <div className="h-64 rounded-lg overflow-hidden shadow-2xl">
-                  <img src="/src/assets/people eating and pool and counter.jpg" alt="Dining and Pool at BEEHIVE" className="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
+                  <img src="/assets/people eating and pool and counter.jpg" alt="Dining and Pool at BEEHIVE" className="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
                 </div>
                 <div className="h-48 rounded-lg overflow-hidden shadow-2xl">
-                  <img src="/src/assets/Gemini_Generated_Image_5et95m5et95m5et9.png" alt="Drinks" className="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
+                  <img src="/assets/Gemini_Generated_Image_5et95m5et95m5et9.png" alt="Drinks" className="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
                 </div>
               </div>
             </div>
@@ -265,14 +265,14 @@ export const HomePage = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <div className="h-64 rounded-2xl overflow-hidden shadow-2xl">
-                  <img src="/src/assets/atiatihan festival (loc of kiosk).jpg" alt="Kiosk at Atiatihan Festival" className="w-full h-full object-cover" />
+                  <img src="/assets/atiatihan festival (loc of kiosk).jpg" alt="Kiosk at Atiatihan Festival" className="w-full h-full object-cover" />
                 </div>
               </div>
               <div className="h-48 rounded-2xl overflow-hidden shadow-2xl">
-                <img src="/src/assets/kiosk.jpg" alt="BEEHIVE Kiosk" className="w-full h-full object-cover" />
+                <img src="/assets/kiosk.jpg" alt="BEEHIVE Kiosk" className="w-full h-full object-cover" />
               </div>
               <div className="h-48 rounded-2xl overflow-hidden shadow-2xl">
-                <img src="/src/assets/venue of the concert (2024).jpg" alt="Concert Venue" className="w-full h-full object-cover" />
+                <img src="/assets/venue of the concert (2024).jpg" alt="Concert Venue" className="w-full h-full object-cover" />
               </div>
             </div>
           </div>
@@ -305,7 +305,7 @@ export const HomePage = () => {
               <div key={index} className="group cursor-pointer">
                 <div className="relative h-64 rounded-xl overflow-hidden shadow-lg mb-3">
                   <img 
-                    src={`/src/assets/${item.img}`} 
+                    src={`/assets/${item.img}`} 
                     alt={item.name} 
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
                   />
@@ -332,13 +332,13 @@ export const HomePage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 h-80 rounded-2xl overflow-hidden shadow-2xl">
-                <img src="/src/assets/drinks.jpg" alt="Drinks Collection" className="w-full h-full object-cover" />
+                <img src="/assets/drinks.jpg" alt="Drinks Collection" className="w-full h-full object-cover" />
               </div>
               <div className="h-64 rounded-2xl overflow-hidden shadow-2xl">
-                <img src="/src/assets/drink1.jpg" alt="Special Drink" className="w-full h-full object-cover" />
+                <img src="/assets/drink1.jpg" alt="Special Drink" className="w-full h-full object-cover" />
               </div>
               <div className="h-64 rounded-2xl overflow-hidden shadow-2xl">
-                <img src="/src/assets/holding drink in the hand.jpg" alt="Refreshing Beverage" className="w-full h-full object-cover" />
+                <img src="/assets/holding drink in the hand.jpg" alt="Refreshing Beverage" className="w-full h-full object-cover" />
               </div>
             </div>
 

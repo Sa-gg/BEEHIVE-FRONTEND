@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { Button } from '../../components/common/ui/button'
 import { Input } from '../../components/common/ui/input'
 import { Label } from '../../components/common/ui/label'
-import { Loader2, UserPlus } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 export const RegisterPage = () => {
   const navigate = useNavigate()
@@ -54,7 +54,7 @@ export const RegisterPage = () => {
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-6 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/')}>
-            <img src="/src/assets/logo.png" alt="BEEHIVE" className="h-16 w-16 object-contain" />
+            <img src="/assets/logo.png" alt="BEEHIVE" className="h-16 w-16 object-contain" />
             <div>
               <h1 className="text-3xl font-bold" style={{ color: '#F9C900' }}>BEEHIVE</h1>
             </div>

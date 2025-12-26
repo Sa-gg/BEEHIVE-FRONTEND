@@ -1,22 +1,26 @@
-import axios from 'axios'
+import { api } from './axiosConfig'
 
-const API_URL = 'http://localhost:3000/api'
+const API_URL = '/api'
 
-export enum ExpenseCategory {
-  RENT_LEASE = 'RENT_LEASE',
-  UTILITIES = 'UTILITIES',
-  ADMINISTRATIVE_SALARIES = 'ADMINISTRATIVE_SALARIES',
-  SOFTWARE_SUBSCRIPTIONS = 'SOFTWARE_SUBSCRIPTIONS',
-  MAINTENANCE = 'MAINTENANCE',
-  OTHER = 'OTHER'
-}
+export const ExpenseCategory = {
+  RENT_LEASE: 'RENT_LEASE',
+  UTILITIES: 'UTILITIES',
+  ADMINISTRATIVE_SALARIES: 'ADMINISTRATIVE_SALARIES',
+  SOFTWARE_SUBSCRIPTIONS: 'SOFTWARE_SUBSCRIPTIONS',
+  MAINTENANCE: 'MAINTENANCE',
+  OTHER: 'OTHER'
+} as const
 
-export enum ExpenseFrequency {
-  ONE_TIME = 'ONE_TIME',
-  MONTHLY = 'MONTHLY',
-  QUARTERLY = 'QUARTERLY',
-  ANNUAL = 'ANNUAL'
-}
+export type ExpenseCategory = typeof ExpenseCategory[keyof typeof ExpenseCategory]
+
+export const ExpenseFrequency = {
+  ONE_TIME: 'ONE_TIME',
+  MONTHLY: 'MONTHLY',
+  QUARTERLY: 'QUARTERLY',
+  ANNUAL: 'ANNUAL'
+} as const
+
+export type ExpenseFrequency = typeof ExpenseFrequency[keyof typeof ExpenseFrequency]
 
 export interface Expense {
   id: string
@@ -78,27 +82,27 @@ export const expensesApi = {
     if (filters?.category) params.append('category', filters.category)
     if (filters?.frequency) params.append('frequency', filters.frequency)
 
-    const response = await axios.get(`${API_URL}/expenses?${params.toString()}`)
+    const response = await api.get(`${API_URL}/expenses?${params.toString()}`)
     return response.data
   },
 
   async getById(id: string): Promise<Expense> {
-    const response = await axios.get(`${API_URL}/expenses/${id}`)
+    const response = await api.get(`${API_URL}/expenses/${id}`)
     return response.data
   },
 
   async create(data: CreateExpenseDTO): Promise<Expense> {
-    const response = await axios.post(`${API_URL}/expenses`, data)
+    const response = await api.post(`${API_URL}/expenses`, data)
     return response.data
   },
 
   async update(id: string, data: UpdateExpenseDTO): Promise<Expense> {
-    const response = await axios.put(`${API_URL}/expenses/${id}`, data)
+    const response = await api.put(`${API_URL}/expenses/${id}`, data)
     return response.data
   },
 
   async delete(id: string): Promise<void> {
-    await axios.delete(`${API_URL}/expenses/${id}`)
+    await api.delete(`${API_URL}/expenses/${id}`)
   },
 
   async getSummary(startDate?: string, endDate?: string): Promise<ExpenseSummary> {
@@ -106,7 +110,7 @@ export const expensesApi = {
     if (startDate) params.append('startDate', startDate)
     if (endDate) params.append('endDate', endDate)
 
-    const response = await axios.get(`${API_URL}/expenses/summary?${params.toString()}`)
+    const response = await api.get(`${API_URL}/expenses/summary?${params.toString()}`)
     return response.data
   }
 }

@@ -4,7 +4,7 @@ import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
 import { Clock, CheckCircle, XCircle, Package, Search, Filter, Eye, Loader2, Printer } from 'lucide-react'
-import { ordersApi, type OrderResponse } from '../../../infrastructure/api/orders.api'
+import { ordersApi } from '../../../infrastructure/api/orders.api'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { useSettingsStore } from '../../store/settingsStore'
 
@@ -23,7 +23,7 @@ interface Order {
   customerName: string | null
   items: OrderItem[]
   totalAmount: number
-  status: 'PENDING' | 'PREPARING' | 'COMPLETED' | 'CANCELLED'
+  status: 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED'
   paymentStatus: 'PAID' | 'UNPAID' | 'REFUNDED'
   paymentMethod?: string | null
   orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY'
@@ -187,15 +187,15 @@ export const OrdersPage = () => {
     }
   }
 
-  const updateOrderItems = (orderId: string, items: OrderItem[]) => {
-    setOrders(prev => prev.map(order => {
-      if (order.id === orderId) {
-        const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
-        return { ...order, items, totalAmount }
-      }
-      return order
-    }))
-  }
+  // const updateOrderItems = (orderId: string, items: OrderItem[]) => {
+  //   setOrders(prev => prev.map(order => {
+  //     if (order.id === orderId) {
+  //       const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+  //       return { ...order, items, totalAmount }
+  //     }
+  //     return order
+  //   }))
+  // }
 
   const handleEditOrder = (order: Order) => {
     if (order.status === 'PENDING') {
@@ -409,6 +409,7 @@ export const OrdersPage = () => {
   const stats = {
     pending: orders.filter(o => o.status === 'PENDING').length,
     preparing: orders.filter(o => o.status === 'PREPARING').length,
+    ready: orders.filter(o => o.status === 'READY').length,
     completed: orders.filter(o => o.status === 'COMPLETED').length,
   }
 

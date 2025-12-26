@@ -1,13 +1,15 @@
-import axios from 'axios'
+import { api } from './axiosConfig'
 
-const API_URL = 'http://localhost:3000/api'
+const API_URL = '/api'
 
-export enum UserRole {
-  CUSTOMER = 'CUSTOMER',
-  CASHIER = 'CASHIER',
-  COOK = 'COOK',
-  MANAGER = 'MANAGER'
-}
+export const UserRole = {
+  CUSTOMER: 'CUSTOMER',
+  CASHIER: 'CASHIER',
+  COOK: 'COOK',
+  MANAGER: 'MANAGER'
+} as const
+
+export type UserRole = typeof UserRole[keyof typeof UserRole]
 
 export interface Customer {
   id: string
@@ -62,36 +64,36 @@ export const customersApi = {
       params.append('search', filters.search)
     }
 
-    const response = await axios.get(`${API_URL}/customers?${params}`)
+    const response = await api.get(`${API_URL}/customers?${params}`)
     return response.data
   },
 
   async getById(id: string): Promise<Customer> {
-    const response = await axios.get(`${API_URL}/customers/${id}`)
+    const response = await api.get(`${API_URL}/customers/${id}`)
     return response.data
   },
 
   async create(data: CreateCustomerDTO): Promise<Customer> {
-    const response = await axios.post(`${API_URL}/customers`, data)
+    const response = await api.post(`${API_URL}/customers`, data)
     return response.data
   },
 
   async update(id: string, data: UpdateCustomerDTO): Promise<Customer> {
-    const response = await axios.put(`${API_URL}/customers/${id}`, data)
+    const response = await api.put(`${API_URL}/customers/${id}`, data)
     return response.data
   },
 
   async delete(id: string): Promise<void> {
-    await axios.delete(`${API_URL}/customers/${id}`)
+    await api.delete(`${API_URL}/customers/${id}`)
   },
 
   async getStats(): Promise<CustomerStats> {
-    const response = await axios.get(`${API_URL}/customers/stats`)
+    const response = await api.get(`${API_URL}/customers/stats`)
     return response.data
   },
 
   async addLoyaltyPoints(id: string, points: number): Promise<Customer> {
-    const response = await axios.post(`${API_URL}/customers/${id}/loyalty`, { points })
+    const response = await api.post(`${API_URL}/customers/${id}/loyalty`, { points })
     return response.data
   }
 }

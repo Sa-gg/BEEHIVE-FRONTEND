@@ -18,7 +18,7 @@ export const AuthLayout = ({ children }: AuthLayoutProps) => {
         {/* Logo/Branding */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex flex-col items-center gap-2">
-            <img src="/src/assets/logo.png" alt="BEEHIVE" className="h-16 w-16 object-contain" />
+            <img src="/assets/logo.png" alt="BEEHIVE" className="h-16 w-16 object-contain" />
             <span className="text-4xl font-bold" style={{ color: '#F9C900' }}>BEEHIVE</span>
           </Link>
           <p className="mt-2 text-gray-600">Welcome back!</p>

@@ -10,7 +10,7 @@ export const AboutPage = () => {
           <div className="absolute inset-0 bg-black opacity-10"></div>
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <div className="flex justify-center mb-6">
-              <img src="/src/assets/logo.png" alt="BEEHIVE" className="h-24 w-24 object-contain" />
+              <img src="/assets/logo.png" alt="BEEHIVE" className="h-24 w-24 object-contain" />
             </div>
             <h1 className="text-5xl font-bold mb-4">Welcome to BEEHIVE</h1>
             <p className="text-xl text-yellow-50 max-w-2xl mx-auto">

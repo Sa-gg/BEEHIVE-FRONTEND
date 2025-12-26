@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { CustomerDropdown } from '../features/CustomerMenu/CustomerDropdown'
 import { MyOrdersModal } from '../features/CustomerMenu/MyOrdersModal'
@@ -16,7 +16,7 @@ interface ClientLayoutProps {
  * Used for: Home, Menu, About, etc.
  */
 export const ClientLayout = ({ children, hideHeader = false }: ClientLayoutProps) => {
-  const { isAuthenticated, user } = useAuthStore()
+  const { isAuthenticated } = useAuthStore()
   const [showMyOrders, setShowMyOrders] = useState(false)
 
   return (
@@ -31,7 +31,7 @@ export const ClientLayout = ({ children, hideHeader = false }: ClientLayoutProps
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-3">
-              <img src="/src/assets/logo.png" alt="BEEHIVE" className="h-12 w-12 object-contain" />
+              <img src="/assets/logo.png" alt="BEEHIVE" className="h-12 w-12 object-contain" />
               <span className="text-2xl font-bold" style={{ color: '#F9C900' }}>BEEHIVE</span>
             </Link>
 
@@ -81,7 +81,7 @@ export const ClientLayout = ({ children, hideHeader = false }: ClientLayoutProps
             {/* Brand Section */}
             <div className="md:col-span-2">
               <div className="flex items-center gap-3 mb-4">
-                <img src="/src/assets/logo.png" alt="BEEHIVE" className="h-12 w-12 object-contain" />
+                <img src="/assets/logo.png" alt="BEEHIVE" className="h-12 w-12 object-contain" />
                 <h3 className="text-2xl font-bold" style={{ color: '#F9C900' }}>BEEHIVE</h3>
               </div>
               <p className="text-gray-400 mb-4 max-w-md">

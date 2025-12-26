@@ -1,11 +1,12 @@
 import { type ReactNode, useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, X, LogOut, User } from 'lucide-react'
+import { Menu, X, LogOut } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 
 interface AdminLayoutProps {
   children: ReactNode
   hideHeader?: boolean
+  hideHeaderOnDesktop?: boolean
 }
 
 /**
@@ -14,7 +15,7 @@ interface AdminLayoutProps {
  * Includes sidebar navigation and top bar.
  * Used for: Dashboard, POS, Orders, Inventory, etc.
  */
-export const AdminLayout = ({ children, hideHeader = false }: AdminLayoutProps) => {
+export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop = false }: AdminLayoutProps) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -85,7 +86,7 @@ export const AdminLayout = ({ children, hideHeader = false }: AdminLayoutProps) 
         <div className="p-4 h-full flex flex-col overflow-y-auto">{/* Logo & Toggle */}
           <div className="flex items-center justify-between mb-8">
             <div className={`flex items-center gap-3 ${!sidebarOpen && !isMobile && 'hidden'}`}>
-              <img src="/src/assets/logo.png" alt="BEEHIVE" className="h-10 w-10 object-contain" />
+              <img src="/assets/logo.png" alt="BEEHIVE" className="h-10 w-10 object-contain" />
               <div>
                 <h1 className="text-xl font-bold" style={{ color: '#F9C900' }}>
                   BEEHIVE
@@ -184,7 +185,7 @@ export const AdminLayout = ({ children, hideHeader = false }: AdminLayoutProps) 
           : (sidebarOpen ? 'lg:ml-64 lg:w-[calc(100%-16rem)]' : 'lg:ml-20 lg:w-[calc(100%-5rem)]')
       }`}>
         {/* Top Bar */}
-        {!hideHeader && (
+        {!hideHeader && !(hideHeaderOnDesktop && !isMobile) && (
           <header className="shadow-md backdrop-blur-md sticky top-0 z-30" style={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}>
             <div className="flex justify-between items-center px-4 lg:px-6 py-4">
               {/* Mobile Hamburger Menu */}
@@ -260,7 +261,7 @@ export const AdminLayout = ({ children, hideHeader = false }: AdminLayoutProps) 
         )}
 
         {/* Page Content */}
-        <main className={`flex-1 overflow-auto ${!hideHeader ? 'p-4 lg:p-6' : ''}`}>
+        <main className={`flex-1 overflow-auto ${!hideHeader && !(hideHeaderOnDesktop && !isMobile) ? 'p-4 lg:p-6' : ''}`}>
           {/* Floating Hamburger Menu for pages with hideHeader */}
           {hideHeader && isMobile && (
             <button

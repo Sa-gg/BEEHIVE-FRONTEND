@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BEEHIVE WiFi - Scan to Order</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #FFFBF0 0%, #FFF8E1 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .container {
+      background: white;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 500px;
+    }
+    h1 {
+      color: #F9C900;
+      margin: 0 0 10px 0;
+      font-size: 2.5em;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 1.1em;
+    }
+    #qrcode {
+      margin: 30px auto;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+      display: inline-block;
+    }
+    .url-box {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 10px;
+      margin: 20px 0;
+      font-family: monospace;
+      font-size: 1.1em;
+      word-break: break-all;
+    }
+    .instructions {
+      color: #555;
+      line-height: 1.8;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .instructions li {
+      margin: 10px 0;
+    }
+    .print-btn {
+      margin-top: 30px;
+      padding: 15px 30px;
+      background: #F9C900;
+      color: black;
+      border: none;
+      border-radius: 10px;
+      font-size: 1.1em;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .print-btn:hover {
+      background: #e0b400;
+    }
+    @media print {
+      body {
+        background: white;
+      }
+      .print-btn {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🐝 BEEHIVE</h1>
+    <p class="subtitle">Welcome to Free WiFi!</p>
+    
+    <div id="qrcode"></div>
+    
+    <div class="url-box" id="url"></div>
+    
+    <div class="instructions">
+      <h3>📱 How to Order:</h3>
+      <ol>
+        <li>Open your phone camera</li>
+        <li>Point at the QR code above</li>
+        <li>Tap the notification to open</li>
+        <li>Browse our delicious menu! 😋</li>
+      </ol>
+    </div>
+    
+    <button class="print-btn" onclick="window.print()">🖨️ Print This Sign</button>
+  </div>
+
+  <script>
+    // Get local IP or use default
+    const url = 'http://192.168.1.10:5173';
+    
+    // Display URL
+    document.getElementById('url').textContent = url;
+    
+    // Generate QR Code
+    QRCode.toCanvas(document.getElementById('qrcode'), url, {
+      width: 300,
+      margin: 2,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      }
+    }, function (error) {
+      if (error) console.error(error);
+    });
+  </script>
+</body>
+</html>

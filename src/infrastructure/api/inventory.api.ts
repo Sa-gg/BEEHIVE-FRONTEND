@@ -1,6 +1,6 @@
-import axios from 'axios';
+import { api } from './axiosConfig';
 
-const API_URL = 'http://localhost:3000/api/inventory';
+const API_URL = '/api/inventory';
 
 export interface InventoryItemDTO {
   id: string;
@@ -58,7 +58,7 @@ export const inventoryApi = {
     if (filters?.status) params.append('status', filters.status);
     if (filters?.search) params.append('search', filters.search);
 
-    const response = await axios.get(`${API_URL}?${params.toString()}`);
+    const response = await api.get(`${API_URL}?${params.toString()}`);
     return response.data.map((item: InventoryItemDTO) => ({
       ...item,
       createdAt: new Date(item.createdAt),
@@ -68,7 +68,7 @@ export const inventoryApi = {
   },
 
   async getById(id: string): Promise<InventoryItemDTO> {
-    const response = await axios.get(`${API_URL}/${id}`);
+    const response = await api.get(`${API_URL}/${id}`);
     return {
       ...response.data,
       createdAt: new Date(response.data.createdAt),
@@ -78,7 +78,7 @@ export const inventoryApi = {
   },
 
   async create(data: CreateInventoryItemRequest): Promise<InventoryItemDTO> {
-    const response = await axios.post(API_URL, data);
+    const response = await api.post(API_URL, data);
     return {
       ...response.data,
       createdAt: new Date(response.data.createdAt),
@@ -88,7 +88,7 @@ export const inventoryApi = {
   },
 
   async update(id: string, data: UpdateInventoryItemRequest): Promise<InventoryItemDTO> {
-    const response = await axios.put(`${API_URL}/${id}`, data);
+    const response = await api.put(`${API_URL}/${id}`, data);
     return {
       ...response.data,
       createdAt: new Date(response.data.createdAt),
@@ -98,7 +98,7 @@ export const inventoryApi = {
   },
 
   async updateStock(id: string, stock: number): Promise<InventoryItemDTO> {
-    const response = await axios.patch(`${API_URL}/${id}/stock`, { stock });
+    const response = await api.patch(`${API_URL}/${id}/stock`, { stock });
     return {
       ...response.data,
       createdAt: new Date(response.data.createdAt),
@@ -108,11 +108,11 @@ export const inventoryApi = {
   },
 
   async delete(id: string): Promise<void> {
-    await axios.delete(`${API_URL}/${id}`);
+    await api.delete(`${API_URL}/${id}`);
   },
 
   async getStats(): Promise<InventoryStats> {
-    const response = await axios.get(`${API_URL}/stats`);
+    const response = await api.get(`${API_URL}/stats`);
     return response.data;
   }
 };

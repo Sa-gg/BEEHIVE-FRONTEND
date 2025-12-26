@@ -16,7 +16,6 @@ import { CustomerDropdown } from '../../components/features/CustomerMenu/Custome
 import { MyOrdersModal } from '../../components/features/CustomerMenu/MyOrdersModal'
 import { Button } from '../../components/common/ui/button'
 import { ShoppingBag, Sparkles, Loader2 } from 'lucide-react'
-import { generateOrderNumber } from '../../../shared/utils/orderUtils'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
@@ -29,7 +28,7 @@ type ViewState = 'menu' | 'checkout' | 'confirmation'
 export const MenuPage = () => {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { user, isAuthenticated } = useAuthStore()
+  const { user } = useAuthStore()
   
   // Initialize selectedMood from URL parameter
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(() => {
@@ -60,7 +59,12 @@ export const MenuPage = () => {
         const response = await menuItemsApi.getAll()
         // API returns { success, data }, so we need response.data
         const items = Array.isArray(response) ? response : response.data || []
-        setMenuItems(items)
+        // Transform items to match MenuItem interface
+        const transformedItems = items.map((item: any) => ({
+          ...item,
+          category: item.category.toLowerCase().replace('_', ' ') as MenuItem['category']
+        }))
+        setMenuItems(transformedItems)
       } catch (error) {
         console.error('Failed to fetch menu items:', error)
         setMenuItems([]) // Ensure it's always an array
@@ -242,6 +246,8 @@ export const MenuPage = () => {
     // Score each item based on multiple factors
     const scoredItems = recommended.map(item => {
       let score = 0
+      let orderRate = 0
+      let hasViews = false
       
       // HISTORICAL ORDER-BASED SCORE (10 points max)
       // Parse moodOrderStats from database
@@ -254,8 +260,9 @@ export const MenuPage = () => {
           if (stats[selectedMood]) {
             const { shown, ordered } = stats[selectedMood]
             if (shown > 0) {
+              hasViews = true
               // Order rate: percentage of times customers chose this when shown
-              const orderRate = ordered / shown
+              orderRate = ordered / shown
               score += orderRate * 10 // Convert to 0-10 score
             }
           }
@@ -295,11 +302,27 @@ export const MenuPage = () => {
         score += 5
       }
       
-      return { item, score }
+      return { item, score, hasExplanation, orderRate, hasViews }
+    })
+
+    // Filter items: only show if they have mood benefits OR order rate > 20% OR featured
+    // This prevents items with 0% order rate and no benefits from appearing
+    const filteredItems = scoredItems.filter(({ hasExplanation, orderRate, hasViews }) => {
+      // Always show if has mood benefits
+      if (hasExplanation) return true
+      
+      // If item has been shown for this mood and has >20% order rate
+      if (hasViews && orderRate > 0.2) return true
+      
+      // If no views yet, allow it to appear (give it a chance)
+      if (!hasViews) return true
+      
+      // Reject items with views but poor performance (0-20% order rate)
+      return false
     })
 
     // Sort by score and return top items
-    const topRecommended = scoredItems
+    const topRecommended = filteredItems
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
       .map(scored => scored.item)
@@ -378,7 +401,7 @@ export const MenuPage = () => {
               <div className="flex items-center gap-3">
                 <CustomerDropdown onViewOrders={() => setShowMyOrders(true)} />
                 <img 
-                  src="/src/assets/logo.png" 
+                  src="/assets/logo.png" 
                   alt="BEEHIVE" 
                   className="h-12 w-12 object-contain cursor-pointer hover:opacity-80 transition-opacity" 
                   onClick={() => navigate('/')}

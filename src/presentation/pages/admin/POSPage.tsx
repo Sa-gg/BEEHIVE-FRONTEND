@@ -50,7 +50,7 @@ export const POSPage = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [isEditMode, setIsEditMode] = useState(!!editingOrder)
+  const [isEditMode] = useState(!!editingOrder)
   
   // Order details state
   const [customerName, setCustomerName] = useState(editingOrder?.customerName || '')
@@ -76,9 +76,9 @@ export const POSPage = () => {
         const items: MenuItem[] = response.data.map((item: MenuItemDTO) => ({
           id: item.id,
           name: item.name,
-          category: item.category.toLowerCase().replace('_', ' '),
+          category: item.category.toLowerCase().replace('_', ' ') as MenuItem['category'],
           price: item.price,
-          image: getImageUrl(item.image),
+          image: getImageUrl(item.image) || undefined,
           available: item.available,
           featured: item.featured
         }))
@@ -599,8 +599,8 @@ export const POSPage = () => {
   const totalItems = orderItems.reduce((sum, item) => sum + item.quantity, 0)
 
   return (
-    <AdminLayout hideHeader>
-      <div className="h-screen w-full max-w-full flex flex-col lg:flex-row gap-0 lg:gap-4 xl:gap-6 lg:p-4 xl:p-6 overflow-hidden">
+    <AdminLayout hideHeaderOnDesktop>
+      <div className="h-[calc(100vh-5rem)] lg:h-screen w-full max-w-full flex flex-col lg:flex-row gap-0 lg:gap-4 xl:gap-6 lg:p-4 xl:p-6 overflow-hidden">
         {/* Left Side - Menu - Full screen on mobile */}
         <div className="flex-1 flex flex-col bg-gray-50 lg:rounded-lg lg:shadow-lg lg:border lg:border-gray-200 min-h-0 min-w-0 overflow-hidden">
           {/* Edit Mode Banner */}
@@ -621,7 +621,7 @@ export const POSPage = () => {
             </div>
           )}
           {/* Category Tabs */}
-          <div className="bg-white border-b border-gray-200 p-3 lg:p-4 flex-shrink-0 pt-16 lg:pt-3">
+          <div className="bg-white border-b border-gray-200 p-3 lg:p-4 flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg lg:text-xl font-bold">{isEditMode ? 'Edit Order - Menu' : 'Menu'}</h2>
               {/* Search Bar */}
