@@ -15,7 +15,9 @@ import {
   Grid3x3,
   List,
   Loader2,
-  Star
+  Star,
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react'
 import { menuItemsApi, uploadApi } from '../../../infrastructure/api/menuItems.api'
 
@@ -66,6 +68,7 @@ export const ProductsPage = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'out-of-stock'>('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
   // Form state
@@ -299,12 +302,16 @@ export const ProductsPage = () => {
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          (product.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
     const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory
-    return matchesSearch && matchesCategory
+    const matchesAvailability = availabilityFilter === 'all' || 
+                                (availabilityFilter === 'available' && product.available) ||
+                                (availabilityFilter === 'out-of-stock' && !product.available)
+    return matchesSearch && matchesCategory && matchesAvailability
   })
 
   // Calculate statistics
   const totalProducts = products.length
   const activeProducts = products.filter(p => p.available).length
+  const outOfStockProducts = products.filter(p => !p.available).length
   const featuredProducts = products.filter(p => p.featured).length
   const avgProfitMargin = products.length > 0 
     ? (products.reduce((sum, p) => sum + parseFloat(getProfitMargin(p)), 0) / products.length).toFixed(1)
@@ -333,11 +340,11 @@ export const ProductsPage = () => {
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Total Menu Items</p>
+                <p className="text-sm text-gray-500">Total Items</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">{totalProducts}</p>
               </div>
               <div className="p-3 bg-blue-100 rounded-lg">
@@ -346,14 +353,36 @@ export const ProductsPage = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+          <div 
+            className={`bg-white rounded-xl p-5 shadow-sm border cursor-pointer transition-all ${
+              availabilityFilter === 'available' ? 'border-green-400 ring-2 ring-green-200' : 'border-gray-200 hover:border-green-300'
+            }`}
+            onClick={() => setAvailabilityFilter(availabilityFilter === 'available' ? 'all' : 'available')}
+          >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Active Items</p>
+                <p className="text-sm text-gray-500">Available</p>
                 <p className="text-2xl font-bold text-green-600 mt-1">{activeProducts}</p>
               </div>
               <div className="p-3 bg-green-100 rounded-lg">
-                <Package className="h-6 w-6 text-green-600" />
+                <CheckCircle className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </div>
+
+          <div 
+            className={`bg-white rounded-xl p-5 shadow-sm border cursor-pointer transition-all ${
+              availabilityFilter === 'out-of-stock' ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-200 hover:border-red-300'
+            }`}
+            onClick={() => setAvailabilityFilter(availabilityFilter === 'out-of-stock' ? 'all' : 'out-of-stock')}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Out of Stock</p>
+                <p className="text-2xl font-bold text-red-600 mt-1">{outOfStockProducts}</p>
+              </div>
+              <div className="p-3 bg-red-100 rounded-lg">
+                <AlertCircle className="h-6 w-6 text-red-600" />
               </div>
             </div>
           </div>
@@ -361,23 +390,11 @@ export const ProductsPage = () => {
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Featured Items</p>
-                <p className="text-2xl font-bold text-yellow-600 mt-1">{featuredProducts}</p>
+                <p className="text-sm text-gray-500">Featured</p>
+                <p className="text-2xl font-bold text-amber-600 mt-1">{featuredProducts}</p>
               </div>
-              <div className="p-3 bg-yellow-100 rounded-lg">
-                <Package className="h-6 w-6 text-yellow-600" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Avg Profit Margin</p>
-                <p className="text-2xl font-bold text-purple-600 mt-1">{avgProfitMargin}%</p>
-              </div>
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <Package className="h-6 w-6 text-purple-600" />
+              <div className="p-3 bg-amber-100 rounded-lg">
+                <Star className="h-6 w-6 text-amber-600" />
               </div>
             </div>
           </div>
@@ -403,7 +420,7 @@ export const ProductsPage = () => {
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
               >
                 <option value="all">All Categories</option>
                 {CATEGORIES.map(cat => (
@@ -412,6 +429,35 @@ export const ProductsPage = () => {
                   </option>
                 ))}
               </select>
+
+              {/* Availability Quick Filters */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={availabilityFilter === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setAvailabilityFilter('all')}
+                >
+                  All
+                </Button>
+                <Button
+                  variant={availabilityFilter === 'available' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setAvailabilityFilter('available')}
+                  className={availabilityFilter === 'available' ? 'bg-green-500 hover:bg-green-600' : ''}
+                >
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Available
+                </Button>
+                <Button
+                  variant={availabilityFilter === 'out-of-stock' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setAvailabilityFilter('out-of-stock')}
+                  className={availabilityFilter === 'out-of-stock' ? 'bg-red-500 hover:bg-red-600' : ''}
+                >
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Out of Stock
+                </Button>
+              </div>
 
               {/* View Mode Toggle */}
               <div className="flex gap-2">
@@ -486,23 +532,38 @@ export const ProductsPage = () => {
                       </div>
                     </div>
                     
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2">
+                      {/* Quick Stock Toggle - Prominent for rush hours */}
                       <Button
-                        variant="outline"
                         size="sm"
-                        onClick={() => handleEdit(product)}
-                        className="flex-1"
+                        onClick={() => toggleAvailability(product.id)}
+                        className={`w-full font-medium ${
+                          product.available 
+                            ? 'bg-red-100 hover:bg-red-200 text-red-700 border border-red-300' 
+                            : 'bg-green-100 hover:bg-green-200 text-green-700 border border-green-300'
+                        }`}
+                        variant="outline"
                       >
-                        <Pencil className="h-3 w-3 mr-1" />
-                        Edit
+                        {product.available ? (
+                          <>
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            Mark Out of Stock
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Mark Available
+                          </>
+                        )}
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => toggleAvailability(product.id)}
-                        className={product.available ? 'text-red-600' : 'text-green-600'}
+                        onClick={() => handleEdit(product)}
+                        className="w-full"
                       >
-                        {product.available ? 'Disable' : 'Enable'}
+                        <Pencil className="h-3 w-3 mr-1" />
+                        Edit Details
                       </Button>
                     </div>
                   </div>
@@ -558,9 +619,27 @@ export const ProductsPage = () => {
                           <Badge className="bg-blue-100 text-blue-800">{product.prepTime} min</Badge>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <Badge variant={product.available ? 'default' : 'destructive'}>
-                            {product.available ? 'Active' : 'Disabled'}
-                          </Badge>
+                          <button
+                            onClick={() => toggleAvailability(product.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                              product.available 
+                                ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                                : 'bg-red-100 text-red-700 hover:bg-red-200'
+                            }`}
+                            title={product.available ? 'Click to mark out of stock' : 'Click to mark available'}
+                          >
+                            {product.available ? (
+                              <span className="flex items-center gap-1">
+                                <CheckCircle className="h-3 w-3" />
+                                Available
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                Out of Stock
+                              </span>
+                            )}
+                          </button>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-2">

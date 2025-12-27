@@ -37,6 +37,7 @@ const ExpensesPage = lazy(() => import('../pages/admin/ExpensesPage').then(m => 
 const CustomersPage = lazy(() => import('../pages/admin/CustomersPage').then(m => ({ default: m.CustomersPage })))
 const ProductsPage = lazy(() => import('../pages/admin/ProductsPage').then(m => ({ default: m.ProductsPage })))
 const SettingsPage = lazy(() => import('../pages/admin/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const StockTransactionsPage = lazy(() => import('../pages/admin/StockTransactionsPage').then(m => ({ default: m.StockTransactionsPage })))
 
 // Error Pages
 const NotFoundPage = lazy(() => import('../pages/error/NotFoundPage').then(m => ({ default: m.NotFoundPage })))
@@ -144,6 +145,16 @@ export const routes: RouteObject[] = [
               <Suspense fallback={<LoadingFallback />}>
                 <ProtectedRoute allowedRoles={['MANAGER']}>
                   <InventoryPage />
+                </ProtectedRoute>
+              </Suspense>
+            ),
+          },
+          {
+            path: 'inventory/transactions',
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <ProtectedRoute allowedRoles={['MANAGER']}>
+                  <StockTransactionsPage />
                 </ProtectedRoute>
               </Suspense>
             ),

@@ -12,7 +12,6 @@ import {
   TrendingDown, 
   Package, 
   DollarSign, 
-  Calendar,
   AlertTriangle,
   CheckCircle,
   XCircle,
@@ -20,11 +19,12 @@ import {
   ArrowDownRight,
   RefreshCw
 } from 'lucide-react'
-import { salesApi, type SalesReport } from '../../../infrastructure/api/sales.api'
-import { inventoryApi, type InventoryItemDTO } from '../../../infrastructure/api/inventory.api'
+import { salesApi } from '../../../infrastructure/api/sales.api'
+import { inventoryApi } from '../../../infrastructure/api/inventory.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
-import { expensesApi } from '../../../infrastructure/api/expenses.api'
+import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { formatSmartStock } from '../../../shared/utils/stockFormat'
+import { DateFilter, type DateFilterValue, getDateRangeFromPreset } from '../../components/common/DateFilter'
 import { 
   AreaChart, 
   Area, 
@@ -39,23 +39,12 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  Legend, 
-  ResponsiveContainer,
-  ComposedChart,
-  RadialBarChart,
-  RadialBar
+  ResponsiveContainer
 } from 'recharts'
 
 const COLORS = ['#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316']
-const GRADIENT_COLORS = {
-  primary: ['#F59E0B', '#F97316'],
-  secondary: ['#10B981', '#14B8A6'],
-  tertiary: ['#3B82F6', '#6366F1'],
-  danger: ['#EF4444', '#F97316']
-}
 
 type ReportTab = 'sales' | 'inventory'
-type DateRange = 'today' | 'week' | 'month' | 'quarter' | 'year'
 
 interface SalesReportData {
   totalRevenue: number
@@ -84,15 +73,32 @@ interface InventoryReportData {
 
 export const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState<ReportTab>('sales')
-  const [dateRange, setDateRange] = useState<DateRange>('month')
+  const [customDateFilter, setCustomDateFilter] = useState<DateFilterValue>({ preset: 'month', startDate: null, endDate: null })
   const [loading, setLoading] = useState(true)
   const [salesData, setSalesData] = useState<SalesReportData | null>(null)
   const [inventoryData, setInventoryData] = useState<InventoryReportData | null>(null)
+  const [menuItems, setMenuItems] = useState<Map<string, string>>(new Map())
   const printRef = useRef<HTMLDivElement>(null)
+
+  // Load menu items on mount
+  useEffect(() => {
+    const loadMenuItems = async () => {
+      try {
+        const response = await menuItemsApi.getAll()
+        const items = response.data || response
+        const itemsMap = new Map(items.map((item: { id: string; name: string }) => [item.id, item.name]))
+        setMenuItems(itemsMap)
+      } catch (error) {
+        console.error('Failed to load menu items:', error)
+      }
+    }
+    loadMenuItems()
+  }, [])
 
   useEffect(() => {
     loadReportData()
-  }, [dateRange, activeTab])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customDateFilter, activeTab])
 
   const loadReportData = async () => {
     setLoading(true)
@@ -114,37 +120,28 @@ export const ReportsPage = () => {
       // Get sales data from API
       const [orders, salesReport] = await Promise.all([
         ordersApi.getAll(),
-        salesApi.getReport({ period: dateRange === 'today' ? 'today' : dateRange === 'week' ? 'week' : 'month' })
+        salesApi.getReport({ period: customDateFilter.preset === 'today' ? 'today' : customDateFilter.preset === 'week' ? 'week' : 'month' })
       ])
 
-      // Filter by date range
-      const now = new Date()
-      let startDate: Date
-      switch (dateRange) {
-        case 'today':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-          break
-        case 'week':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7)
-          break
-        case 'month':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
-          break
-        case 'quarter':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())
-          break
-        case 'year':
-          startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
-          break
-        default:
-          startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
+      // Get date range from custom filter
+      let startDate: Date | null = null
+      let endDate: Date | null = null
+      
+      if (customDateFilter.preset === 'custom') {
+        startDate = customDateFilter.startDate
+        endDate = customDateFilter.endDate
+      } else {
+        const range = getDateRangeFromPreset(customDateFilter.preset)
+        startDate = range.startDate
+        endDate = range.endDate
       }
 
       const completedOrders = orders.filter(order => {
         const orderDate = new Date(order.completedAt || order.createdAt)
+        const matchesDate = (!startDate || orderDate >= startDate) && (!endDate || orderDate <= endDate)
         return order.status === 'COMPLETED' && 
                order.paymentStatus === 'PAID' && 
-               orderDate >= startDate
+               matchesDate
       })
 
       // Calculate totals
@@ -196,11 +193,12 @@ export const ReportsPage = () => {
         .map(([type, data]) => ({ type, ...data }))
         .sort((a, b) => b.revenue - a.revenue)
 
-      // Top products
+      // Top products - using menu item names
       const productMap = new Map<string, { quantity: number; revenue: number }>()
       completedOrders.forEach(order => {
         (order.order_items || []).forEach((item: { menuItemId: string; quantity: number; subtotal: number }) => {
-          const itemName = item.menuItemId // Use menuItemId as key, can be enhanced later with menu item lookup
+          // Use menu item name lookup, fallback to ID if not found
+          const itemName = menuItems.get(item.menuItemId) || item.menuItemId
           const existing = productMap.get(itemName) || { quantity: 0, revenue: 0 }
           productMap.set(itemName, {
             quantity: existing.quantity + item.quantity,
@@ -363,7 +361,7 @@ export const ReportsPage = () => {
         <body>
           <div class="header">
             <h1>🐝 BEEHIVE - ${activeTab === 'sales' ? 'Sales' : 'Inventory'} Report</h1>
-            <p>Generated on ${new Date().toLocaleString()} | Period: ${dateRange.charAt(0).toUpperCase() + dateRange.slice(1)}</p>
+            <p>Generated on ${new Date().toLocaleString()} | Period: ${customDateFilter.preset.charAt(0).toUpperCase() + customDateFilter.preset.slice(1)}</p>
           </div>
           ${printContent.innerHTML}
           <div class="footer">
@@ -387,7 +385,7 @@ export const ReportsPage = () => {
     if (activeTab === 'sales' && salesData) {
       csvContent = 'BEEHIVE Sales Report\n'
       csvContent += `Generated: ${new Date().toLocaleString()}\n`
-      csvContent += `Period: ${dateRange}\n\n`
+      csvContent += `Period: ${customDateFilter.preset}\n\n`
       csvContent += 'Summary\n'
       csvContent += `Total Revenue,₱${salesData.totalRevenue.toFixed(2)}\n`
       csvContent += `Total Orders,${salesData.totalOrders}\n`
@@ -497,18 +495,11 @@ export const ReportsPage = () => {
 
           {/* Date Range */}
           <div className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-gray-400" />
-            <select
-              value={dateRange}
-              onChange={(e) => setDateRange(e.target.value as DateRange)}
-              className="px-4 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-            >
-              <option value="today">Today</option>
-              <option value="week">Last 7 Days</option>
-              <option value="month">Last 30 Days</option>
-              <option value="quarter">Last Quarter</option>
-              <option value="year">Last Year</option>
-            </select>
+            <DateFilter
+              value={customDateFilter}
+              onChange={setCustomDateFilter}
+              showAllOption={false}
+            />
           </div>
         </div>
 

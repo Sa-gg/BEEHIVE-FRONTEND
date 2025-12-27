@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Search, Plus, Package, AlertTriangle, CheckCircle, TrendingUp, ArrowUpDown, Trash2, Pencil, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Plus, Package, AlertTriangle, CheckCircle, TrendingUp, ArrowUpDown, Trash2, Pencil, ChevronLeft, ChevronRight, History } from 'lucide-react'
 import { inventoryApi, type CreateInventoryItemRequest, type InventoryStats, type UpdateInventoryItemRequest } from '../../../infrastructure/api/inventory.api'
 import { StockManagementModal } from '../../components/features/Admin/StockManagementModal'
 import { formatSmartStock } from '../../../shared/utils/stockFormat'
@@ -194,9 +195,17 @@ export const InventoryPage = () => {
     <AdminLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-bold mb-2">Inventory Management</h1>
-          <p className="text-sm lg:text-base text-gray-600">Track and manage your stock levels</p>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-bold mb-2">Inventory Management</h1>
+            <p className="text-sm lg:text-base text-gray-600">Track and manage your stock levels</p>
+          </div>
+          <Link to="/admin/inventory/transactions">
+            <Button variant="outline" className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Stock Transactions
+            </Button>
+          </Link>
         </div>
 
         {/* Stats Cards */}

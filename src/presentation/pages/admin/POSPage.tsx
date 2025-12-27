@@ -785,6 +785,15 @@ export const POSPage = () => {
       )
     : filteredItems
 
+  // Sort items: available items first, out-of-stock at the bottom
+  const sortedItems = [...searchFilteredItems].sort((a, b) => {
+    const aOutOfStock = maxServings[a.id] === 0
+    const bOutOfStock = maxServings[b.id] === 0
+    if (aOutOfStock && !bOutOfStock) return 1  // a goes to bottom
+    if (!aOutOfStock && bOutOfStock) return -1 // b goes to bottom
+    return 0 // maintain original order
+  })
+
   const totalItems = orderItems.reduce((sum, item) => sum + item.quantity, 0)
 
   return (
@@ -879,7 +888,7 @@ export const POSPage = () => {
             ) : (
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 lg:gap-3">
-                  {searchFilteredItems.map((item) => (
+                  {sortedItems.map((item) => (
                     <MenuItemCard
                       key={item.id}
                       item={item}
@@ -888,7 +897,7 @@ export const POSPage = () => {
                     />
                   ))}
                 </div>
-                {searchFilteredItems.length === 0 && (
+                {sortedItems.length === 0 && (
                   <div className="text-center py-12">
                     <p className="text-gray-500">No items found</p>
                     {searchQuery && (

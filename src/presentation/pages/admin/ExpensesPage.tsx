@@ -41,6 +41,7 @@ import {
   getFrequencyDisplay
 } from '../../../infrastructure/api/expenses.api'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { DateFilter, type DateFilterValue, filterByDateRange } from '../../components/common/DateFilter'
 
 const COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#8B5CF6', '#EF4444', '#EC4899']
 
@@ -81,6 +82,7 @@ export const ExpensesPage = () => {
   const [submitting, setSubmitting] = useState(false)
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [filterFrequency, setFilterFrequency] = useState<string>('all')
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>({ preset: 'all', startDate: null, endDate: null })
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -133,7 +135,7 @@ export const ExpensesPage = () => {
     .sort(([, a], [, b]) => b - a)[0]
 
   // Filter and sort expenses
-  const filteredExpenses = expenses
+  const filteredExpenses = filterByDateRange(expenses, dateFilter, 'date')
     .filter(exp => {
       const categoryDisplay = getCategoryDisplay(exp.category)
       const matchesSearch = categoryDisplay.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -172,7 +174,7 @@ export const ExpensesPage = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, filterCategory, filterFrequency])
+  }, [searchQuery, filterCategory, filterFrequency, dateFilter])
 
   const handleSort = (field: keyof Expense) => {
     if (sortField === field) {
@@ -479,6 +481,13 @@ export const ExpensesPage = () => {
                     className="pl-9 w-48 h-9 text-sm"
                   />
                 </div>
+                
+                {/* Date Filter */}
+                <DateFilter
+                  value={dateFilter}
+                  onChange={setDateFilter}
+                  showAllOption={true}
+                />
                 
                 {/* Category Filter */}
                 <select

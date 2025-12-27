@@ -686,29 +686,106 @@ export const OrdersPage = () => {
 
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by order number or customer name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  ×
-                </button>
-              )}
+          <div className="flex flex-col gap-4">
+            {/* Row 1: Search and Actions */}
+            <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center">
+              {/* Search */}
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search by order number or customer name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-10 py-2.5 text-sm border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent bg-gray-50"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Actions: Merge Orders + Grid Toggle */}
+              <div className="flex items-center gap-3 flex-shrink-0">
+                {/* Merge Orders */}
+                {mergeMode ? (
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-amber-100 text-amber-700 border border-amber-200">
+                      {selectedOrdersForMerge.size} selected
+                    </Badge>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleMergeOrders}
+                      disabled={selectedOrdersForMerge.size < 2}
+                      className="whitespace-nowrap bg-amber-500 hover:bg-amber-600"
+                    >
+                      <Merge className="h-3 w-3 mr-1" />
+                      Merge
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMergeMode(false)
+                        setSelectedOrdersForMerge(new Set())
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setMergeMode(true)}
+                    className="whitespace-nowrap"
+                  >
+                    <Merge className="h-3 w-3 mr-1" />
+                    Merge Orders
+                  </Button>
+                )}
+
+                {/* Grid Layout Toggle */}
+                <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-1 bg-gray-50">
+                  <button
+                    onClick={() => setGridColumns(1)}
+                    className={`p-1.5 rounded ${gridColumns === 1 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="List view"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setGridColumns(2)}
+                    className={`p-1.5 rounded ${gridColumns === 2 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="2 columns"
+                  >
+                    <Grid3X3 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setGridColumns(3)}
+                    className={`p-1.5 rounded ${gridColumns === 3 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="3 columns"
+                  >
+                    <span className="text-xs font-bold">3</span>
+                  </button>
+                  <button
+                    onClick={() => setGridColumns(4)}
+                    className={`p-1.5 rounded ${gridColumns === 4 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="4 columns"
+                  >
+                    <span className="text-xs font-bold">4</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
-            {/* Status Filter */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0">
+            {/* Row 2: Status Filter */}
+            <div className="flex items-center gap-2 overflow-x-auto">
               <Filter className="h-4 w-4 text-gray-500 flex-shrink-0" />
               <Button
                 variant={selectedStatus === 'all' ? 'default' : 'outline'}
@@ -742,81 +819,6 @@ export const OrdersPage = () => {
               >
                 Completed
               </Button>
-              
-              {/* Merge Orders Button */}
-              <div className="border-l border-gray-300 pl-2 ml-2">
-                {mergeMode ? (
-                  <div className="flex items-center gap-2">
-                    <Badge className="bg-amber-100 text-amber-700 border border-amber-200">
-                      {selectedOrdersForMerge.size} selected
-                    </Badge>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={handleMergeOrders}
-                      disabled={selectedOrdersForMerge.size < 2}
-                      className="whitespace-nowrap bg-amber-500 hover:bg-amber-600"
-                    >
-                      <Merge className="h-3 w-3 mr-1" />
-                      Merge Orders
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setMergeMode(false)
-                        setSelectedOrdersForMerge(new Set())
-                      }}
-                      className="whitespace-nowrap"
-                    >
-                      <X className="h-3 w-3 mr-1" />
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setMergeMode(true)}
-                    className="whitespace-nowrap"
-                  >
-                    <Merge className="h-3 w-3 mr-1" />
-                    Merge Orders
-                  </Button>
-                )}
-                
-                {/* Grid Layout Toggle */}
-                <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-1">
-                  <button
-                    onClick={() => setGridColumns(1)}
-                    className={`p-1.5 rounded ${gridColumns === 1 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
-                    title="List view"
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setGridColumns(2)}
-                    className={`p-1.5 rounded ${gridColumns === 2 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
-                    title="2 columns"
-                  >
-                    <Grid3X3 className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setGridColumns(3)}
-                    className={`p-1.5 rounded ${gridColumns === 3 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
-                    title="3 columns"
-                  >
-                    <span className="text-xs font-bold">3</span>
-                  </button>
-                  <button
-                    onClick={() => setGridColumns(4)}
-                    className={`p-1.5 rounded ${gridColumns === 4 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
-                    title="4 columns"
-                  >
-                    <span className="text-xs font-bold">4</span>
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         </div>

@@ -8,6 +8,7 @@ import { salesApi, type SalesReport } from '../../../infrastructure/api/sales.ap
 import { ordersApi, type OrderResponse } from '../../../infrastructure/api/orders.api'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts'
+import { DateFilter, type DateFilterValue, filterByDateRange, useDefaultDateFilter } from '../../components/common/DateFilter'
 
 const COLORS = ['#F59E0B', '#EF4444', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899']
 
@@ -35,6 +36,7 @@ export const SalesPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterOrderType, setFilterOrderType] = useState<string>('all')
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all')
+  const [transactionDateFilter, setTransactionDateFilter] = useState<DateFilterValue>(useDefaultDateFilter('all'))
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -287,22 +289,23 @@ export const SalesPage = () => {
     }, 250)
   }
 
-  // Filter transactions based on search and filters
-  const filteredTransactions = transactions.filter(transaction => {
-    // Search filter
-    const searchLower = searchQuery.toLowerCase()
-    const matchesSearch = !searchQuery || 
-      transaction.orderNumber.toLowerCase().includes(searchLower) ||
-      (transaction.customerName?.toLowerCase() || '').includes(searchLower)
-    
-    // Order type filter
-    const matchesOrderType = filterOrderType === 'all' || transaction.orderType === filterOrderType
-    
-    // Payment method filter
-    const matchesPayment = filterPaymentMethod === 'all' || transaction.paymentMethod === filterPaymentMethod
-    
-    return matchesSearch && matchesOrderType && matchesPayment
-  })
+  // Filter transactions based on search, date, and filters
+  const filteredTransactions = filterByDateRange(transactions, transactionDateFilter, 'completedAt')
+    .filter(transaction => {
+      // Search filter
+      const searchLower = searchQuery.toLowerCase()
+      const matchesSearch = !searchQuery || 
+        transaction.orderNumber.toLowerCase().includes(searchLower) ||
+        (transaction.customerName?.toLowerCase() || '').includes(searchLower)
+      
+      // Order type filter
+      const matchesOrderType = filterOrderType === 'all' || transaction.orderType === filterOrderType
+      
+      // Payment method filter
+      const matchesPayment = filterPaymentMethod === 'all' || transaction.paymentMethod === filterPaymentMethod
+      
+      return matchesSearch && matchesOrderType && matchesPayment
+    })
 
   // Pagination logic
   const totalItems = filteredTransactions.length
@@ -323,7 +326,7 @@ export const SalesPage = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, filterOrderType, filterPaymentMethod, selectedPeriod])
+  }, [searchQuery, filterOrderType, filterPaymentMethod, selectedPeriod, transactionDateFilter])
 
   if (loading) {
     return (
@@ -692,6 +695,11 @@ export const SalesPage = () => {
                     className="pl-10"
                   />
                 </div>
+                <DateFilter
+                  value={transactionDateFilter}
+                  onChange={setTransactionDateFilter}
+                  showAllOption={true}
+                />
                 <select
                   value={filterOrderType}
                   onChange={(e) => setFilterOrderType(e.target.value)}
@@ -712,7 +720,7 @@ export const SalesPage = () => {
                   <option value="GCASH">GCash</option>
                   <option value="CARD">Card</option>
                 </select>
-                {(searchQuery || filterOrderType !== 'all' || filterPaymentMethod !== 'all') && (
+                {(searchQuery || filterOrderType !== 'all' || filterPaymentMethod !== 'all' || transactionDateFilter.preset !== 'all') && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -720,6 +728,7 @@ export const SalesPage = () => {
                       setSearchQuery('')
                       setFilterOrderType('all')
                       setFilterPaymentMethod('all')
+                      setTransactionDateFilter({ preset: 'all', startDate: null, endDate: null })
                     }}
                     className="text-xs"
                   >
@@ -968,7 +977,7 @@ export const SalesPage = () => {
                       {selectedTransaction.order_items.map((item) => (
                         <div key={item.id} className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
                           <div>
-                            <p className="font-medium text-sm">{item.menuItemId}</p>
+                            <p className="font-medium text-sm">{menuItems.get(item.menuItemId) || item.menuItemId}</p>
                             <p className="text-xs text-gray-500">₱{item.price.toFixed(2)} × {item.quantity}</p>
                           </div>
                           <p className="font-semibold">₱{item.subtotal.toFixed(2)}</p>
