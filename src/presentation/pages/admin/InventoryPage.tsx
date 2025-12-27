@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Search, Plus, Package, AlertTriangle, CheckCircle, TrendingUp, ArrowUpDown, Trash2, Pencil, ChevronLeft, ChevronRight, History } from 'lucide-react'
+import { Search, Plus, Package, AlertTriangle, CheckCircle, TrendingUp, ArrowUpDown, Trash2, Pencil, ChevronLeft, ChevronRight, History, Printer, Eye } from 'lucide-react'
 import { inventoryApi, type CreateInventoryItemRequest, type InventoryStats, type UpdateInventoryItemRequest } from '../../../infrastructure/api/inventory.api'
 import { StockManagementModal } from '../../components/features/Admin/StockManagementModal'
 import { formatSmartStock } from '../../../shared/utils/stockFormat'
+import { printWithIframe } from '../../../shared/utils/printUtils'
+import { useAuthStore } from '../../store/authStore'
 
 interface InventoryItem {
   id: string
@@ -23,6 +25,11 @@ interface InventoryItem {
 }
 
 export const InventoryPage = () => {
+  const { user } = useAuthStore()
+  
+  // Check if user can manage inventory (ADMIN or MANAGER only)
+  const canManageInventory = user?.role === 'ADMIN' || user?.role === 'MANAGER'
+  
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [stats, setStats] = useState<InventoryStats>({ totalItems: 0, lowStock: 0, outOfStock: 0, totalValue: 0 })
   const [searchQuery, setSearchQuery] = useState('')
@@ -191,6 +198,175 @@ export const InventoryPage = () => {
     return `${days} days ago`
   }
 
+  const handlePrint = () => {
+    const statusLabels: Record<string, string> = {
+      'IN_STOCK': 'In Stock',
+      'LOW_STOCK': 'Low Stock',
+      'OUT_OF_STOCK': 'Out of Stock'
+    }
+
+    const printHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Inventory Report - BEEHIVE</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #F9C900;
+          }
+          .header h1 {
+            margin: 0;
+            color: #1a1a1a;
+          }
+          .header .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+          }
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 25px;
+          }
+          .stat-card {
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+          }
+          .stat-card.total { background: #EFF6FF; border: 1px solid #BFDBFE; }
+          .stat-card.low { background: #FFFBEB; border: 1px solid #FDE68A; }
+          .stat-card.out { background: #FEF2F2; border: 1px solid #FECACA; }
+          .stat-card.value { background: #F0FDF4; border: 1px solid #BBF7D0; }
+          .stat-card h3 { margin: 0; font-size: 12px; text-transform: uppercase; color: #666; }
+          .stat-card p { margin: 5px 0 0; font-size: 24px; font-weight: bold; }
+          .filters {
+            margin-bottom: 15px;
+            font-size: 12px;
+            color: #666;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+          th {
+            background: #F9C900;
+            color: #1a1a1a;
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+          }
+          td {
+            padding: 10px;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 13px;
+          }
+          tr:nth-child(even) { background: #f9fafb; }
+          .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+          }
+          .status.in-stock { background: #D1FAE5; color: #065F46; }
+          .status.low-stock { background: #FEF3C7; color: #92400E; }
+          .status.out-of-stock { background: #FEE2E2; color: #991B1B; }
+          .footer {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 11px;
+            color: #666;
+            text-align: center;
+          }
+          @media print {
+            body { padding: 10px; }
+            .stats { grid-template-columns: repeat(4, 1fr); }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>🐝 BEEHIVE Inventory Report</h1>
+          <div class="subtitle">Generated on ${new Date().toLocaleString()}</div>
+        </div>
+
+        <div class="stats">
+          <div class="stat-card total">
+            <h3>Total Items</h3>
+            <p>${stats.totalItems}</p>
+          </div>
+          <div class="stat-card low">
+            <h3>Low Stock</h3>
+            <p>${stats.lowStock}</p>
+          </div>
+          <div class="stat-card out">
+            <h3>Out of Stock</h3>
+            <p>${stats.outOfStock}</p>
+          </div>
+          <div class="stat-card value">
+            <h3>Total Value</h3>
+            <p>₱${stats.totalValue.toLocaleString()}</p>
+          </div>
+        </div>
+
+        <div class="filters">
+          Category: ${selectedCategory === 'all' ? 'All Categories' : selectedCategory.charAt(0).toUpperCase() + selectedCategory.slice(1)}
+          ${searchQuery ? ` | Search: "${searchQuery}"` : ''}
+          | Showing ${inventory.length} items
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Item Name</th>
+              <th>Category</th>
+              <th>Stock Level</th>
+              <th>Unit</th>
+              <th>Cost/Unit</th>
+              <th>Supplier</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${inventory.map(item => `
+              <tr>
+                <td><strong>${item.name}</strong></td>
+                <td>${item.category}</td>
+                <td>${formatSmartStock(item.currentStock, item.unit)} / ${formatSmartStock(item.maxStock, item.unit)}</td>
+                <td>${item.unit}</td>
+                <td>₱${item.costPerUnit.toFixed(2)}</td>
+                <td>${item.supplier || '-'}</td>
+                <td>
+                  <span class="status ${item.status.toLowerCase().replace('_', '-')}">${statusLabels[item.status]}</span>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          BEEHIVE Cafe & Restaurant - Inventory Management System
+        </div>
+      </body>
+      </html>
+    `
+
+    printWithIframe(printHTML)
+  }
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -200,12 +376,20 @@ export const InventoryPage = () => {
             <h1 className="text-2xl lg:text-3xl font-bold mb-2">Inventory Management</h1>
             <p className="text-sm lg:text-base text-gray-600">Track and manage your stock levels</p>
           </div>
-          <Link to="/admin/inventory/transactions">
-            <Button variant="outline" className="flex items-center gap-2">
-              <History className="h-4 w-4" />
-              Stock Transactions
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={handlePrint} className="flex items-center gap-2">
+              <Printer className="h-4 w-4" />
+              Print Report
             </Button>
-          </Link>
+            {canManageInventory && (
+              <Link to="/admin/inventory/transactions">
+                <Button variant="outline" className="flex items-center gap-2">
+                  <History className="h-4 w-4" />
+                  Stock Transactions
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -293,16 +477,18 @@ export const InventoryPage = () => {
               Search
             </Button>
 
-            {/* Add New Button */}
-            <Button
-              size="sm"
-              className="whitespace-nowrap"
-              onClick={() => setIsAdding(true)}
-              style={{ backgroundColor: '#F9C900', color: '#000000' }}
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Add Item
-            </Button>
+            {/* Add New Button - Only for managers/admins */}
+            {canManageInventory && (
+              <Button
+                size="sm"
+                className="whitespace-nowrap"
+                onClick={() => setIsAdding(true)}
+                style={{ backgroundColor: '#F9C900', color: '#000000' }}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add Item
+              </Button>
+            )}
           </div>
         </div>
 
@@ -394,36 +580,43 @@ export const InventoryPage = () => {
                           </Badge>
                         </td>
                         <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setSelectedItemForStock(item)
-                                setShowStockModal(true)
-                              }}
-                              className="h-9 px-4 font-medium"
-                              style={{ backgroundColor: '#F9C900', color: '#000000' }}
-                            >
-                              <ArrowUpDown className="h-4 w-4 mr-2" />
-                              Manage Stock
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEditModal(item)}
-                              className="h-9 px-3 text-blue-600 hover:bg-blue-50 border-blue-200"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => deleteItem(item.id)}
-                              className="h-9 px-3 text-red-600 hover:bg-red-50 border-red-200"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          {canManageInventory ? (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedItemForStock(item)
+                                  setShowStockModal(true)
+                                }}
+                                className="h-9 px-4 font-medium"
+                                style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                              >
+                                <ArrowUpDown className="h-4 w-4 mr-2" />
+                                Manage Stock
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openEditModal(item)}
+                                className="h-9 px-3 text-blue-600 hover:bg-blue-50 border-blue-200"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => deleteItem(item.id)}
+                                className="h-9 px-3 text-red-600 hover:bg-red-50 border-red-200"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-gray-500">
+                              <Eye className="h-4 w-4" />
+                              <span className="text-sm">View Only</span>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )

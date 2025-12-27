@@ -12,6 +12,7 @@ export interface CreateOrderRequest {
   orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
   moodContext?: string;
   linkedOrderId?: string;
+  createdBy?: string;
   items: OrderItem[];
   paymentMethod?: string;
 }
@@ -38,6 +39,7 @@ export interface OrderResponse {
   paymentMethod: string | null;
   paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
   linkedOrderId: string | null;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;

@@ -9,8 +9,10 @@ import { Button } from '../../components/common/ui/button'
 import { ShoppingCart, Search, Loader2 } from 'lucide-react'
 import { menuItemsApi, type MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
+import { useAuthStore } from '../../store/authStore'
 import { recipeApi } from '../../../infrastructure/api/recipe.api'
 import { useSettingsStore } from '../../store/settingsStore'
+import { printWithIframe } from '../../../shared/utils/printUtils'
 
 // Helper to format order number - removes date prefix for cleaner display
 const formatOrderNumber = (orderNumber: string): string => {
@@ -39,6 +41,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 export const POSPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const { user } = useAuthStore()
   const editingOrder = location.state?.editingOrder
   const reorderFrom = location.state?.reorderFrom
   const { markPaidOnConfirmOrder, markPaidOnPrintReceipt, printReceiptOnConfirmOrder, printKitchenCopy } = useSettingsStore()
@@ -226,12 +229,6 @@ export const POSPage = () => {
     const vat = total * 0.12
     const subtotal = total - vat
 
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      alert('Please allow popups to print receipt')
-      return
-    }
-
     const receiptHTML = `
       <!DOCTYPE html>
       <html>
@@ -340,19 +337,11 @@ export const POSPage = () => {
           <p>Thank you for your order!</p>
           <p>Visit us again soon! 🐝</p>
         </div>
-        
-        <script>
-          window.onload = function() {
-            window.print();
-            // Don't close automatically to allow user to see/save the receipt
-          }
-        </script>
       </body>
       </html>
     `
 
-    printWindow.document.write(receiptHTML)
-    printWindow.document.close()
+    printWithIframe(receiptHTML)
   }
 
   const printReceipt = async () => {
@@ -395,6 +384,7 @@ export const POSPage = () => {
         orderType: orderType,
         paymentMethod: paymentMethod,
         linkedOrderId: linkedOrderId || undefined, // Link to original order if reordering
+        createdBy: user?.name || user?.email || 'System', // Track who created the order
         items: orderItems.map(item => ({
           menuItemId: item.menuItemId,
           quantity: item.quantity,
@@ -433,12 +423,6 @@ export const POSPage = () => {
     // Calculate VAT from total (12% inclusive)
     const vat = total * 0.12
     const subtotal = total - vat
-
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      alert('Please allow popups to print receipt')
-      return
-    }
 
     const receiptHTML = `
       <!DOCTYPE html>
@@ -579,29 +563,16 @@ export const POSPage = () => {
             Facebook: BEEHIVECAFEANDRESTO
           </div>
         </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-            // Close window after printing or canceling
-            window.onafterprint = function() {
-              window.close();
-            }
-          }
-        </script>
       </body>
       </html>
     `
 
-    printWindow.document.write(receiptHTML)
-    printWindow.document.close()
+    printWithIframe(receiptHTML)
 
     // If kitchen copy setting is enabled, print a second receipt for kitchen
     if (printKitchenCopy) {
       setTimeout(() => {
-        const kitchenWindow = window.open('', '_blank')
-        if (kitchenWindow) {
-          const kitchenReceiptHTML = `
+        const kitchenReceiptHTML = `
             <!DOCTYPE html>
             <html>
             <head>
@@ -667,21 +638,10 @@ export const POSPage = () => {
                   </div>
                 `).join('')}
               </div>
-
-              <script>
-                window.onload = function() {
-                  window.print();
-                  window.onafterprint = function() {
-                    window.close();
-                  }
-                }
-              </script>
             </body>
             </html>
           `
-          kitchenWindow.document.write(kitchenReceiptHTML)
-          kitchenWindow.document.close()
-        }
+          printWithIframe(kitchenReceiptHTML)
       }, 500) // Small delay to allow first print to complete
     }
   }
@@ -724,6 +684,7 @@ export const POSPage = () => {
           orderType: orderType,
           paymentMethod: paymentMethod,
           linkedOrderId: linkedOrderId || undefined, // Link to original order if reordering
+          createdBy: user?.name || user?.email || 'System', // Track who created the order
           items: orderItems.map(item => ({
             menuItemId: item.menuItemId,
             quantity: item.quantity,

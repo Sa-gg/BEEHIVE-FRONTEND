@@ -63,19 +63,78 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
     }
   }, [location.pathname, isMobile])
 
-  const menuItems = [
-    { icon: '📊', label: 'Dashboard', path: '/admin', badge: null },
-    { icon: '💳', label: 'POS', path: '/admin/pos', badge: null },
-    { icon: '📦', label: 'Orders', path: '/admin/orders', badge: pendingOrderCount > 0 ? pendingOrderCount : null, badgeColor: 'bg-red-500' },
-    { icon: '📋', label: 'Inventory', path: '/admin/inventory', badge: stockAlertCount > 0 ? stockAlertCount : null, badgeColor: 'bg-orange-500' },
-    { icon: '👨‍🍳', label: 'Recipes', path: '/admin/recipes', badge: null },
-    { icon: '📈', label: 'Sales', path: '/admin/sales', badge: null },
-    { icon: '📑', label: 'Reports', path: '/admin/reports', badge: null },
-    { icon: '💵', label: 'Expenses', path: '/admin/expenses', badge: null },
-    { icon: '🏷️', label: 'Products', path: '/admin/products', badge: null },
-    { icon: '👥', label: 'Customers', path: '/admin/customers', badge: null },
-    { icon: '⚙️', label: 'Settings', path: '/admin/settings', badge: null },
+  // Default permissions per role - determines what each role can access
+  type UserRole = 'CUSTOMER' | 'CASHIER' | 'COOK' | 'MANAGER' | 'ADMIN'
+  const DEFAULT_PERMISSIONS: Record<UserRole, Record<string, boolean>> = {
+    CUSTOMER: {},
+    CASHIER: {
+      viewDashboard: true,
+      accessPOS: true,
+      viewOrders: true,
+      viewInventory: true,
+      viewSales: true,
+      viewProducts: true,
+    },
+    COOK: {
+      viewDashboard: true,
+      viewOrders: true,
+      viewInventory: true,
+      viewProducts: true,
+    },
+    MANAGER: {
+      viewDashboard: true,
+      accessPOS: true,
+      viewOrders: true,
+      viewInventory: true,
+      viewSales: true,
+      viewReports: true,
+      viewExpenses: true,
+      viewProducts: true,
+      viewRecipes: true,
+      viewAccounts: true,
+      viewSettings: true,
+      manageMoodSettings: true,
+    },
+    ADMIN: {
+      viewDashboard: true,
+      accessPOS: true,
+      viewOrders: true,
+      viewInventory: true,
+      viewSales: true,
+      viewReports: true,
+      viewExpenses: true,
+      viewProducts: true,
+      viewRecipes: true,
+      viewAccounts: true,
+      viewSettings: true,
+      manageMoodSettings: true,
+    },
+  }
+
+  // Get user's permissions based on role
+  const userPermissions = user?.role ? DEFAULT_PERMISSIONS[user.role as UserRole] || {} : {}
+
+  // Permission-based menu items - each item has a required permission
+  const allMenuItems = [
+    { icon: '📊', label: 'Dashboard', path: '/admin', badge: null, permission: 'viewDashboard' },
+    { icon: '💳', label: 'POS', path: '/admin/pos', badge: null, permission: 'accessPOS' },
+    { icon: '📦', label: 'Orders', path: '/admin/orders', badge: pendingOrderCount > 0 ? pendingOrderCount : null, badgeColor: 'bg-red-500', permission: 'viewOrders' },
+    { icon: '📋', label: 'Inventory', path: '/admin/inventory', badge: stockAlertCount > 0 ? stockAlertCount : null, badgeColor: 'bg-orange-500', permission: 'viewInventory' },
+    { icon: '👨‍🍳', label: 'Recipes', path: '/admin/recipes', badge: null, permission: 'viewRecipes' },
+    { icon: '📈', label: 'Sales', path: '/admin/sales', badge: null, permission: 'viewSales' },
+    { icon: '📑', label: 'Reports', path: '/admin/reports', badge: null, permission: 'viewReports' },
+    { icon: '💵', label: 'Expenses', path: '/admin/expenses', badge: null, permission: 'viewExpenses' },
+    { icon: '🏷️', label: 'Products', path: '/admin/products', badge: null, permission: 'viewProducts' },
+    { icon: '👥', label: 'Accounts', path: '/admin/accounts', badge: null, permission: 'viewAccounts' },
+    { icon: '🧠', label: 'Mood System', path: '/admin/mood-settings', badge: null, permission: 'manageMoodSettings' },
+    { icon: '⚙️', label: 'Settings', path: '/admin/settings', badge: null, permission: 'viewSettings' },
   ]
+
+  // Filter menu items based on user's permissions
+  const menuItems = allMenuItems.filter(item => {
+    if (!user?.role) return false
+    return userPermissions[item.permission] === true
+  })
 
   const totalNotifications = pendingOrderCount + stockAlertCount
 

@@ -10,14 +10,14 @@ export interface RegisterRequest {
   password: string;
   name: string;
   phone?: string;
-  role?: 'CUSTOMER' | 'CASHIER' | 'COOK' | 'MANAGER';
+  role?: 'CUSTOMER' | 'CASHIER' | 'COOK' | 'MANAGER' | 'ADMIN';
 }
 
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'CUSTOMER' | 'CASHIER' | 'COOK' | 'MANAGER';
+  role: 'CUSTOMER' | 'CASHIER' | 'COOK' | 'MANAGER' | 'ADMIN';
   phone?: string;
   loyaltyPoints: number;
   cardNumber?: string;
@@ -53,6 +53,15 @@ export const authApi = {
       params: role ? { role } : undefined
     });
     return response.data;
+  },
+
+  async updateUser(id: string, data: Partial<User> & { password?: string }): Promise<User> {
+    const response = await api.put<User>(`/api/auth/users/${id}`, data);
+    return response.data;
+  },
+
+  async deleteUser(id: string): Promise<void> {
+    await api.delete(`/api/auth/users/${id}`);
   },
 
   async addLoyaltyPoints(userId: string, points: number): Promise<User> {

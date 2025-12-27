@@ -17,7 +17,14 @@ import {
   Loader2,
   Star,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Brain,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  Copy,
+  Wand2
 } from 'lucide-react'
 import { menuItemsApi, uploadApi } from '../../../infrastructure/api/menuItems.api'
 
@@ -32,9 +39,25 @@ interface Product {
   available: boolean
   featured: boolean
   prepTime: number | null
+  nutrients: string | null
+  moodBenefits: string | null
   createdAt: string
   updatedAt: string
 }
+
+// Mood types for the recommendation system
+const MOOD_TYPES = [
+  { value: 'happy', emoji: '😊', label: 'Happy' },
+  { value: 'energetic', emoji: '⚡', label: 'Energetic' },
+  { value: 'relaxed', emoji: '😌', label: 'Relaxed' },
+  { value: 'excited', emoji: '🎉', label: 'Excited' },
+  { value: 'tired', emoji: '😴', label: 'Tired' },
+  { value: 'stressed', emoji: '😰', label: 'Stressed' },
+  { value: 'anxious', emoji: '😟', label: 'Anxious' },
+  { value: 'sad', emoji: '😢', label: 'Sad' },
+  { value: 'depressed', emoji: '😔', label: 'Feeling Down' },
+  { value: 'angry', emoji: '😠', label: 'Angry' },
+] as const
 
 const CATEGORIES = [
   'PIZZA',
@@ -67,6 +90,7 @@ export const ProductsPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [promptCopied, setPromptCopied] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'out-of-stock'>('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -81,8 +105,13 @@ export const ProductsPage = () => {
     image: '',
     description: '',
     available: true,
-    featured: false
+    featured: false,
+    nutrients: '',
+    moodBenefits: {} as Record<string, string>
   })
+  
+  // Mood benefits section expanded state
+  const [moodSectionExpanded, setMoodSectionExpanded] = useState(false)
 
   // Helper function
   const getProfitMargin = (product: Product) => {
@@ -127,8 +156,11 @@ export const ProductsPage = () => {
       image: '',
       description: '',
       available: true,
-      featured: false
+      featured: false,
+      nutrients: '',
+      moodBenefits: {}
     })
+    setMoodSectionExpanded(false)
   }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -201,6 +233,17 @@ export const ProductsPage = () => {
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product)
+    
+    // Parse moodBenefits JSON if it exists
+    let parsedMoodBenefits: Record<string, string> = {}
+    if (product.moodBenefits) {
+      try {
+        parsedMoodBenefits = JSON.parse(product.moodBenefits)
+      } catch (e) {
+        console.error('Failed to parse moodBenefits:', e)
+      }
+    }
+    
     setFormData({
       name: product.name,
       category: product.category,
@@ -210,8 +253,13 @@ export const ProductsPage = () => {
       image: product.image || '',
       description: product.description || '',
       available: product.available,
-      featured: product.featured
+      featured: product.featured,
+      nutrients: product.nutrients || '',
+      moodBenefits: parsedMoodBenefits
     })
+    
+    // Expand mood section if there are any mood benefits
+    setMoodSectionExpanded(Object.keys(parsedMoodBenefits).length > 0)
     setIsModalOpen(true)
   }
 
@@ -226,6 +274,11 @@ export const ProductsPage = () => {
     try {
       setSubmitting(true)
       
+      // Filter out empty mood benefits
+      const filteredMoodBenefits = Object.fromEntries(
+        Object.entries(formData.moodBenefits).filter(([_, value]) => value && value.trim())
+      )
+      
       const payload = {
         name: formData.name,
         category: formData.category,
@@ -235,7 +288,11 @@ export const ProductsPage = () => {
         image: formData.image || undefined,
         description: formData.description || undefined,
         available: formData.available,
-        featured: formData.featured
+        featured: formData.featured,
+        nutrients: formData.nutrients || undefined,
+        moodBenefits: Object.keys(filteredMoodBenefits).length > 0 
+          ? JSON.stringify(filteredMoodBenefits) 
+          : undefined
       }
 
       if (editingProduct) {
@@ -878,6 +935,179 @@ export const ProductsPage = () => {
                       rows={3}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                     />
+                  </div>
+
+                  {/* Nutrients (from AI or manual) */}
+                  <div className="md:col-span-2">
+                    <Label htmlFor="nutrients" className="text-sm font-semibold text-gray-700 mb-2 block">
+                      <span className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-green-600" />
+                        Key Nutrients
+                        <span className="text-xs font-normal text-gray-500">(from AI analysis or manual)</span>
+                      </span>
+                    </Label>
+                    <Input
+                      id="nutrients"
+                      type="text"
+                      value={formData.nutrients}
+                      onChange={(e) => setFormData({ ...formData, nutrients: e.target.value })}
+                      placeholder="e.g., Vitamin B12, Iron, Protein, Omega-3 (paste from AI response)"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">The AI prompt below will identify nutrients - paste them here after getting the response</p>
+                  </div>
+
+                  {/* Mood Benefits Section (Collapsible) */}
+                  <div className="md:col-span-2 border border-purple-200 rounded-xl overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setMoodSectionExpanded(!moodSectionExpanded)}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-purple-50 to-indigo-50 flex items-center justify-between hover:from-purple-100 hover:to-indigo-100 transition-colors"
+                    >
+                      <span className="flex items-center gap-2 font-semibold text-purple-800">
+                        <Brain className="h-5 w-5" />
+                        Mood-Based Recommendations
+                        {Object.values(formData.moodBenefits).filter(v => v).length > 0 && (
+                          <Badge className="bg-purple-500 text-white text-xs ml-2">
+                            {Object.values(formData.moodBenefits).filter(v => v).length} moods
+                          </Badge>
+                        )}
+                      </span>
+                      {moodSectionExpanded ? (
+                        <ChevronUp className="h-5 w-5 text-purple-600" />
+                      ) : (
+                        <ChevronDown className="h-5 w-5 text-purple-600" />
+                      )}
+                    </button>
+                    
+                    {moodSectionExpanded && (
+                      <div className="p-4 space-y-4 bg-white">
+                        {/* Info Banner */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+                          <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                          <div className="text-xs text-blue-800">
+                            <p className="font-medium mb-1">Select Only Relevant Moods</p>
+                            <p>Not all products help with all moods. Only add scientific explanations for moods this product genuinely helps with. Products with mood explanations appear in recommendations when customers select that mood.</p>
+                          </div>
+                        </div>
+
+                        {/* AI Prompt Template */}
+                        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <Wand2 className="h-4 w-4 text-purple-600" />
+                              <span className="font-medium text-purple-800 text-sm">AI Prompt Generator</span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const prompt = `Analyze this menu item and identify which customer moods it can genuinely help with, based on its ingredients and nutritional content.
+
+**MENU ITEM DETAILS:**
+- Name: ${formData.name || '[Enter product name]'}
+- Category: ${formData.category ? CATEGORY_LABELS[formData.category] || formData.category : '[Select category]'}
+- Description: ${formData.description || '[Enter description with ingredients]'}
+
+**YOUR TASK:**
+
+1. **IDENTIFY KEY NUTRIENTS** in this item that affect mood/mental state (e.g., Omega-3, Vitamin B12, Magnesium, Tryptophan, Caffeine, L-Theanine, etc.)
+
+2. **SELECT ONLY APPLICABLE MOODS** from this list - NOT every product helps every mood:
+   - 😊 Happy (maintains positive mood)
+   - ⚡ Energetic (sustains/boosts energy)
+   - 😌 Relaxed (promotes calm)
+   - 🎉 Excited (complements celebration)
+   - 😴 Tired (combats fatigue)
+   - 😰 Stressed (reduces stress)
+   - 😟 Anxious (calms anxiety)
+   - 😢 Sad (lifts mood)
+   - 😔 Depressed (supports mental health)
+   - 😠 Angry (helps cool down)
+
+3. **PROVIDE SCIENTIFIC EXPLANATIONS** (2-3 sentences each) only for moods this item genuinely helps.
+
+**RESPONSE FORMAT:**
+
+KEY NUTRIENTS: [comma-separated list]
+
+MOOD BENEFITS:
+[Only include moods this product actually helps with]
+
+😊 Happy: [explanation if applicable]
+⚡ Energetic: [explanation if applicable]
+[etc - skip moods that don't apply]
+
+**IMPORTANT:** Be selective! A pizza might help "Happy" and "Excited" but not "Anxious" or "Depressed". A calming tea might help "Stressed" and "Relaxed" but not "Energetic".`
+                                navigator.clipboard.writeText(prompt)
+                                setPromptCopied(true)
+                                setTimeout(() => setPromptCopied(false), 2000)
+                              }}
+                              className={`text-xs ${promptCopied ? 'bg-green-100 border-green-300 text-green-700' : 'border-purple-300 text-purple-700 hover:bg-purple-100'}`}
+                            >
+                              {promptCopied ? (
+                                <><CheckCircle className="h-3 w-3 mr-1" /> Copied!</>
+                              ) : (
+                                <><Copy className="h-3 w-3 mr-1" /> Copy Prompt</>
+                              )}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-purple-700 mb-2">
+                            Copy this prompt → Paste in ChatGPT/Claude → Get nutrients & mood explanations → Paste results below
+                          </p>
+                          <div className="bg-white/70 rounded p-2 text-xs text-gray-600 max-h-20 overflow-y-auto">
+                            <p className="font-semibold text-purple-800">Current Product Info:</p>
+                            <p>• Name: <span className="text-gray-800">{formData.name || '(enter name above)'}</span></p>
+                            <p>• Category: <span className="text-gray-800">{formData.category ? CATEGORY_LABELS[formData.category] : '(select category)'}</span></p>
+                            <p>• Description: <span className="text-gray-800">{formData.description ? formData.description.substring(0, 60) + '...' : '(add description with ingredients)'}</span></p>
+                          </div>
+                        </div>
+                        
+                        {/* Mood Benefits Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {MOOD_TYPES.map(mood => (
+                            <div key={mood.value} className="space-y-1">
+                              <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                <span className="text-lg">{mood.emoji}</span>
+                                {mood.label}
+                                {formData.moodBenefits[mood.value] && (
+                                  <CheckCircle className="h-3 w-3 text-green-500" />
+                                )}
+                              </Label>
+                              <textarea
+                                value={formData.moodBenefits[mood.value] || ''}
+                                onChange={(e) => setFormData({
+                                  ...formData,
+                                  moodBenefits: {
+                                    ...formData.moodBenefits,
+                                    [mood.value]: e.target.value
+                                  }
+                                })}
+                                placeholder={`How does this help when feeling ${mood.label.toLowerCase()}? (Scientific explanation)`}
+                                rows={2}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {/* Quick Clear Button */}
+                        {Object.values(formData.moodBenefits).some(v => v) && (
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setFormData({ ...formData, moodBenefits: {} })}
+                              className="text-red-600 border-red-200 hover:bg-red-50"
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              Clear All Mood Benefits
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Availability & Featured */}

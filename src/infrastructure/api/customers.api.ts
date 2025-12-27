@@ -6,7 +6,8 @@ export const UserRole = {
   CUSTOMER: 'CUSTOMER',
   CASHIER: 'CASHIER',
   COOK: 'COOK',
-  MANAGER: 'MANAGER'
+  MANAGER: 'MANAGER',
+  ADMIN: 'ADMIN'
 } as const
 
 export type UserRole = typeof UserRole[keyof typeof UserRole]
@@ -109,7 +110,8 @@ export const getRoleDisplay = (role: UserRole): string => {
     [UserRole.CUSTOMER]: 'Customer',
     [UserRole.CASHIER]: 'Cashier',
     [UserRole.COOK]: 'Cook',
-    [UserRole.MANAGER]: 'Manager'
+    [UserRole.MANAGER]: 'Manager',
+    [UserRole.ADMIN]: 'Admin'
   }
   return roleMap[role] || role
 }

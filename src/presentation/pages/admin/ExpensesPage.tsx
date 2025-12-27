@@ -28,7 +28,8 @@ import {
   MoreHorizontal,
   ChevronDown,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Printer
 } from 'lucide-react'
 import { 
   expensesApi, 
@@ -42,6 +43,7 @@ import {
 } from '../../../infrastructure/api/expenses.api'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { DateFilter, type DateFilterValue, filterByDateRange } from '../../components/common/DateFilter'
+import { printWithIframe } from '../../../shared/utils/printUtils'
 
 const COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#8B5CF6', '#EF4444', '#EC4899']
 
@@ -83,6 +85,7 @@ export const ExpensesPage = () => {
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [filterFrequency, setFilterFrequency] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<DateFilterValue>({ preset: 'all', startDate: null, endDate: null })
+  const [showPrintModal, setShowPrintModal] = useState(false)
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -262,6 +265,124 @@ export const ExpensesPage = () => {
     }
   }
 
+  // Print function
+  const handlePrint = (option: 'full' | 'transactions') => {
+    setShowPrintModal(false)
+    
+    const formatCurrency = (value: number) => `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+    const now = new Date()
+    const printDate = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    const printTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    
+    let content = ''
+    
+    if (option === 'full') {
+      // Category breakdown
+      const categoryBreakdown = Object.entries(expensesByCategory).map(([cat, amount]) => 
+        `<tr><td>${cat}</td><td style="text-align:right">${formatCurrency(amount)}</td></tr>`
+      ).join('')
+      
+      content = `
+        <div class="stats-grid">
+          <div class="stat-card"><h3>${formatCurrency(totalMonthlyOverhead)}</h3><p>Total This Month</p></div>
+          <div class="stat-card"><h3>${monthlyExpenses.length}</h3><p>Transactions</p></div>
+          <div class="stat-card"><h3>${formatCurrency(monthlyExpenses.length > 0 ? totalMonthlyOverhead / monthlyExpenses.length : 0)}</h3><p>Average Per Transaction</p></div>
+          <div class="stat-card"><h3>${Object.keys(expensesByCategory).length}</h3><p>Categories</p></div>
+        </div>
+        
+        <div class="section">
+          <h2>Expenses by Category (${currentMonth})</h2>
+          <table>
+            <thead><tr><th>Category</th><th style="text-align:right">Amount</th></tr></thead>
+            <tbody>${categoryBreakdown}</tbody>
+            <tfoot><tr><td><strong>Total</strong></td><td style="text-align:right"><strong>${formatCurrency(totalMonthlyOverhead)}</strong></td></tr></tfoot>
+          </table>
+        </div>
+      `
+    }
+    
+    // Add transactions table for both options
+    const transactionsRows = filteredExpenses.map(exp => `
+      <tr>
+        <td>${new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+        <td>${getCategoryDisplay(exp.category)}</td>
+        <td>${exp.description || '-'}</td>
+        <td>${getFrequencyDisplay(exp.frequency)}</td>
+        <td style="text-align:right">${formatCurrency(exp.amount)}</td>
+      </tr>
+    `).join('')
+    
+    const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0)
+    
+    content += `
+      <div class="section">
+        <h2>Expense Records</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Category</th>
+              <th>Description</th>
+              <th>Frequency</th>
+              <th style="text-align:right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>${transactionsRows}</tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4"><strong>TOTAL (${filteredExpenses.length} records)</strong></td>
+              <td style="text-align:right"><strong>${formatCurrency(totalExpenses)}</strong></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    `
+    
+    const fullHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Expense Report - BEEHIVE</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Segoe UI', system-ui, sans-serif; color: #1f2937; padding: 40px; max-width: 1000px; margin: 0 auto; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #F59E0B; padding-bottom: 20px; }
+          .header h1 { font-size: 28px; color: #1f2937; margin-bottom: 5px; }
+          .header .subtitle { color: #6b7280; font-size: 14px; }
+          .header .date-range { margin-top: 10px; font-weight: 600; color: #F59E0B; }
+          .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+          .stat-card { background: #fefce8; border: 1px solid #fde047; border-radius: 10px; padding: 15px; text-align: center; }
+          .stat-card h3 { font-size: 20px; color: #1f2937; margin-bottom: 3px; }
+          .stat-card p { font-size: 11px; color: #6b7280; text-transform: uppercase; }
+          .section { margin-bottom: 30px; }
+          .section h2 { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid #f3f4f6; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th { background: #f9fafb; padding: 10px 12px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb; }
+          td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }
+          tbody tr:hover { background: #fffbeb; }
+          tfoot td { background: #fefce8; font-weight: 600; border-top: 2px solid #F59E0B; }
+          .footer { margin-top: 40px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 20px; }
+          @media print { body { padding: 20px; } .stats-grid { grid-template-columns: repeat(4, 1fr); } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>🐝 BEEHIVE EXPENSE REPORT</h1>
+          <p class="subtitle">${option === 'full' ? 'Full Report with Summary' : 'Expense Transactions'}</p>
+          <p class="date-range">${dateFilter.preset === 'all' ? 'All Time' : `${dateFilter.startDate || ''} to ${dateFilter.endDate || ''}`}</p>
+        </div>
+        ${content}
+        <div class="footer">
+          <p>Generated on ${printDate} at ${printTime}</p>
+          <p>BEEHIVE Point of Sale System</p>
+        </div>
+      </body>
+      </html>
+    `
+    
+    printWithIframe(fullHtml)
+  }
+
   if (loading) {
     return (
       <AdminLayout>
@@ -296,14 +417,24 @@ export const ExpensesPage = () => {
             </h1>
             <p className="text-gray-500 mt-1">Track and manage all operational expenses</p>
           </div>
-          <Button 
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 transition-all"
-            style={{ backgroundColor: '#F9C900', color: '#000000' }}
-          >
-            <Plus className="h-4 w-4" />
-            Add Expense
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button 
+              onClick={() => setShowPrintModal(true)}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Printer className="h-4 w-4" />
+              Print
+            </Button>
+            <Button 
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 transition-all"
+              style={{ backgroundColor: '#F9C900', color: '#000000' }}
+            >
+              <Plus className="h-4 w-4" />
+              Add Expense
+            </Button>
+          </div>
         </div>
 
         {/* Summary Stats - Modern Cards */}
@@ -610,7 +741,7 @@ export const ExpensesPage = () => {
                         </Badge>
                       </td>
                       <td className="px-5 py-4 text-sm text-center">
-                        <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => handleEdit(expense)}
                             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -857,6 +988,57 @@ export const ExpensesPage = () => {
               </form>
             </div>
           </div>
+        )}
+
+        {/* Print Options Modal */}
+        {showPrintModal && (
+          <>
+            <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowPrintModal(false)} />
+            <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+                <div className="p-6 border-b bg-gradient-to-r from-amber-50 to-white flex justify-between items-center rounded-t-2xl">
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    <Printer className="h-5 w-5 text-amber-500" />
+                    Print Options
+                  </h2>
+                  <button onClick={() => setShowPrintModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+                </div>
+                <div className="p-6 space-y-4">
+                  <p className="text-gray-600 text-sm">Choose what to include in your printed report:</p>
+                  
+                  <button
+                    onClick={() => handlePrint('full')}
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-amber-400 hover:bg-amber-50 transition-all text-left group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-amber-100 rounded-lg group-hover:bg-amber-200">
+                        <FileText className="h-5 w-5 text-amber-600" />
+                      </div>
+                      <div>
+                        <p className="font-semibold">Full Report</p>
+                        <p className="text-sm text-gray-500">Summary statistics, category breakdown & all expense records</p>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => handlePrint('transactions')}
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-amber-400 hover:bg-amber-50 transition-all text-left group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-green-100 rounded-lg group-hover:bg-green-200">
+                        <Receipt className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="font-semibold">Expense Records Only</p>
+                        <p className="text-sm text-gray-500">Just the expense transactions table with totals</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </AdminLayout>

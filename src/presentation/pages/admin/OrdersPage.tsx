@@ -7,6 +7,7 @@ import { Clock, CheckCircle, XCircle, Package, Search, Filter, Eye, Loader2, Pri
 import { ordersApi } from '../../../infrastructure/api/orders.api'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { useSettingsStore } from '../../store/settingsStore'
+import { printWithIframe } from '../../../shared/utils/printUtils'
 
 // Helper to format order number - removes date prefix for cleaner display
 // ORD-20251227-00001 -> ORD-00001
@@ -301,12 +302,6 @@ export const OrdersPage = () => {
   const printMergedReceipt = () => {
     if (!mergedOrderData) return
 
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      alert('Please allow popups to print receipt')
-      return
-    }
-
     const receiptHTML = `
       <!DOCTYPE html>
       <html>
@@ -387,13 +382,7 @@ export const OrdersPage = () => {
       </html>
     `
 
-    printWindow.document.write(receiptHTML)
-    printWindow.document.close()
-    printWindow.focus()
-    setTimeout(() => {
-      printWindow.print()
-      printWindow.close()
-    }, 250)
+    printWithIframe(receiptHTML)
   }
 
   // const updateOrderItems = (orderId: string, items: OrderItem[]) => {
@@ -421,12 +410,6 @@ export const OrdersPage = () => {
     // Automatically mark as paid when printing receipt (if setting is enabled)
     if (markPaidOnPrintReceipt && order.paymentStatus !== 'PAID') {
       await markAsPaid(order.id)
-    }
-
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      alert('Please allow popups to print receipt')
-      return
     }
 
     const receiptHTML = `
@@ -583,21 +566,11 @@ export const OrdersPage = () => {
             Printed: ${new Date().toLocaleString()}
           </div>
         </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-            window.onafterprint = function() {
-              window.close();
-            }
-          }
-        </script>
       </body>
       </html>
     `
 
-    printWindow.document.write(receiptHTML)
-    printWindow.document.close()
+    printWithIframe(receiptHTML)
   }
 
 

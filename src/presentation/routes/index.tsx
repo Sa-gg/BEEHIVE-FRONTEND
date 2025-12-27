@@ -34,10 +34,11 @@ const RecipesPage = lazy(() => import('../pages/admin/RecipesPage').then(m => ({
 const SalesPage = lazy(() => import('../pages/admin/SalesPage').then(m => ({ default: m.SalesPage })))
 const ReportsPage = lazy(() => import('../pages/admin/ReportsPage').then(m => ({ default: m.ReportsPage })))
 const ExpensesPage = lazy(() => import('../pages/admin/ExpensesPage').then(m => ({ default: m.ExpensesPage })))
-const CustomersPage = lazy(() => import('../pages/admin/CustomersPage').then(m => ({ default: m.CustomersPage })))
+const AccountsPage = lazy(() => import('../pages/admin/AccountsPage').then(m => ({ default: m.AccountsPage })))
 const ProductsPage = lazy(() => import('../pages/admin/ProductsPage').then(m => ({ default: m.ProductsPage })))
 const SettingsPage = lazy(() => import('../pages/admin/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const StockTransactionsPage = lazy(() => import('../pages/admin/StockTransactionsPage').then(m => ({ default: m.StockTransactionsPage })))
+const MoodSettingsPage = lazy(() => import('../pages/admin/MoodSettingsPage').then(m => ({ default: m.MoodSettingsPage })))
 
 // Error Pages
 const NotFoundPage = lazy(() => import('../pages/error/NotFoundPage').then(m => ({ default: m.NotFoundPage })))
@@ -105,7 +106,7 @@ export const routes: RouteObject[] = [
         ],
       },
 
-      // Admin Routes (Protected - CASHIER, MANAGER, COOK only)
+      // Admin Routes (Protected - Permission-based access)
       {
         path: 'admin',
         children: [
@@ -113,7 +114,7 @@ export const routes: RouteObject[] = [
             index: true,
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['CASHIER', 'MANAGER', 'COOK']}>
+                <ProtectedRoute requiredPermission="viewDashboard">
                   <DashboardPage />
                 </ProtectedRoute>
               </Suspense>
@@ -123,7 +124,7 @@ export const routes: RouteObject[] = [
             path: 'pos',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['CASHIER', 'MANAGER']}>
+                <ProtectedRoute requiredPermission="accessPOS">
                   <POSPage />
                 </ProtectedRoute>
               </Suspense>
@@ -133,7 +134,7 @@ export const routes: RouteObject[] = [
             path: 'orders',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['CASHIER', 'MANAGER', 'COOK']}>
+                <ProtectedRoute requiredPermission="viewOrders">
                   <OrdersPage />
                 </ProtectedRoute>
               </Suspense>
@@ -143,7 +144,7 @@ export const routes: RouteObject[] = [
             path: 'inventory',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['MANAGER']}>
+                <ProtectedRoute requiredPermission="viewInventory">
                   <InventoryPage />
                 </ProtectedRoute>
               </Suspense>
@@ -153,7 +154,7 @@ export const routes: RouteObject[] = [
             path: 'inventory/transactions',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['MANAGER']}>
+                <ProtectedRoute requiredPermission="viewInventory">
                   <StockTransactionsPage />
                 </ProtectedRoute>
               </Suspense>
@@ -163,7 +164,7 @@ export const routes: RouteObject[] = [
             path: 'recipes',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['MANAGER']}>
+                <ProtectedRoute requiredPermission="viewRecipes">
                   <RecipesPage />
                 </ProtectedRoute>
               </Suspense>
@@ -173,7 +174,7 @@ export const routes: RouteObject[] = [
             path: 'sales',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['MANAGER']}>
+                <ProtectedRoute requiredPermission="viewSales">
                   <SalesPage />
                 </ProtectedRoute>
               </Suspense>
@@ -183,7 +184,7 @@ export const routes: RouteObject[] = [
             path: 'reports',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['MANAGER']}>
+                <ProtectedRoute requiredPermission="viewReports">
                   <ReportsPage />
                 </ProtectedRoute>
               </Suspense>
@@ -193,18 +194,18 @@ export const routes: RouteObject[] = [
             path: 'expenses',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['MANAGER']}>
+                <ProtectedRoute requiredPermission="viewExpenses">
                   <ExpensesPage />
                 </ProtectedRoute>
               </Suspense>
             ),
           },
           {
-            path: 'customers',
+            path: 'accounts',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['MANAGER', 'CASHIER']}>
-                  <CustomersPage />
+                <ProtectedRoute requiredPermission="viewAccounts">
+                  <AccountsPage />
                 </ProtectedRoute>
               </Suspense>
             ),
@@ -213,7 +214,7 @@ export const routes: RouteObject[] = [
             path: 'products',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['MANAGER']}>
+                <ProtectedRoute requiredPermission="viewProducts">
                   <ProductsPage />
                 </ProtectedRoute>
               </Suspense>
@@ -223,8 +224,18 @@ export const routes: RouteObject[] = [
             path: 'settings',
             element: (
               <Suspense fallback={<LoadingFallback />}>
-                <ProtectedRoute allowedRoles={['CASHIER', 'MANAGER']}>
+                <ProtectedRoute requiredPermission="viewSettings">
                   <SettingsPage />
+                </ProtectedRoute>
+              </Suspense>
+            ),
+          },
+          {
+            path: 'mood-settings',
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <ProtectedRoute requiredPermission="manageMoodSettings">
+                  <MoodSettingsPage />
                 </ProtectedRoute>
               </Suspense>
             ),

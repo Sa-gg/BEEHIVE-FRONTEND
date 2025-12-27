@@ -16,6 +16,7 @@ import {
 import { Link } from 'react-router-dom'
 import { stockTransactionApi, type StockTransaction } from '../../../infrastructure/api/stockTransaction.api'
 import { DateFilter, type DateFilterValue, filterByDateRange } from '../../components/common/DateFilter'
+import { printWithIframe } from '../../../shared/utils/printUtils'
 
 const REASON_LABELS: Record<string, { label: string; color: string }> = {
   PURCHASE: { label: 'Purchase', color: 'bg-green-100 text-green-800' },
@@ -102,12 +103,6 @@ export const StockTransactionsPage = () => {
 
   // Print transactions report
   const handlePrint = () => {
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      alert('Please allow popups to print')
-      return
-    }
-
     const getDateRangeText = () => {
       if (dateFilter.preset === 'all') return 'All Time'
       if (dateFilter.preset === 'custom' && dateFilter.startDate && dateFilter.endDate) {
@@ -225,16 +220,11 @@ export const StockTransactionsPage = () => {
         <div class="footer">
           <p>© ${new Date().getFullYear()} BEEHIVE POS System | Stock Transactions Report</p>
         </div>
-
-        <script>
-          window.onload = function() { window.print(); }
-        </script>
       </body>
       </html>
     `
 
-    printWindow.document.write(printHTML)
-    printWindow.document.close()
+    printWithIframe(printHTML)
   }
 
   return (

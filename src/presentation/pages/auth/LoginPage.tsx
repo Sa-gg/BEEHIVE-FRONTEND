@@ -19,7 +19,9 @@ export const LoginPage = () => {
       // Redirect based on role
       if (user.role === 'CUSTOMER') {
         navigate('/client/home')
-      } else if (user.role === 'CASHIER' || user.role === 'MANAGER') {
+      } else if (user.role === 'ADMIN' || user.role === 'MANAGER') {
+        navigate('/admin')
+      } else if (user.role === 'CASHIER') {
         navigate('/admin/pos')
       } else if (user.role === 'COOK') {
         navigate('/admin/orders')

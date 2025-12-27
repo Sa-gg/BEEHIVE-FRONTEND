@@ -13,6 +13,7 @@ export interface InventoryItemDTO {
   costPerUnit: number;
   supplier: string;
   status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+  restockFrequencyDays: number | null;
   lastRestocked: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -27,6 +28,7 @@ export interface CreateInventoryItemRequest {
   unit: string;
   costPerUnit: number;
   supplier: string;
+  restockFrequencyDays?: number;
 }
 
 export interface UpdateInventoryItemRequest {
@@ -38,6 +40,7 @@ export interface UpdateInventoryItemRequest {
   unit?: string;
   costPerUnit?: number;
   supplier?: string;
+  restockFrequencyDays?: number;
 }
 
 export interface InventoryStats {
