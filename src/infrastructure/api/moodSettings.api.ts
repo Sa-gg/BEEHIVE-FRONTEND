@@ -13,6 +13,7 @@ export interface MoodSetting {
   beneficialNutrients: string[];
   preferredCategories: string[];
   excludeCategories: string[];
+  preferredCategoryPoints: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -62,6 +63,7 @@ export interface UpdateMoodSettingDTO {
   beneficialNutrients?: string[];
   preferredCategories?: string[];
   excludeCategories?: string[];
+  preferredCategoryPoints?: number;
   isActive?: boolean;
 }
 
@@ -86,81 +88,136 @@ export const moodSettingsApi = {
   // ==================== MOOD SETTINGS ====================
   
   getAllMoodSettings: async (): Promise<MoodSetting[]> => {
-    const response = await api.get('/mood-settings');
+    const response = await api.get('/api/mood-settings');
     return response.data;
   },
 
   getActiveMoodSettings: async (): Promise<MoodSetting[]> => {
-    const response = await api.get('/mood-settings/active');
+    const response = await api.get('/api/mood-settings/active');
     return response.data;
   },
 
   getMoodSetting: async (mood: string): Promise<MoodSetting> => {
-    const response = await api.get(`/mood-settings/${mood}`);
+    const response = await api.get(`/api/mood-settings/${mood}`);
     return response.data;
   },
 
   updateMoodSetting: async (mood: string, data: UpdateMoodSettingDTO): Promise<MoodSetting> => {
-    const response = await api.put(`/mood-settings/${mood}`, data);
+    const response = await api.put(`/api/mood-settings/${mood}`, data);
     return response.data;
   },
 
   initializeMoodSettings: async (): Promise<{ message: string; count: number }> => {
-    const response = await api.post('/mood-settings/initialize/settings');
+    const response = await api.post('/api/mood-settings/initialize/settings');
     return response.data;
   },
 
   // ==================== FEEDBACK CONFIG ====================
 
   getFeedbackConfig: async (): Promise<MoodFeedbackConfig> => {
-    const response = await api.get('/mood-settings/feedback-config');
+    const response = await api.get('/api/mood-settings/feedback-config');
     return response.data;
   },
 
   updateFeedbackConfig: async (data: UpdateFeedbackConfigDTO): Promise<MoodFeedbackConfig> => {
-    const response = await api.put('/mood-settings/feedback-config/update', data);
+    const response = await api.put('/api/mood-settings/feedback-config/update', data);
     return response.data;
   },
 
   // ==================== ANALYTICS & STATS ====================
 
   getMoodAnalytics: async (): Promise<MoodAnalytics[]> => {
-    const response = await api.get('/mood-settings/stats/analytics');
+    const response = await api.get('/api/mood-settings/stats/analytics');
     return response.data;
   },
 
   getMoodOrderStats: async (): Promise<any[]> => {
-    const response = await api.get('/mood-settings/stats/all');
+    const response = await api.get('/api/mood-settings/stats/all');
     return response.data;
   },
 
   resetMoodStats: async (mood?: string): Promise<{ message: string }> => {
-    const url = mood ? `/mood-settings/stats/reset/${mood}` : '/mood-settings/stats/reset';
+    const url = mood ? `/api/mood-settings/stats/reset/${mood}` : '/api/mood-settings/stats/reset';
     const response = await api.post(url);
     return response.data;
   },
 
   // ==================== TRACKING (for customer app) ====================
 
-  trackMoodShown: async (mood: string): Promise<any> => {
-    const response = await api.post(`/mood-settings/track/shown/${mood}`);
+  // Track when mood recommendations are shown (with optional item IDs for per-item tracking)
+  trackMoodShown: async (mood: string, menuItemIds?: string[]): Promise<any> => {
+    const response = await api.post(`/api/mood-settings/track/shown/${mood}`, { menuItemIds });
     return response.data;
   },
 
   trackMoodOrdered: async (mood: string): Promise<any> => {
-    const response = await api.post(`/mood-settings/track/ordered/${mood}`);
+    const response = await api.post(`/api/mood-settings/track/ordered/${mood}`);
     return response.data;
   },
 
-  recordMoodFeedback: async (mood: string, outcome: 'improved' | 'same' | 'worse'): Promise<any> => {
-    const response = await api.post(`/mood-settings/track/feedback/${mood}`, { outcome });
+  recordMoodFeedback: async (mood: string, outcome: 'improved' | 'same' | 'worse', orderId: string): Promise<any> => {
+    const response = await api.post(`/api/mood-settings/track/feedback/${mood}`, { outcome, orderId });
+    return response.data;
+  },
+
+  // ==================== PER-ITEM MOOD ANALYTICS ====================
+
+  getTopItemsForMood: async (mood: string, limit: number = 10): Promise<any> => {
+    const response = await api.get(`/api/mood-settings/items/top/${mood}?limit=${limit}`);
+    return response.data;
+  },
+
+  getDetailedMoodAnalytics: async (mood: string): Promise<any> => {
+    const response = await api.get(`/api/mood-settings/stats/detailed/${mood}`);
+    return response.data;
+  },
+
+  getMoodItemStats: async (mood: string): Promise<any> => {
+    const response = await api.get(`/api/mood-settings/stats/items/${mood}`);
+    return response.data;
+  },
+
+  getItemMoodStats: async (menuItemId: string): Promise<any> => {
+    const response = await api.get(`/api/mood-settings/stats/item/${menuItemId}`);
     return response.data;
   },
 
   // ==================== INITIALIZATION ====================
 
   initializeAll: async (): Promise<any> => {
-    const response = await api.post('/mood-settings/initialize/all');
+    const response = await api.post('/api/mood-settings/initialize/all');
+    return response.data;
+  },
+
+  // ==================== RESET FUNCTIONS ====================
+
+  // Reset all mood order stats (mood_order_stats table)
+  resetAllMoodOrderStats: async (): Promise<{ message: string }> => {
+    const response = await api.post('/api/mood-settings/reset/mood-order-stats');
+    return response.data;
+  },
+
+  // Reset mood order stats for a specific mood
+  resetMoodOrderStatsByMood: async (mood: string): Promise<{ message: string }> => {
+    const response = await api.post(`/api/mood-settings/reset/mood-order-stats/${mood}`);
+    return response.data;
+  },
+
+  // Reset all menu item mood stats (menu_item_mood_stats table)
+  resetAllMenuItemMoodStats: async (): Promise<{ message: string }> => {
+    const response = await api.post('/api/mood-settings/reset/item-mood-stats');
+    return response.data;
+  },
+
+  // Reset menu item mood stats for a specific mood
+  resetMenuItemMoodStatsByMood: async (mood: string): Promise<{ message: string }> => {
+    const response = await api.post(`/api/mood-settings/reset/item-mood-stats/${mood}`);
+    return response.data;
+  },
+
+  // Reset ALL mood statistics (both tables)
+  resetAllMoodStatistics: async (): Promise<{ message: string }> => {
+    const response = await api.post('/api/mood-settings/reset/all');
     return response.data;
   }
 };

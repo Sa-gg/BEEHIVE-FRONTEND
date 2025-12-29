@@ -13,7 +13,6 @@ export interface MenuItemDTO {
   prepTime: number | null;
   nutrients: string | null;
   moodBenefits: string | null;
-  moodOrderStats: string | null;
   createdAt: string;
   updatedAt: string;
 }

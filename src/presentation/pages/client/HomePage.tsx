@@ -2,13 +2,93 @@ import { ClientLayout } from '../../components/layout/ClientLayout'
 import { Button } from '../../components/common/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/common/ui/card'
 import { Link, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { MOOD_OPTIONS, type MoodType } from '../../../shared/utils/moodSystem'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, Bell } from 'lucide-react'
+import { useAuthStore } from '../../store/authStore'
+import { ordersApi } from '../../../infrastructure/api/orders.api'
+import { moodSettingsApi } from '../../../infrastructure/api/moodSettings.api'
+import { MyOrdersModal } from '../../components/features/CustomerMenu/MyOrdersModal'
+import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
+import { getDeviceId } from '../../../shared/utils/deviceId'
+import { playSuccessSound, vibrate } from '../../../shared/utils/notificationSound'
 
 export const HomePage = () => {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(null)
+  const [showMyOrders, setShowMyOrders] = useState(false)
+  const [orderNotifications, setOrderNotifications] = useState(0)
+  const [hasOrderUpdates, setHasOrderUpdates] = useState(false)
+  
+  // Get device ID for guest tracking
+  const deviceId = getDeviceId()
+
+  // Function to refresh order notifications
+  const refreshOrderNotifications = useCallback(async () => {
+    try {
+      let customerOrders
+      
+      if (user) {
+        const allOrders = await ordersApi.getAll()
+        customerOrders = allOrders.filter(
+          order => order.customerName === user?.name || order.customerName === user?.email
+        )
+      } else {
+        customerOrders = await ordersApi.getMyOrders()
+      }
+      
+      const feedbackConfig = await moodSettingsApi.getFeedbackConfig().catch(() => null)
+      
+      const activeCount = customerOrders.filter(
+        o => !['COMPLETED', 'CANCELLED'].includes(o.status)
+      ).length
+      
+      let feedbackCount = 0
+      if (feedbackConfig?.feedbackEnabled) {
+        feedbackCount = customerOrders.filter(o =>
+          o.status === 'COMPLETED' && o.moodContext && !o.moodFeedbackGiven
+        ).length
+      }
+      
+      setOrderNotifications(activeCount + feedbackCount)
+      const hasReady = customerOrders.some(o => o.status === 'READY')
+      setHasOrderUpdates(hasReady || feedbackCount > 0)
+    } catch (error) {
+      console.error('Failed to check order updates:', error)
+    }
+  }, [user])
+
+  // Real-time order update handler
+  const handleOrderUpdate = useCallback((order: unknown) => {
+    const orderData = order as { customerName?: string; deviceId?: string; status: string }
+    const isMyOrder = 
+      (user && (orderData.customerName === user.name || orderData.customerName === user.email)) ||
+      orderData.deviceId === deviceId
+    
+    if (isMyOrder) {
+      console.log('HomePage: Order update for me:', orderData.status)
+      refreshOrderNotifications()
+      if (orderData.status === 'READY') {
+        playSuccessSound()
+        vibrate([200, 100, 200])
+        setHasOrderUpdates(true)
+      }
+    }
+  }, [user, deviceId, refreshOrderNotifications])
+
+  // Subscribe to real-time order events
+  useOrderEvents({
+    type: 'customer',
+    onOrderUpdate: handleOrderUpdate
+  })
+
+  // Poll for order updates
+  useEffect(() => {
+    refreshOrderNotifications()
+    const interval = setInterval(refreshOrderNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [refreshOrderNotifications])
 
   const handleSelectMood = (mood: MoodType) => {
     setSelectedMood(mood)
@@ -57,7 +137,7 @@ export const HomePage = () => {
                     🍽️ Order Now
                   </Button>
                 </Link>
-                <Link to="/menu">
+                <Link to="/menu?showMood=true">
                   <Button size="lg" className="border-2 shadow-lg" style={{ borderColor: '#F9C900', color: '#000000', backgroundColor: '#F9C900' }}>
                     ✨ Mood-Based Menu
                   </Button>
@@ -486,6 +566,67 @@ export const HomePage = () => {
           </div>
         </div>
       </section>
+
+      {/* Floating Bee Orders Button */}
+      {user && (
+        <button
+          onClick={() => setShowMyOrders(true)}
+          className={`fixed bottom-6 left-6 z-50 group transition-all duration-300 ${
+            hasOrderUpdates || orderNotifications > 0 ? 'animate-bounce-slow' : ''
+          }`}
+        >
+          <div className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 ${
+            orderNotifications > 0 
+              ? 'bg-gradient-to-br from-yellow-400 to-orange-400 border-2 border-yellow-300' 
+              : 'bg-white border-2 border-gray-200 hover:border-yellow-400'
+          } hover:shadow-2xl hover:scale-110`}>
+            <span className={`text-2xl transition-transform duration-300 ${orderNotifications > 0 ? 'animate-wiggle' : 'group-hover:scale-110'}`}>
+              🐝
+            </span>
+          </div>
+          
+          {orderNotifications > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[24px] h-6 px-1.5 rounded-full flex items-center justify-center text-xs font-bold text-white bg-red-500 shadow-lg">
+              {orderNotifications}
+            </span>
+          )}
+          
+          {hasOrderUpdates && (
+            <span className="absolute -top-2 -left-2 w-5 h-5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-5 w-5 bg-green-500 items-center justify-center shadow-sm">
+                <Bell className="h-2.5 w-2.5 text-white" />
+              </span>
+            </span>
+          )}
+          
+          <span className="absolute left-full ml-2 px-2 py-1 bg-black text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity shadow-lg">
+            My Orders
+          </span>
+        </button>
+      )}
+
+      {/* My Orders Modal */}
+      <MyOrdersModal
+        open={showMyOrders}
+        onOpenChange={setShowMyOrders}
+        onFeedbackSubmitted={refreshOrderNotifications}
+      />
+
+      {/* Custom animation styles */}
+      <style>{`
+        @keyframes bounce-slow {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-8px); }
+        }
+        @keyframes wiggle {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(-5deg); }
+          75% { transform: rotate(5deg); }
+        }
+        .animate-bounce-slow { animation: bounce-slow 2s ease-in-out infinite; }
+        .animate-wiggle { animation: wiggle 0.5s ease-in-out infinite; }
+      `}</style>
     </ClientLayout>
   )
 }

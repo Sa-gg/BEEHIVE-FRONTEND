@@ -8,7 +8,6 @@ export interface MenuItem {
   available: boolean
   featured?: boolean
   moodBenefits?: string | null
-  moodOrderStats?: string | Record<string, { shown: number; ordered: number }> | null
   nutrients?: string | null // Database field storing comma-separated nutrients
   nutritionalBenefits?: {
     nutrients: string[]

@@ -1,8 +1,10 @@
-import { type ReactNode, useState, useEffect } from 'react'
+import { type ReactNode, useState, useEffect, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Menu, X, LogOut, Bell } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
+import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
+import { playNotificationSound, vibrate } from '../../../shared/utils/notificationSound'
 
 interface AdminLayoutProps {
   children: ReactNode
@@ -23,9 +25,37 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
-  const { pendingOrderCount, stockAlertCount, fetchNotifications } = useNotificationStore()
+  const { pendingOrderCount, stockAlertCount, fetchNotifications, newOrderAlert, dismissNewOrderAlert, handleNewOrder, handleOrderUpdate } = useNotificationStore()
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false)
   const { pendingOrders, lowStockItems, outOfStockItems } = useNotificationStore()
+
+  // Real-time SSE event handlers for cashier
+  const onNewOrder = useCallback((order: unknown) => {
+    console.log('🔔 AdminLayout: New order received globally', order)
+    const orderData = order as { createdBy?: string }
+    // Only play notification sound for customer orders
+    // POS orders created by cashier/manager should not trigger notification
+    const createdBy = orderData.createdBy?.toLowerCase() || ''
+    const isCustomerOrder = createdBy === 'customer' || createdBy === 'guest customer' || createdBy === 'guest'
+    handleNewOrder(order as any)
+    if (isCustomerOrder) {
+      playNotificationSound()
+      vibrate([200, 100, 200])
+    }
+  }, [handleNewOrder])
+
+  const onOrderUpdate = useCallback((order: unknown) => {
+    console.log('🔄 AdminLayout: Order update received globally', order)
+    handleOrderUpdate(order as any)
+  }, [handleOrderUpdate])
+
+  // Subscribe to real-time order events globally for all admin pages
+  useOrderEvents({
+    type: 'cashier',
+    onNewOrder,
+    onOrderUpdate,
+    enabled: true
+  })
 
   // Fetch notifications on mount and periodically
   useEffect(() => {
@@ -140,6 +170,36 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
 
   return (
     <div className="min-h-screen flex overflow-hidden" style={{ background: 'linear-gradient(135deg, #FFFBF0 0%, #FFF8E1 100%)' }}>
+      {/* Global New Order Alert Banner */}
+      {newOrderAlert && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] animate-bounce">
+          <div 
+            className="bg-green-500 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 cursor-pointer hover:bg-green-600 transition-colors"
+            onClick={() => {
+              dismissNewOrderAlert()
+              navigate('/admin/orders')
+            }}
+          >
+            <span className="text-2xl">🔔</span>
+            <div className="flex flex-col">
+              <span className="font-bold text-sm">New Order!</span>
+              <span className="text-xs opacity-90">
+                {newOrderAlert.orderNumber} • {newOrderAlert.customerName} • ₱{newOrderAlert.totalAmount.toFixed(2)}
+              </span>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                dismissNewOrderAlert()
+              }}
+              className="ml-2 hover:bg-green-700 rounded-full p-1"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Overlay */}
       {isMobile && sidebarOpen && (
         <div 

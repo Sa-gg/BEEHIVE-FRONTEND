@@ -15,6 +15,32 @@ const formatOrderNumber = (orderNumber: string) => {
   return match ? `ORD-${match[1]}` : orderNumber
 }
 
+// Get display name for who created the order
+// "Manager", "Cashier" = POS orders by staff
+// "Customer" = Logged-in customer placed order
+// "Guest Customer" = Guest customer placed order via phone menu
+const getCreatedByName = (order: OrderResponse): string => {
+  if (!order.createdBy) return 'Guest Customer' // Old orders without createdBy
+  // Handle legacy values
+  if (order.createdBy === 'GUEST' || order.createdBy === 'Guest') return 'Guest Customer'
+  return order.createdBy
+}
+
+// Get the customer display name
+// Show actual customer name or "Guest" if no name provided
+const getCustomerDisplayName = (order: OrderResponse): string => {
+  if (order.customerName && order.customerName.trim()) {
+    return order.customerName
+  }
+  return 'Guest'
+}
+
+// Get cashier name who processed/completed the order
+const getProcessedByName = (order: OrderResponse): string => {
+  if (!order.processedBy) return 'Not completed yet'
+  return order.processedBy
+}
+
 export const SalesPage = () => {
   const [salesReport, setSalesReport] = useState<SalesReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -61,15 +87,15 @@ export const SalesPage = () => {
 
   const printReceipt = (t: OrderResponse) => {
     const vat = t.totalAmount * 0.12, subtotal = t.totalAmount - vat
-    const receiptHTML = `<!DOCTYPE html><html><head><title>Receipt</title><style>body{font-family:monospace;width:80mm;margin:0 auto;padding:10mm}.header{text-align:center;border-bottom:2px dashed #000;padding-bottom:10px}.totals{border-top:2px dashed #000;padding-top:10px;margin-top:10px}</style></head><body><div class="header"><b>🐝 BEEHIVE</b><br/><small>Restaurant & Cafe</small></div><div style="margin:10px 0;font-size:12px"><div><b>Order:</b> ${formatOrderNumber(t.orderNumber)}</div><div><b>Date:</b> ${new Date(t.completedAt || t.createdAt).toLocaleString()}</div><div><b>Customer:</b> ${t.customerName || 'Walk-in'}</div><div><b>Payment:</b> ${t.paymentMethod || 'N/A'}</div></div><div style="margin:15px 0">${t.order_items.map(i => `<div style="display:flex;justify-content:space-between;font-size:12px"><span>${menuItems.get(i.menuItemId) || i.menuItemId}</span><span>${i.quantity}x ₱${i.subtotal.toFixed(2)}</span></div>`).join('')}</div><div class="totals"><div style="display:flex;justify-content:space-between;font-size:12px"><span>Subtotal:</span><span>₱${subtotal.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;font-size:12px"><span>VAT (12%):</span><span>₱${vat.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;font-size:16px;font-weight:bold"><span>TOTAL:</span><span>₱${t.totalAmount.toFixed(2)}</span></div></div></body></html>`
+    const receiptHTML = `<!DOCTYPE html><html><head><title>Receipt</title><style>body{font-family:monospace;width:80mm;margin:0 auto;padding:10mm}.header{text-align:center;border-bottom:2px dashed #000;padding-bottom:10px}.totals{border-top:2px dashed #000;padding-top:10px;margin-top:10px}</style></head><body><div class="header"><b>🐝 BEEHIVE</b><br/><small>Restaurant & Cafe</small></div><div style="margin:10px 0;font-size:12px"><div><b>Order:</b> ${formatOrderNumber(t.orderNumber)}</div><div><b>Date:</b> ${new Date(t.completedAt || t.createdAt).toLocaleString()}</div><div><b>Customer:</b> ${getCustomerDisplayName(t)}</div><div><b>Payment:</b> ${t.paymentMethod || 'N/A'}</div></div><div style="margin:15px 0">${t.order_items.map(i => `<div style="display:flex;justify-content:space-between;font-size:12px"><span>${menuItems.get(i.menuItemId) || i.menuItemId}</span><span>${i.quantity}x ₱${i.subtotal.toFixed(2)}</span></div>`).join('')}</div><div class="totals"><div style="display:flex;justify-content:space-between;font-size:12px"><span>Subtotal:</span><span>₱${subtotal.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;font-size:12px"><span>VAT (12%):</span><span>₱${vat.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;font-size:16px;font-weight:bold"><span>TOTAL:</span><span>₱${t.totalAmount.toFixed(2)}</span></div></div></body></html>`
     printWithIframe(receiptHTML)
   }
 
   const exportCSV = () => {
-    const rows = [['Order #','Date','Time','Customer','Cashier','Type','Payment','Subtotal','VAT','Total']]
+    const rows = [['Order #','Date','Time','Customer','Created By','Processed By','Type','Payment','Subtotal','VAT','Total']]
     filteredTransactions.forEach(t => {
       const vat = t.totalAmount * 0.12, d = new Date(t.completedAt || t.createdAt)
-      rows.push([formatOrderNumber(t.orderNumber), d.toLocaleDateString(), d.toLocaleTimeString(), t.customerName || 'Walk-in', t.createdBy || 'System', t.orderType, t.paymentMethod || 'N/A', (t.totalAmount - vat).toFixed(2), vat.toFixed(2), t.totalAmount.toFixed(2)])
+      rows.push([formatOrderNumber(t.orderNumber), d.toLocaleDateString(), d.toLocaleTimeString(), getCustomerDisplayName(t), getCreatedByName(t), getProcessedByName(t), t.orderType, t.paymentMethod || 'N/A', (t.totalAmount - vat).toFixed(2), vat.toFixed(2), t.totalAmount.toFixed(2)])
     })
     const blob = new Blob([rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')], { type: 'text/csv' })
     const a = document.createElement('a')
@@ -139,7 +165,8 @@ export const SalesPage = () => {
               <th>Order #</th>
               <th>Date & Time</th>
               <th>Customer</th>
-              <th>Cashier</th>
+              <th>Created By</th>
+              <th>Processed By</th>
               <th>Type</th>
               <th>Payment</th>
               <th class="text-right">Amount</th>
@@ -152,16 +179,16 @@ export const SalesPage = () => {
                 <tr>
                   <td>${formatOrderNumber(t.orderNumber)}</td>
                   <td>${d.toLocaleDateString()} ${d.toLocaleTimeString()}</td>
-                  <td>${t.customerName || 'Walk-in'}</td>
-                  <td>${t.createdBy || 'System'}</td>
+                  <td>${t.customerName || 'Guest'}</td>
+                  <td>${t.createdBy || 'Guest'}</td>
+                  <td>${t.processedBy || 'Not completed yet'}</td>
                   <td>${t.orderType}</td>
                   <td>${t.paymentMethod || 'N/A'}</td>
                   <td class="text-right">₱${t.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                </tr>
-              `
+                </tr>`
             }).join('')}
             <tr class="total-row">
-              <td colspan="6" class="text-right">TOTAL:</td>
+              <td colspan="7" class="text-right">TOTAL:</td>
               <td class="text-right">₱${totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
             </tr>
           </tbody>
@@ -307,7 +334,8 @@ export const SalesPage = () => {
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Order #</th>
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Date & Time</th>
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Customer</th>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Cashier</th>
+                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Created By</th>
+                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Processed By</th>
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Type</th>
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Payment</th>
                   <th className="px-4 py-4 text-right text-xs font-bold text-amber-800 uppercase tracking-wider">Subtotal</th>
@@ -319,7 +347,7 @@ export const SalesPage = () => {
               <tbody className="divide-y divide-gray-100">
                 {paginatedTransactions.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-12 text-center">
+                    <td colSpan={11} className="px-6 py-12 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <div className="p-4 bg-amber-50 rounded-full">
                           <Receipt className="h-8 w-8 text-amber-300" />
@@ -344,10 +372,13 @@ export const SalesPage = () => {
                         <div className="text-xs text-gray-500">{orderDate.toLocaleTimeString()}</div>
                       </td>
                       <td className="px-4 py-4">
-                        <span className="text-sm text-gray-700">{t.customerName || 'Walk-in'}</span>
+                        <span className="text-sm text-gray-700">{getCustomerDisplayName(t)}</span>
                       </td>
                       <td className="px-4 py-4">
-                        <span className="text-sm text-gray-600">{t.createdBy || 'System'}</span>
+                        <span className="text-sm text-gray-600">{getCreatedByName(t)}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="text-sm text-gray-600">{getProcessedByName(t)}</span>
                       </td>
                       <td className="px-4 py-4">
                         <span className="text-sm text-gray-700">
@@ -397,7 +428,7 @@ export const SalesPage = () => {
               {paginatedTransactions.length > 0 && (
                 <tfoot className="bg-gray-50 border-t border-gray-200">
                   <tr>
-                    <td colSpan={6} className="px-4 py-3 text-right font-semibold text-gray-600 text-sm">Page Totals:</td>
+                    <td colSpan={7} className="px-4 py-3 text-right font-semibold text-gray-600 text-sm">Page Totals:</td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-700 text-sm">
                       ₱{paginatedTransactions.reduce((sum, t) => sum + (t.totalAmount - t.totalAmount * 0.12), 0).toFixed(2)}
                     </td>
@@ -489,8 +520,9 @@ export const SalesPage = () => {
               <div className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500 uppercase">Order</p><p className="font-semibold">{formatOrderNumber(selectedTransaction.orderNumber)}</p></div>
-                  <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500 uppercase">Customer</p><p className="font-semibold">{selectedTransaction.customerName || 'Walk-in'}</p></div>
-                  <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500 uppercase">Cashier</p><p className="font-semibold">{selectedTransaction.createdBy || 'System'}</p></div>
+                  <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500 uppercase">Customer</p><p className="font-semibold">{getCustomerDisplayName(selectedTransaction)}</p></div>
+                  <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500 uppercase">Created By</p><p className="font-semibold">{getCreatedByName(selectedTransaction)}</p></div>
+                  <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500 uppercase">Processed By</p><p className="font-semibold">{getProcessedByName(selectedTransaction)}</p></div>
                   <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500 uppercase">Date</p><p className="font-semibold text-sm">{new Date(selectedTransaction.completedAt || selectedTransaction.createdAt).toLocaleString()}</p></div>
                   <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500 uppercase">Payment</p><p className="font-semibold">{selectedTransaction.paymentMethod || 'N/A'}</p></div>
                   <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500 uppercase">Order Type</p><p className="font-semibold">{selectedTransaction.orderType.replace('_', ' ')}</p></div>

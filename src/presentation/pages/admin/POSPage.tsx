@@ -384,7 +384,7 @@ export const POSPage = () => {
         orderType: orderType,
         paymentMethod: paymentMethod,
         linkedOrderId: linkedOrderId || undefined, // Link to original order if reordering
-        createdBy: user?.name || user?.email || 'System', // Track who created the order
+        createdBy: user?.role === 'MANAGER' ? 'Manager' : 'Cashier', // Track the role who created the order
         items: orderItems.map(item => ({
           menuItemId: item.menuItemId,
           quantity: item.quantity,
@@ -684,7 +684,7 @@ export const POSPage = () => {
           orderType: orderType,
           paymentMethod: paymentMethod,
           linkedOrderId: linkedOrderId || undefined, // Link to original order if reordering
-          createdBy: user?.name || user?.email || 'System', // Track who created the order
+          createdBy: user?.role === 'MANAGER' ? 'Manager' : 'Cashier', // Track the role who created the order
           items: orderItems.map(item => ({
             menuItemId: item.menuItemId,
             quantity: item.quantity,

@@ -28,7 +28,12 @@ import {
   ToggleLeft,
   ToggleRight,
   X,
-  Pencil
+  Pencil,
+  Trash2,
+  AlertTriangle,
+  Package,
+  Eye,
+  ShoppingCart
 } from 'lucide-react'
 import { moodSettingsApi } from '../../../infrastructure/api/moodSettings.api'
 import type { MoodSetting, MoodFeedbackConfig, MoodAnalytics, UpdateMoodSettingDTO } from '../../../infrastructure/api/moodSettings.api'
@@ -74,7 +79,7 @@ const ToggleSwitch = ({
 export const MoodSettingsPage = () => {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<'settings' | 'analytics' | 'config'>('settings')
+  const [activeTab, setActiveTab] = useState<'settings' | 'analytics' | 'config' | 'how-it-works'>('settings')
   
   // Data
   const [moodSettings, setMoodSettings] = useState<MoodSetting[]>([])
@@ -90,6 +95,18 @@ export const MoodSettingsPage = () => {
   const [configDirty, setConfigDirty] = useState(false)
   const [editConfig, setEditConfig] = useState<Partial<MoodFeedbackConfig>>({})
   const [error, setError] = useState<string | null>(null)
+  const [isInitializing, setIsInitializing] = useState(false)
+  
+  // Reset modal state
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetType, setResetType] = useState<'all' | 'mood-stats' | 'item-stats'>('all')
+  const [resetMood, setResetMood] = useState<string | null>(null)
+  const [isResetting, setIsResetting] = useState(false)
+  
+  // Per-item analytics state
+  const [selectedMoodForItems, setSelectedMoodForItems] = useState<string | null>(null)
+  const [itemAnalytics, setItemAnalytics] = useState<any[]>([])
+  const [loadingItemAnalytics, setLoadingItemAnalytics] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -146,6 +163,7 @@ export const MoodSettingsPage = () => {
       beneficialNutrients: mood.beneficialNutrients || [],
       preferredCategories: mood.preferredCategories || [],
       excludeCategories: mood.excludeCategories || [],
+      preferredCategoryPoints: mood.preferredCategoryPoints ?? 10,
       isActive: mood.isActive
     })
   }
@@ -197,16 +215,84 @@ export const MoodSettingsPage = () => {
     setEditForm({ ...editForm, [field]: updated })
   }
 
-  const handleResetStats = async (mood?: string) => {
-    if (!confirm(mood ? `Reset stats for ${mood}?` : 'Reset ALL mood stats? This cannot be undone.')) {
-      return
-    }
-    
+  // Open reset modal
+  const openResetModal = (type: 'all' | 'mood-stats' | 'item-stats', mood?: string) => {
+    setResetType(type)
+    setResetMood(mood || null)
+    setShowResetModal(true)
+  }
+
+  // Handle reset confirmation
+  const handleConfirmReset = async () => {
     try {
-      await moodSettingsApi.resetMoodStats(mood)
+      setIsResetting(true)
+      
+      if (resetType === 'all') {
+        // Reset both tables
+        if (resetMood) {
+          // Reset specific mood in both tables
+          await Promise.all([
+            moodSettingsApi.resetMoodOrderStatsByMood(resetMood),
+            moodSettingsApi.resetMenuItemMoodStatsByMood(resetMood)
+          ])
+        } else {
+          // Reset all data in both tables
+          await moodSettingsApi.resetAllMoodStatistics()
+        }
+      } else if (resetType === 'mood-stats') {
+        // Reset only mood_order_stats table
+        if (resetMood) {
+          await moodSettingsApi.resetMoodOrderStatsByMood(resetMood)
+        } else {
+          await moodSettingsApi.resetAllMoodOrderStats()
+        }
+      } else if (resetType === 'item-stats') {
+        // Reset only menu_item_mood_stats table
+        if (resetMood) {
+          await moodSettingsApi.resetMenuItemMoodStatsByMood(resetMood)
+        } else {
+          await moodSettingsApi.resetAllMenuItemMoodStats()
+        }
+      }
+      
+      setShowResetModal(false)
       await loadData()
     } catch (error) {
       console.error('Error resetting stats:', error)
+    } finally {
+      setIsResetting(false)
+    }
+  }
+
+  // Legacy function for quick reset (used by table row buttons)
+  const handleResetStats = async (mood?: string) => {
+    openResetModal('all', mood)
+  }
+
+  // Load per-item analytics for a specific mood
+  const loadItemAnalytics = async (mood: string) => {
+    try {
+      setLoadingItemAnalytics(true)
+      setSelectedMoodForItems(mood)
+      const data = await moodSettingsApi.getDetailedMoodAnalytics(mood)
+      setItemAnalytics(data.itemStats || [])
+    } catch (error) {
+      console.error('Error loading item analytics:', error)
+      setItemAnalytics([])
+    } finally {
+      setLoadingItemAnalytics(false)
+    }
+  }
+
+  const handleInitialize = async () => {
+    try {
+      setIsInitializing(true)
+      await moodSettingsApi.initializeAll()
+      await loadData()
+    } catch (error) {
+      console.error('Error initializing:', error)
+    } finally {
+      setIsInitializing(false)
     }
   }
 
@@ -250,18 +336,41 @@ export const MoodSettingsPage = () => {
             </p>
           </div>
           
-          <Button
-            onClick={loadData}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            {moodSettings.length === 0 && (
+              <Button
+                onClick={handleInitialize}
+                disabled={isInitializing}
+                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                {isInitializing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                Initialize Settings
+              </Button>
+            )}
+            <Button
+              onClick={loadData}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 border-b border-gray-200 pb-2">
+        <div className="flex gap-2 border-b border-gray-200 pb-2 flex-wrap">
+          <button
+            onClick={() => setActiveTab('how-it-works')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+              activeTab === 'how-it-works'
+                ? 'bg-purple-100 text-purple-700'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <Info className="h-4 w-4" />
+            How It Works
+          </button>
           <button
             onClick={() => setActiveTab('settings')}
             className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
@@ -298,6 +407,195 @@ export const MoodSettingsPage = () => {
         </div>
 
         {/* Tab Content */}
+        {activeTab === 'how-it-works' && (
+          <div className="space-y-6">
+            {/* Overview */}
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200">
+              <h2 className="text-xl font-bold text-purple-900 mb-3 flex items-center gap-2">
+                <Brain className="h-6 w-6" />
+                Mood-Based Recommendation System
+              </h2>
+              <p className="text-purple-800 mb-4">
+                Our intelligent system recommends menu items based on how customers feel, using scientifically-backed 
+                nutritional information about foods that can help improve different moods. The algorithm scores each 
+                menu item and shows the most relevant recommendations.
+              </p>
+            </div>
+
+            {/* How Scoring Works */}
+            <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-cyan-50 border-b">
+                <h3 className="font-semibold text-blue-900 flex items-center gap-2">
+                  <Target className="h-5 w-5" />
+                  How the Scoring Algorithm Works
+                </h3>
+              </div>
+              <div className="p-4 space-y-4">
+                <p className="text-gray-700">
+                  Each menu item receives a score based on multiple factors. Items with higher scores are shown first 
+                  in recommendations. Here's how points are calculated:
+                </p>
+                
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                    <div className="flex items-center gap-2 font-semibold text-green-800 mb-2">
+                      <span className="bg-green-200 text-green-800 text-xs px-2 py-0.5 rounded">+20 pts</span>
+                      Mood Benefits Match
+                    </div>
+                    <p className="text-sm text-green-700">
+                      Items with scientific explanations for why they help with the selected mood get the highest boost.
+                      These are set in the menu item's "Mood Benefits" field.
+                    </p>
+                  </div>
+
+                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                    <div className="flex items-center gap-2 font-semibold text-blue-800 mb-2">
+                      <span className="bg-blue-200 text-blue-800 text-xs px-2 py-0.5 rounded">+15 pts</span>
+                      Historical Success
+                    </div>
+                    <p className="text-sm text-blue-700">
+                      Based on order rate and positive feedback from customers who ordered items in the same mood.
+                      Builds over time as more data is collected.
+                    </p>
+                  </div>
+
+                  <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                    <div className="flex items-center gap-2 font-semibold text-purple-800 mb-2">
+                      <span className="bg-purple-200 text-purple-800 text-xs px-2 py-0.5 rounded">+10 pts</span>
+                      Preferred Category
+                    </div>
+                    <p className="text-sm text-purple-700">
+                      Items in categories that are scientifically linked to the mood (e.g., smoothies for stressed).
+                      Configure these in the Mood Settings tab.
+                    </p>
+                  </div>
+
+                  <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                    <div className="flex items-center gap-2 font-semibold text-orange-800 mb-2">
+                      <span className="bg-orange-200 text-orange-800 text-xs px-2 py-0.5 rounded">+5 pts</span>
+                      Featured Items
+                    </div>
+                    <p className="text-sm text-orange-700">
+                      Items marked as "Featured" or "Best Sellers" get a small boost to encourage trying popular items.
+                    </p>
+                  </div>
+
+                  <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                    <div className="flex items-center gap-2 font-semibold text-yellow-800 mb-2">
+                      <span className="bg-yellow-200 text-yellow-800 text-xs px-2 py-0.5 rounded">+5 pts</span>
+                      Time of Day
+                    </div>
+                    <p className="text-sm text-yellow-700">
+                      Morning: hot drinks get priority. Afternoon: cold drinks. Evening: main dishes.
+                      Contextual relevance matters!
+                    </p>
+                  </div>
+
+                  <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                    <div className="flex items-center gap-2 font-semibold text-red-800 mb-2">
+                      <span className="bg-red-200 text-red-800 text-xs px-2 py-0.5 rounded">-50 pts</span>
+                      Excluded Category
+                    </div>
+                    <p className="text-sm text-red-700">
+                      Items in excluded categories (e.g., caffeine for anxious) are heavily penalized to avoid 
+                      recommending harmful items.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Customer Flow */}
+            <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-gradient-to-r from-green-50 to-emerald-50 border-b">
+                <h3 className="font-semibold text-green-900 flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Customer Experience Flow
+                </h3>
+              </div>
+              <div className="p-4">
+                <div className="flex flex-col md:flex-row items-start gap-4">
+                  <div className="flex-1 bg-gray-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl mb-2">😊</div>
+                    <div className="font-semibold">1. Select Mood</div>
+                    <p className="text-sm text-gray-600">Customer selects how they're feeling</p>
+                  </div>
+                  <div className="hidden md:flex items-center text-gray-300 text-2xl">→</div>
+                  <div className="flex-1 bg-gray-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl mb-2">🍕</div>
+                    <div className="font-semibold">2. Get Recommendations</div>
+                    <p className="text-sm text-gray-600">System shows scored recommendations</p>
+                  </div>
+                  <div className="hidden md:flex items-center text-gray-300 text-2xl">→</div>
+                  <div className="flex-1 bg-gray-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl mb-2">📦</div>
+                    <div className="font-semibold">3. Place Order</div>
+                    <p className="text-sm text-gray-600">Order includes mood context</p>
+                  </div>
+                  <div className="hidden md:flex items-center text-gray-300 text-2xl">→</div>
+                  <div className="flex-1 bg-gray-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl mb-2">⭐</div>
+                    <div className="font-semibold">4. Rate Experience</div>
+                    <p className="text-sm text-gray-600">Customer rates if mood improved</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Feedback System */}
+            <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-gradient-to-r from-pink-50 to-rose-50 border-b">
+                <h3 className="font-semibold text-pink-900 flex items-center gap-2">
+                  <Heart className="h-5 w-5" />
+                  Feedback & Learning System
+                </h3>
+              </div>
+              <div className="p-4 space-y-3">
+                <p className="text-gray-700">
+                  The system learns and improves over time based on customer feedback:
+                </p>
+                <ul className="space-y-2 text-sm text-gray-600">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span><strong>Baseline Threshold:</strong> System needs minimum orders (default: 50) per mood before feedback becomes statistically meaningful.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span><strong>Rating Options:</strong> Customers can rate "Feeling Better", "Same", or "Still Down" - either via automatic reflection modal or manually in My Orders.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span><strong>Historical Score:</strong> Calculated as weighted combination of order rate (60%) and positive feedback rate (40%).</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span><strong>Reflection Delay:</strong> Configurable wait time (default: 15 min) before showing mood reflection - or customers can rate immediately in orders.</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Quick Setup Guide */}
+            <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-yellow-50 border-b">
+                <h3 className="font-semibold text-amber-900 flex items-center gap-2">
+                  <Zap className="h-5 w-5" />
+                  Quick Setup Guide
+                </h3>
+              </div>
+              <div className="p-4 space-y-3">
+                <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                  <li><strong>Initialize Settings:</strong> Click "Initialize Settings" button if mood settings are empty.</li>
+                  <li><strong>Configure Mood Categories:</strong> In Mood Settings tab, set preferred/excluded categories for each mood.</li>
+                  <li><strong>Add Mood Benefits to Products:</strong> In Products page, add scientific explanations for relevant moods in the AI Prompt section.</li>
+                  <li><strong>Adjust Algorithm Weights:</strong> Fine-tune point values in Algorithm Config to match your business needs.</li>
+                  <li><strong>Monitor Analytics:</strong> Track order rates and customer feedback in the Analytics tab.</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'settings' && (
           <div className="space-y-4">
             {/* Info Banner */}
@@ -594,14 +892,26 @@ export const MoodSettingsPage = () => {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleResetStats(stat.mood)}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <RefreshCw className="h-3 w-3" />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => loadItemAnalytics(stat.mood)}
+                                className="text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                                title="View item analytics"
+                              >
+                                <Package className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleResetStats(stat.mood)}
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                title="Reset stats"
+                              >
+                                <RefreshCw className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       )
@@ -609,17 +919,172 @@ export const MoodSettingsPage = () => {
                   </tbody>
                 </table>
               </div>
-              <div className="px-4 py-3 bg-gray-50 border-t flex justify-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleResetStats()}
-                  className="text-red-500 border-red-200 hover:bg-red-50"
-                >
-                  <RefreshCw className="h-3 w-3 mr-2" />
-                  Reset All Stats
-                </Button>
+              <div className="px-4 py-3 bg-gray-50 border-t flex justify-between items-center">
+                <div className="text-xs text-gray-500">
+                  Reset options allow you to clear statistics for testing or recalibration
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openResetModal('mood-stats')}
+                    className="text-amber-600 border-amber-200 hover:bg-amber-50"
+                  >
+                    <RefreshCw className="h-3 w-3 mr-2" />
+                    Reset Mood Stats
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openResetModal('item-stats')}
+                    className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                  >
+                    <RefreshCw className="h-3 w-3 mr-2" />
+                    Reset Item Stats
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openResetModal('all')}
+                    className="text-red-500 border-red-200 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-3 w-3 mr-2" />
+                    Reset All
+                  </Button>
+                </div>
               </div>
+            </div>
+
+            {/* Per-Item Analytics Section */}
+            <div className="bg-white rounded-xl border overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Package className="h-5 w-5 text-blue-500" />
+                  Menu Item Analytics by Mood
+                </h3>
+                {selectedMoodForItems && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedMoodForItems(null)
+                      setItemAnalytics([])
+                    }}
+                    className="text-gray-500"
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Clear
+                  </Button>
+                )}
+              </div>
+              
+              {!selectedMoodForItems ? (
+                <div className="p-8 text-center">
+                  <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 mb-4">Select a mood to view per-item analytics</p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {moodSettings.filter(m => m.isActive).map(mood => (
+                      <Button
+                        key={mood.mood}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadItemAnalytics(mood.mood)}
+                        className="flex items-center gap-2"
+                      >
+                        <span>{mood.emoji}</span>
+                        <span>{mood.label}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : loadingItemAnalytics ? (
+                <div className="p-8 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                </div>
+              ) : itemAnalytics.length === 0 ? (
+                <div className="p-8 text-center">
+                  <AlertCircle className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">No item data available for this mood yet</p>
+                  <p className="text-xs text-gray-400 mt-1">Items will appear once customers start ordering with this mood selected</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <div className="px-4 py-2 bg-blue-50 border-b flex items-center gap-2">
+                    <span className="text-xl">{moodSettings.find(m => m.mood === selectedMoodForItems)?.emoji}</span>
+                    <span className="font-medium text-blue-900">
+                      {moodSettings.find(m => m.mood === selectedMoodForItems)?.label} - Item Performance
+                    </span>
+                  </div>
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Menu Item</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                          <div className="flex items-center justify-center gap-1">
+                            <Eye className="h-3 w-3" />
+                            Shown
+                          </div>
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                          <div className="flex items-center justify-center gap-1">
+                            <ShoppingCart className="h-3 w-3" />
+                            Ordered
+                          </div>
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Order Rate</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Feedback</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Improvement</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {itemAnalytics.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              {item.menuItem?.image ? (
+                                <img 
+                                  src={item.menuItem.image.startsWith('http') 
+                                    ? item.menuItem.image 
+                                    : `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${item.menuItem.image}`}
+                                  alt={item.menuItem?.name}
+                                  className="w-10 h-10 rounded-lg object-cover"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                                  <Package className="h-5 w-5 text-gray-400" />
+                                </div>
+                              )}
+                              <div>
+                                <p className="font-medium text-gray-900">{item.menuItem?.name || 'Unknown Item'}</p>
+                                <p className="text-xs text-gray-500 capitalize">{item.menuItem?.category?.toLowerCase().replace('_', ' ')}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center text-gray-600">{item.timesShown}</td>
+                          <td className="px-4 py-3 text-center text-gray-600">{item.timesOrdered}</td>
+                          <td className="px-4 py-3 text-center">
+                            <Badge 
+                              variant={item.orderRate >= 25 ? 'default' : 'secondary'}
+                              className={item.orderRate >= 25 ? 'bg-green-100 text-green-700' : ''}
+                            >
+                              {item.orderRate}%
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-center text-gray-600">{item.feedbackCount}</td>
+                          <td className="px-4 py-3 text-center">
+                            <Badge 
+                              variant={item.improvementRate >= 70 ? 'default' : 'secondary'}
+                              className={item.improvementRate >= 70 ? 'bg-blue-100 text-blue-700' : ''}
+                            >
+                              {item.improvementRate}%
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -681,30 +1146,42 @@ export const MoodSettingsPage = () => {
                   <div>
                     <Label className="font-medium mb-2 block">Baseline Threshold (orders per mood)</Label>
                     <Input
-                      type="number"
-                      value={editConfig.baselineThreshold ?? 50}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={String(editConfig.baselineThreshold ?? 50)}
                       onChange={(e) => {
-                        setEditConfig({ ...editConfig, baselineThreshold: parseInt(e.target.value) || 50 })
+                        const val = e.target.value.replace(/[^0-9]/g, '')
+                        const numVal = val === '' ? 0 : Math.min(500, Math.max(0, parseInt(val)))
+                        setEditConfig({ ...editConfig, baselineThreshold: numVal })
                         setConfigDirty(true)
                       }}
-                      min={10}
-                      max={500}
+                      onBlur={(e) => {
+                        const val = parseInt(e.target.value) || 10
+                        setEditConfig({ ...editConfig, baselineThreshold: Math.min(500, Math.max(10, val)) })
+                      }}
                     />
-                    <p className="text-xs text-gray-500 mt-1">Minimum orders needed before feedback is meaningful</p>
+                    <p className="text-xs text-gray-500 mt-1">Minimum orders needed before feedback is meaningful (10-500)</p>
                   </div>
                   <div>
                     <Label className="font-medium mb-2 block">Reflection Delay (minutes)</Label>
                     <Input
-                      type="number"
-                      value={editConfig.reflectionDelayMinutes ?? 15}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={String(editConfig.reflectionDelayMinutes ?? 15)}
                       onChange={(e) => {
-                        setEditConfig({ ...editConfig, reflectionDelayMinutes: parseInt(e.target.value) || 15 })
+                        const val = e.target.value.replace(/[^0-9]/g, '')
+                        const numVal = val === '' ? 0 : Math.min(60, Math.max(0, parseInt(val)))
+                        setEditConfig({ ...editConfig, reflectionDelayMinutes: numVal })
                         setConfigDirty(true)
                       }}
-                      min={5}
-                      max={60}
+                      onBlur={(e) => {
+                        const val = parseInt(e.target.value) || 1
+                        setEditConfig({ ...editConfig, reflectionDelayMinutes: Math.min(60, Math.max(1, val)) })
+                      }}
                     />
-                    <p className="text-xs text-gray-500 mt-1">Wait time before showing mood reflection</p>
+                    <p className="text-xs text-gray-500 mt-1">Wait time before showing mood reflection (1-60 minutes)</p>
                   </div>
                 </div>
               </div>
@@ -796,26 +1273,7 @@ export const MoodSettingsPage = () => {
                     />
                     <p className="text-xs text-gray-500 mt-1">Boost for featured/best seller items</p>
                   </div>
-
-                  <div>
-                    <Label className="font-medium mb-2 flex items-center justify-between">
-                      <span>Price Range Match</span>
-                      <Badge>{editConfig.priceRangeWeight ?? 5} pts</Badge>
-                    </Label>
-                    <Input
-                      type="range"
-                      min={0}
-                      max={20}
-                      value={editConfig.priceRangeWeight ?? 5}
-                      onChange={(e) => {
-                        setEditConfig({ ...editConfig, priceRangeWeight: parseInt(e.target.value) })
-                        setConfigDirty(true)
-                      }}
-                      className="w-full"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Items matching typical price range</p>
-                  </div>
-
+                  
                   <div>
                     <Label className="font-medium mb-2 flex items-center justify-between">
                       <span>Time of Day</span>
@@ -832,7 +1290,7 @@ export const MoodSettingsPage = () => {
                       }}
                       className="w-full"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Morning coffee, afternoon snacks, etc.</p>
+                    <p className="text-xs text-gray-500 mt-1">Morning: hot drinks | Evening: hot drinks & platters</p>
                   </div>
                 </div>
 
@@ -986,6 +1444,21 @@ export const MoodSettingsPage = () => {
                       </button>
                     ))}
                   </div>
+                  <div className="mt-3">
+                    <Label className="text-sm text-gray-600">Points for Preferred Category Match</Label>
+                    <Input
+                      type="number"
+                      value={editForm.preferredCategoryPoints ?? 10}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value)
+                        setEditForm({ ...editForm, preferredCategoryPoints: isNaN(value) ? 10 : Math.max(0, value) })
+                      }}
+                      min={0}
+                      max={50}
+                      className="mt-1"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Points awarded when menu item is in a preferred category (0-50)</p>
+                  </div>
                 </div>
 
                 {/* Excluded Categories */}
@@ -1056,6 +1529,126 @@ export const MoodSettingsPage = () => {
                     <Save className="h-4 w-4 mr-2" />
                   )}
                   Save Changes
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reset Statistics Modal */}
+        {showResetModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-md w-full shadow-xl">
+              <div className="p-4 border-b flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  <h3 className="font-semibold text-gray-900">Reset Statistics</h3>
+                </div>
+                <button
+                  onClick={() => setShowResetModal(false)}
+                  className="p-1 hover:bg-gray-100 rounded-full"
+                >
+                  <X className="h-4 w-4 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="p-4 space-y-4">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-sm text-amber-800">
+                    <strong>Warning:</strong> This action cannot be undone. All selected statistics will be permanently reset to zero.
+                  </p>
+                </div>
+
+                {/* Reset Scope Selection */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-gray-700">What to reset:</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                      <input
+                        type="radio"
+                        name="resetType"
+                        value="all"
+                        checked={resetType === 'all'}
+                        onChange={() => setResetType('all')}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <div>
+                        <p className="font-medium text-gray-900">All Statistics</p>
+                        <p className="text-xs text-gray-500">Reset both mood stats and per-item stats</p>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                      <input
+                        type="radio"
+                        name="resetType"
+                        value="mood-stats"
+                        checked={resetType === 'mood-stats'}
+                        onChange={() => setResetType('mood-stats')}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <div>
+                        <p className="font-medium text-gray-900">Mood Order Stats Only</p>
+                        <p className="text-xs text-gray-500">Reset total shown, ordered, feedback counts per mood</p>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                      <input
+                        type="radio"
+                        name="resetType"
+                        value="item-stats"
+                        checked={resetType === 'item-stats'}
+                        onChange={() => setResetType('item-stats')}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <div>
+                        <p className="font-medium text-gray-900">Menu Item Stats Only</p>
+                        <p className="text-xs text-gray-500">Reset per-item tracking data for each mood</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Mood Selection (if resetting specific mood) */}
+                {resetMood ? (
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-sm text-gray-600">
+                      Resetting stats for: <strong>{moodSettings.find(m => m.mood === resetMood)?.emoji} {moodSettings.find(m => m.mood === resetMood)?.label || resetMood}</strong>
+                    </p>
+                    <button
+                      onClick={() => setResetMood(null)}
+                      className="text-sm text-purple-600 hover:text-purple-800 mt-1"
+                    >
+                      Reset all moods instead
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <p className="text-sm text-red-700 font-medium">
+                      ⚠️ This will reset statistics for ALL moods
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-4 py-3 border-t flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowResetModal(false)}
+                  disabled={isResetting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConfirmReset}
+                  disabled={isResetting}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {isResetting ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Trash2 className="h-4 w-4 mr-2" />
+                  )}
+                  Reset Statistics
                 </Button>
               </div>
             </div>

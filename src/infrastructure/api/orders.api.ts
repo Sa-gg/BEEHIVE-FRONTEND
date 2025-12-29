@@ -1,4 +1,5 @@
 import { api } from './axiosConfig';
+import { getDeviceId } from '../../shared/utils/deviceId';
 
 export interface OrderItem {
   menuItemId: string;
@@ -15,6 +16,7 @@ export interface CreateOrderRequest {
   createdBy?: string;
   items: OrderItem[];
   paymentMethod?: string;
+  deviceId?: string; // For guest tracking
 }
 
 export interface UpdateOrderRequest {
@@ -38,8 +40,12 @@ export interface OrderResponse {
   totalAmount: number;
   paymentMethod: string | null;
   paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
+  moodContext: string | null;
+  moodFeedbackGiven: boolean;
   linkedOrderId: string | null;
   createdBy: string | null;
+  processedBy: string | null;  // Cashier who processed the order
+  deviceId: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -69,9 +75,25 @@ export const ordersApi = {
     return response.data;
   },
 
-  // Create new order
+  // Track order by order number (for guests)
+  trackByOrderNumber: async (orderNumber: string): Promise<OrderResponse> => {
+    const response = await api.get(`/api/orders/track/${orderNumber}`);
+    return response.data;
+  },
+
+  // Get orders for current device (guest tracking)
+  getMyOrders: async (): Promise<OrderResponse[]> => {
+    const deviceId = getDeviceId();
+    const response = await api.get('/api/orders', { 
+      params: { deviceId, limit: 20 } 
+    });
+    return response.data;
+  },
+
+  // Create new order (automatically includes device ID for guests)
   create: async (data: CreateOrderRequest): Promise<OrderResponse> => {
-    const response = await api.post('/api/orders', data);
+    const deviceId = getDeviceId();
+    const response = await api.post('/api/orders', { ...data, deviceId });
     return response.data;
   },
 

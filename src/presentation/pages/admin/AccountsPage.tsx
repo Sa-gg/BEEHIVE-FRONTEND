@@ -239,13 +239,14 @@ export const AccountsPage = () => {
       setUsers(data)
       
       // Calculate stats
+      const adminCount = data.filter(u => u.role === 'ADMIN').length
       const statsData = {
         totalUsers: data.length,
         customers: data.filter(u => u.role === 'CUSTOMER').length,
         cashiers: data.filter(u => u.role === 'CASHIER').length,
         cooks: data.filter(u => u.role === 'COOK').length,
         managers: data.filter(u => u.role === 'MANAGER').length,
-        admins: data.filter(u => u.role === 'ADMIN').length,
+        admins: adminCount,
         activeUsers: data.filter(u => u.isActive).length
       }
       setStats(statsData)
@@ -260,6 +261,9 @@ export const AccountsPage = () => {
   // Filter and sort users
   const filteredUsers = users
     .filter(user => {
+      // Hide ADMIN users from non-admin staff
+      if (!isAdmin && user.role === 'ADMIN') return false
+      
       const matchesSearch = !searchQuery || 
         user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -460,7 +464,7 @@ export const AccountsPage = () => {
               <Users className="h-5 w-5 text-gray-600" />
               <span className="text-sm font-medium text-gray-700">Total</span>
             </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
+            <p className="text-2xl font-bold text-gray-900">{isAdmin ? stats.totalUsers : stats.totalUsers - stats.admins}</p>
           </div>
           <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -490,13 +494,15 @@ export const AccountsPage = () => {
             </div>
             <p className="text-2xl font-bold text-purple-900">{stats.managers}</p>
           </div>
-          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Shield className="h-5 w-5 text-red-600" />
-              <span className="text-sm font-medium text-red-900">Admins</span>
+          {isAdmin && (
+            <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Shield className="h-5 w-5 text-red-600" />
+                <span className="text-sm font-medium text-red-900">Admins</span>
+              </div>
+              <p className="text-2xl font-bold text-red-900">{stats.admins}</p>
             </div>
-            <p className="text-2xl font-bold text-red-900">{stats.admins}</p>
-          </div>
+          )}
           <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <UserCheck className="h-5 w-5 text-emerald-600" />
@@ -524,7 +530,7 @@ export const AccountsPage = () => {
             className="h-10 px-4 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-amber-500"
           >
             <option value="all">All Roles</option>
-            {ROLES.map(role => (
+            {ROLES.filter(role => isAdmin || role.value !== 'ADMIN').map(role => (
               <option key={role.value} value={role.value}>{role.label}</option>
             ))}
           </select>

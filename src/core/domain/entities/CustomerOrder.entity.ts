@@ -13,6 +13,7 @@ export interface CustomerOrder {
   customerName?: string
   tableNumber?: string
   notes?: string
+  deviceId?: string // For real-time order tracking
   createdAt: Date
   updatedAt: Date
 }

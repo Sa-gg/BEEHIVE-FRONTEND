@@ -23,6 +23,25 @@ export interface MoodOption {
   beneficialNutrients?: string[]
 }
 
+// Dynamic mood settings cache (populated from API)
+let dynamicMoodSettings: MoodOption[] | null = null
+
+// Set dynamic mood settings from API
+export const setDynamicMoodSettings = (settings: MoodOption[]) => {
+  dynamicMoodSettings = settings
+}
+
+// Get dynamic mood settings
+export const getDynamicMoodSettings = (): MoodOption[] | null => {
+  return dynamicMoodSettings
+}
+
+// Clear dynamic mood settings (for logout/refresh)
+export const clearDynamicMoodSettings = () => {
+  dynamicMoodSettings = null
+}
+
+// FALLBACK: Static mood options (used when API is unavailable)
 export const MOOD_OPTIONS: MoodOption[] = [
   {
     value: 'happy',
@@ -135,8 +154,17 @@ export const MOOD_OPTIONS: MoodOption[] = [
   },
 ]
 
+// Get all mood options (prefer dynamic, fallback to static)
+export const getMoodOptions = (): MoodOption[] => {
+  return dynamicMoodSettings && dynamicMoodSettings.length > 0 
+    ? dynamicMoodSettings 
+    : MOOD_OPTIONS
+}
+
 export const getMoodByValue = (value: MoodType): MoodOption | undefined => {
-  return MOOD_OPTIONS.find(mood => mood.value === value)
+  // First try dynamic settings, then fallback to static
+  const options = getMoodOptions()
+  return options.find(mood => mood.value === value)
 }
 
 export const getWeatherContext = (): 'sunny' | 'rainy' | 'hot' | 'cold' | 'normal' => {

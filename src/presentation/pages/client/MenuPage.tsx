@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { ClientLayout } from '../../components/layout/ClientLayout'
 import type { MenuItem } from '../../../core/domain/entities/MenuItem.entity'
 import type { OrderItem } from '../../../core/domain/entities/Order.entity'
 import type { CustomerOrder } from '../../../core/domain/entities/CustomerOrder.entity'
-import type { MoodType } from '../../../shared/utils/moodSystem'
-import { getMoodByValue, getTimeContext, getWeatherContext, analyzeMoodEffectiveness } from '../../../shared/utils/moodSystem'
+import type { MoodType, MoodOption } from '../../../shared/utils/moodSystem'
+import { getMoodByValue, analyzeMoodEffectiveness, setDynamicMoodSettings } from '../../../shared/utils/moodSystem'
 import { getMoodExplanation } from '../../../shared/utils/nutritionalBenefits'
+import type { MoodFeedbackConfig } from '../../../infrastructure/api/moodSettings.api'
 import { CustomerMenuItemCard } from '../../components/features/CustomerMenu/CustomerMenuItemCard'
 import { CartDrawer } from '../../components/features/CustomerMenu/CartDrawer'
 import { CheckoutForm } from '../../components/features/CustomerMenu/CheckoutForm'
@@ -15,11 +16,15 @@ import { MoodReflectionModal } from '../../components/features/CustomerMenu/Mood
 import { CustomerDropdown } from '../../components/features/CustomerMenu/CustomerDropdown'
 import { MyOrdersModal } from '../../components/features/CustomerMenu/MyOrdersModal'
 import { Button } from '../../components/common/ui/button'
-import { ShoppingBag, Sparkles, Loader2 } from 'lucide-react'
+import { ShoppingBag, Sparkles, Loader2, Bell } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
+import { moodSettingsApi } from '../../../infrastructure/api/moodSettings.api'
 import { useAuthStore } from '../../store/authStore'
+import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
+import { getDeviceId } from '../../../shared/utils/deviceId'
+import { playSuccessSound, vibrate } from '../../../shared/utils/notificationSound'
 
 const CATEGORIES = ['all', 'best seller', 'pizza', 'appetizer', 'hot drinks', 'cold drinks', 'smoothie', 'platter', 'savers', 'value meal'] as const
 
@@ -50,29 +55,135 @@ export const MenuPage = () => {
   const [flyingItem, setFlyingItem] = useState<{ id: string; x: number; y: number } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showMyOrders, setShowMyOrders] = useState(false)
+  
+  // Order notifications state
+  const [orderNotifications, setOrderNotifications] = useState(0)
+  const [hasOrderUpdates, setHasOrderUpdates] = useState(false)
+  
+  // Algorithm config from database (for dynamic scoring weights)
+  const [feedbackConfig, setFeedbackConfig] = useState<MoodFeedbackConfig | null>(null)
+  
+  // Track if we've already tracked recommendations for current mood (prevent double-counting)
+  const trackedMoodRef = useRef<string | null>(null)
+  
+  // Get device ID for guest order tracking
+  const deviceId = getDeviceId()
 
-  // Fetch menu items on mount
+  // Real-time order update handler
+  const handleOrderUpdate = useCallback((order: unknown) => {
+    const orderData = order as { customerName?: string; deviceId?: string; status: string }
+    // Check if this order belongs to the current user (by name) or device
+    const isMyOrder = 
+      (user && (orderData.customerName === user.name || orderData.customerName === user.email)) ||
+      orderData.deviceId === deviceId
+    
+    if (isMyOrder) {
+      console.log('Order update for me:', orderData.status)
+      // Trigger immediate refresh of order notifications
+      refreshOrderNotifications()
+      // Flash notification when order is ready
+      if (orderData.status === 'READY') {
+        playSuccessSound()
+        vibrate([200, 100, 200])
+        setHasOrderUpdates(true)
+      }
+    }
+  }, [user, deviceId])
+
+  // Function to refresh order notifications
+  const refreshOrderNotifications = useCallback(async () => {
+    try {
+      let customerOrders
+      
+      if (user) {
+        const allOrders = await ordersApi.getAll()
+        customerOrders = allOrders.filter(
+          order => order.customerName === user?.name || order.customerName === user?.email
+        )
+      } else {
+        customerOrders = await ordersApi.getMyOrders()
+      }
+      
+      const activeCount = customerOrders.filter(
+        o => !['COMPLETED', 'CANCELLED'].includes(o.status)
+      ).length
+      
+      let feedbackCount = 0
+      if (feedbackConfig?.feedbackEnabled) {
+        feedbackCount = customerOrders.filter(o => 
+          o.status === 'COMPLETED' && o.moodContext && !o.moodFeedbackGiven
+        ).length
+      }
+      
+      const totalNotifs = activeCount + feedbackCount
+      setOrderNotifications(totalNotifs)
+      
+      const hasReady = customerOrders.some(o => o.status === 'READY')
+      setHasOrderUpdates(hasReady || feedbackCount > 0)
+    } catch (error) {
+      console.error('Failed to refresh order notifications:', error)
+    }
+  }, [user, feedbackConfig?.feedbackEnabled])
+
+  // Subscribe to real-time order events for customers
+  useOrderEvents({
+    type: 'customer',
+    onOrderUpdate: handleOrderUpdate
+  })
+
+  // Helper to convert API MoodSetting to MoodOption format
+  const convertToMoodOption = (setting: any): MoodOption => ({
+    value: setting.mood.toLowerCase() as MoodType,
+    emoji: setting.emoji,
+    label: setting.label,
+    color: setting.color,
+    description: setting.description,
+    supportMessage: setting.supportMessage || undefined,
+    scientificExplanation: setting.scientificExplanation || undefined,
+    beneficialNutrients: setting.beneficialNutrients || [],
+    preferredCategories: (setting.preferredCategories || []).map((c: string) => c.toLowerCase().replace('_', ' ')),
+    excludeCategories: (setting.excludeCategories || []).map((c: string) => c.toLowerCase().replace('_', ' '))
+  })
+
+  // Fetch menu items and mood settings on mount
   useEffect(() => {
-    const fetchMenuItems = async () => {
+    const fetchData = async () => {
       try {
         setIsLoading(true)
-        const response = await menuItemsApi.getAll()
-        // API returns { success, data }, so we need response.data
-        const items = Array.isArray(response) ? response : response.data || []
-        // Transform items to match MenuItem interface
+        
+        // Fetch menu items, mood settings, and feedback config in parallel
+        const [menuResponse, moodSettings, config] = await Promise.all([
+          menuItemsApi.getAll(),
+          moodSettingsApi.getActiveMoodSettings().catch(() => null),
+          moodSettingsApi.getFeedbackConfig().catch(() => null)
+        ])
+        
+        // Process menu items
+        const items = Array.isArray(menuResponse) ? menuResponse : menuResponse.data || []
         const transformedItems = items.map((item: any) => ({
           ...item,
           category: item.category.toLowerCase().replace('_', ' ') as MenuItem['category']
         }))
         setMenuItems(transformedItems)
+        
+        // Set dynamic mood settings if available
+        if (moodSettings && moodSettings.length > 0) {
+          const converted = moodSettings.map(convertToMoodOption)
+          setDynamicMoodSettings(converted)
+        }
+        
+        // Set feedback config for dynamic scoring weights
+        if (config) {
+          setFeedbackConfig(config)
+        }
       } catch (error) {
-        console.error('Failed to fetch menu items:', error)
-        setMenuItems([]) // Ensure it's always an array
+        console.error('Failed to fetch data:', error)
+        setMenuItems([])
       } finally {
         setIsLoading(false)
       }
     }
-    fetchMenuItems()
+    fetchData()
   }, [])
 
   // Scroll to top when component mounts or mood changes from URL
@@ -80,9 +191,41 @@ export const MenuPage = () => {
     window.scrollTo(0, 0)
   }, [])
 
+  // Auto-show mood selector when navigating with showMood=true (from Mood-Based Menu button)
+  useEffect(() => {
+    const showMoodParam = searchParams.get('showMood')
+    if (showMoodParam === 'true' && !selectedMood) {
+      setShowMoodSelector(true)
+      // Clear the param from URL to prevent re-showing on refresh
+      navigate('/menu', { replace: true })
+    }
+  }, [searchParams, selectedMood, navigate])
+
+  // Poll for order updates when user is authenticated or guest with device ID
+  useEffect(() => {
+    refreshOrderNotifications()
+    const interval = setInterval(refreshOrderNotifications, 30000) // Poll every 30 seconds
+    return () => clearInterval(interval)
+  }, [refreshOrderNotifications])
+
   const currentMood = selectedMood ? getMoodByValue(selectedMood) : null
-  const timeContext = getTimeContext()
-  const weatherContext = getWeatherContext()
+  
+  // Get dynamic scoring weights from config (with fallbacks)
+  const scoringWeights = {
+    moodBenefits: feedbackConfig?.moodBenefitsWeight ?? 20,
+    preferredCategory: feedbackConfig?.preferredCategoryWeight ?? 10,
+    historical: feedbackConfig?.historicalDataWeight ?? 15,
+    featured: feedbackConfig?.featuredItemWeight ?? 5,
+    timeOfDay: feedbackConfig?.timeOfDayWeight ?? 5
+  }
+  
+  // Get current time context for time-based scoring
+  const getTimeContext = (): 'morning' | 'afternoon' | 'evening' => {
+    const hour = new Date().getHours()
+    if (hour >= 6 && hour < 12) return 'morning'
+    if (hour >= 12 && hour < 18) return 'afternoon'
+    return 'evening'
+  }
 
   // Helper function to get full image URL from backend
   const getImageUrl = (imagePath: string | null) => {
@@ -165,7 +308,7 @@ export const MenuPage = () => {
     setIsCartOpen(false)
   }
 
-  const handleSubmitOrder = async (data: { customerName: string; tableNumber: string; notes: string; orderType: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY' }) => {
+  const handleSubmitOrder = async (data: { customerName: string; tableNumber: string; notes: string; orderType: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY'; paymentMethod: string }) => {
     try {
       setIsSubmitting(true)
       
@@ -182,6 +325,8 @@ export const MenuPage = () => {
         tableNumber: data.tableNumber || undefined,
         orderType: data.orderType,
         moodContext: selectedMood || undefined,
+        paymentMethod: data.paymentMethod,
+        createdBy: user ? 'Customer' : 'Guest Customer', // Track if customer is logged in or guest
         items: orderItems
       })
 
@@ -197,6 +342,7 @@ export const MenuPage = () => {
         customerName: response.customerName || undefined,
         tableNumber: response.tableNumber || undefined,
         notes: data.notes || undefined,
+        deviceId: response.deviceId || undefined, // For real-time tracking
         createdAt: new Date(response.createdAt),
         updatedAt: new Date(response.updatedAt),
       }
@@ -211,17 +357,37 @@ export const MenuPage = () => {
           setShowMoodReflection(true)
         }, 2000)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to submit order:', error)
-      alert('Failed to place order. Please try again.')
+      console.error('Error details:', error.response?.data)
+      const errorMessage = error.response?.data?.error || 'Failed to place order. Please try again.'
+      alert(errorMessage)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleSelectMood = (mood: MoodType) => {
+  const handleSelectMood = async (mood: MoodType) => {
     setSelectedMood(mood)
     setShowMoodSelector(false)
+    // Reset tracked mood ref so useEffect will track for the new mood
+    trackedMoodRef.current = null
+  }
+  
+  // Track shown items when mood is selected and recommendations are computed
+  const trackRecommendedItems = async (mood: MoodType, itemIds: string[]) => {
+    // Only track if we haven't already tracked for this mood
+    if (trackedMoodRef.current === mood) {
+      return
+    }
+    trackedMoodRef.current = mood
+    
+    try {
+      await moodSettingsApi.trackMoodShown(mood, itemIds)
+    } catch (error) {
+      console.error('Failed to track mood shown:', error)
+      // Don't block UX if tracking fails
+    }
   }
 
   const getRecommendedItems = (): MenuItem[] => {
@@ -243,81 +409,58 @@ export const MenuPage = () => {
       return item.available
     })
 
-    // Score each item based on multiple factors
+    // Score each item based on multiple factors using DYNAMIC weights from config
+    const timeContext = getTimeContext()
     const scoredItems = recommended.map(item => {
       let score = 0
-      let orderRate = 0
-      let hasViews = false
       
-      // HISTORICAL ORDER-BASED SCORE (10 points max)
-      // Parse moodOrderStats from database
-      if (item.moodOrderStats) {
-        try {
-          const stats = typeof item.moodOrderStats === 'string' 
-            ? JSON.parse(item.moodOrderStats) 
-            : item.moodOrderStats
-          
-          if (stats[selectedMood]) {
-            const { shown, ordered } = stats[selectedMood]
-            if (shown > 0) {
-              hasViews = true
-              // Order rate: percentage of times customers chose this when shown
-              orderRate = ordered / shown
-              score += orderRate * 10 // Convert to 0-10 score
-            }
-          }
-        } catch (e) {
-          console.error('Error parsing moodOrderStats:', e)
-        }
-      }
-      
-      // HIGHEST PRIORITY: Boost items with scientific explanations for this mood (20 points)
-      // Pass moodBenefits from database to getMoodExplanation
+      // HIGHEST PRIORITY: Items with scientific mood explanations
       const hasExplanation = getMoodExplanation(item.name, selectedMood, item.moodBenefits)
       if (hasExplanation) {
-        score += 20
+        score += scoringWeights.moodBenefits
       }
       
-      // Preferred categories get high score (10 points)
+      // Preferred categories boost
       if (moodConfig.preferredCategories?.includes(item.category)) {
-        score += 10
+        score += scoringWeights.preferredCategory
       }
       
-      // Items from successful past orders get bonus (15 points)
+      // Items from successful past orders (historical success)
       if (topItems.includes(item.name)) {
-        score += 15
+        score += scoringWeights.historical
       }
       
-      // Context-based scoring (5 points each)
-      if (timeContext === 'morning' && (item.category === 'hot drinks' || item.category === 'appetizer')) {
-        score += 5
-      } else if ((timeContext === 'evening' || timeContext === 'night') && 
-                 (item.category === 'pizza' || item.category === 'platter' || item.category === 'value meal')) {
-        score += 5
+      // Featured/best seller items boost
+      if (item.featured) {
+        score += scoringWeights.featured
       }
       
-      if (weatherContext === 'hot' && (item.category === 'cold drinks' || item.category === 'smoothie')) {
-        score += 5
-      } else if (weatherContext === 'cold' && item.category === 'hot drinks') {
-        score += 5
+      // Time of day context boost (+5 pts)
+      // Morning: boost hot drinks and light breakfast items
+      // Evening: boost hot drinks and comfort food
+      if (timeContext === 'morning' && item.category === 'hot drinks') {
+        score += scoringWeights.timeOfDay
+      } else if (timeContext === 'evening' && (item.category === 'hot drinks' || item.category === 'platter')) {
+        score += scoringWeights.timeOfDay
       }
       
-      return { item, score, hasExplanation, orderRate, hasViews }
+      return { item, score, hasExplanation }
     })
 
-    // Filter items: only show if they have mood benefits OR order rate > 20% OR featured
-    // This prevents items with 0% order rate and no benefits from appearing
-    const filteredItems = scoredItems.filter(({ hasExplanation, orderRate, hasViews }) => {
+    // Filter items: only show if they have mood benefits OR are in preferred category OR featured
+    const filteredItems = scoredItems.filter(({ score, hasExplanation, item }) => {
       // Always show if has mood benefits
       if (hasExplanation) return true
       
-      // If item has been shown for this mood and has >20% order rate
-      if (hasViews && orderRate > 0.2) return true
+      // Show items in preferred categories
+      if (moodConfig.preferredCategories?.includes(item.category)) return true
       
-      // If no views yet, allow it to appear (give it a chance)
-      if (!hasViews) return true
+      // Show featured items
+      if (item.featured) return true
       
-      // Reject items with views but poor performance (0-20% order rate)
+      // Show if score is above minimum threshold
+      if (score >= scoringWeights.featured) return true
+      
       return false
     })
 
@@ -327,16 +470,59 @@ export const MenuPage = () => {
       .slice(0, 8)
       .map(scored => scored.item)
     
-    // Track that these items were shown for this mood
-    if (topRecommended.length > 0) {
-      const itemIds = topRecommended.map(item => item.id)
-      menuItemsApi.trackMoodViews(itemIds, selectedMood).catch(err => {
-        console.error('Failed to track mood views:', err)
-      })
-    }
-    
     return topRecommended
   }
+  
+  // Track recommendations when selectedMood changes (only once per mood selection)
+  useEffect(() => {
+    if (!selectedMood || trackedMoodRef.current === selectedMood) {
+      return
+    }
+    
+    // Get recommended items for tracking (same logic as getRecommendedItems with dynamic weights)
+    const moodConfig = getMoodByValue(selectedMood)
+    if (!moodConfig) return
+    
+    const timeContext = getTimeContext()
+    const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
+    const recommended = safeMenuItems.filter(item => {
+      if (moodConfig.excludeCategories?.includes(item.category)) return false
+      return item.available
+    })
+    
+    const scoredItems = recommended.map(item => {
+      let score = 0
+      const hasExplanation = getMoodExplanation(item.name, selectedMood, item.moodBenefits)
+      if (hasExplanation) score += scoringWeights.moodBenefits
+      if (moodConfig.preferredCategories?.includes(item.category)) score += scoringWeights.preferredCategory
+      if (item.featured) score += scoringWeights.featured
+      // Time of day boost
+      if (timeContext === 'morning' && item.category === 'hot drinks') {
+        score += scoringWeights.timeOfDay
+      } else if (timeContext === 'evening' && (item.category === 'hot drinks' || item.category === 'platter')) {
+        score += scoringWeights.timeOfDay
+      }
+      return { item, score, hasExplanation }
+    })
+    
+    const filteredItems = scoredItems.filter(({ score, hasExplanation, item }) => {
+      if (hasExplanation) return true
+      if (moodConfig.preferredCategories?.includes(item.category)) return true
+      if (item.featured) return true
+      if (score >= scoringWeights.featured) return true
+      return false
+    })
+    
+    const topRecommended = filteredItems
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map(scored => scored.item)
+    
+    if (topRecommended.length > 0) {
+      const itemIds = topRecommended.map(item => item.id)
+      trackRecommendedItems(selectedMood, itemIds)
+    }
+  }, [selectedMood, menuItems, scoringWeights])
 
   const handleNewOrder = () => {
     setCartItems([])
@@ -578,6 +764,64 @@ export const MenuPage = () => {
           </button>
         )}
 
+        {/* Floating Orders Button with Bee Icon - positioned on left for better mobile UX */}
+        {user && (
+          <button
+            onClick={() => setShowMyOrders(true)}
+            className={`fixed bottom-6 left-6 z-50 group transition-all duration-300 ${
+              hasOrderUpdates || orderNotifications > 0 ? 'animate-bounce-slow' : ''
+            }`}
+          >
+            <div className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 ${
+              orderNotifications > 0 
+                ? 'bg-gradient-to-br from-yellow-400 to-orange-400 border-2 border-yellow-300' 
+                : 'bg-white border-2 border-gray-200 hover:border-yellow-400'
+            } hover:shadow-2xl hover:scale-110`}>
+              {/* Bee Emoji */}
+              <span className={`text-2xl transition-transform duration-300 ${orderNotifications > 0 ? 'animate-wiggle' : 'group-hover:scale-110'}`}>
+                🐝
+              </span>
+            </div>
+            
+            {/* Notification Badge */}
+            {orderNotifications > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[24px] h-6 px-1.5 rounded-full flex items-center justify-center text-xs font-bold text-white bg-red-500 shadow-lg">
+                {orderNotifications}
+              </span>
+            )}
+            
+            {/* Ready Order Pulse Effect */}
+            {hasOrderUpdates && (
+              <span className="absolute -top-2 -left-2 w-5 h-5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-5 w-5 bg-green-500 items-center justify-center shadow-sm">
+                  <Bell className="h-2.5 w-2.5 text-white" />
+                </span>
+              </span>
+            )}
+            
+            {/* Label on hover */}
+            <span className="absolute left-full ml-2 px-2 py-1 bg-black text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity shadow-lg">
+              My Orders
+            </span>
+          </button>
+        )}
+
+        {/* Custom animation styles */}
+        <style>{`
+          @keyframes bounce-slow {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+          }
+          @keyframes wiggle {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-5deg); }
+            75% { transform: rotate(5deg); }
+          }
+          .animate-bounce-slow { animation: bounce-slow 2s ease-in-out infinite; }
+          .animate-wiggle { animation: wiggle 0.5s ease-in-out infinite; }
+        `}</style>
+
         {/* Flying Item Animation */}
         {flyingItem && (
           <div
@@ -654,6 +898,7 @@ export const MenuPage = () => {
         <MyOrdersModal
           open={showMyOrders}
           onOpenChange={setShowMyOrders}
+          onFeedbackSubmitted={refreshOrderNotifications}
         />
       </div>
     </ClientLayout>

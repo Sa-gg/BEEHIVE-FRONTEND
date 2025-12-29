@@ -1,22 +1,72 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { MoodType, MoodOption } from '../../../../shared/utils/moodSystem'
-import { MOOD_OPTIONS } from '../../../../shared/utils/moodSystem'
-import { X, Info } from 'lucide-react'
+import { getMoodOptions, setDynamicMoodSettings } from '../../../../shared/utils/moodSystem'
+import { moodSettingsApi } from '../../../../infrastructure/api/moodSettings.api'
+import { X, Info, Loader2 } from 'lucide-react'
 
 interface MoodSelectorProps {
   onSelectMood: (mood: MoodType) => void
   onClose: () => void
 }
 
+// Helper to convert API MoodSetting to MoodOption format
+const convertToMoodOption = (setting: any): MoodOption => ({
+  value: setting.mood.toLowerCase() as MoodType,
+  emoji: setting.emoji,
+  label: setting.label,
+  color: setting.color,
+  description: setting.description,
+  supportMessage: setting.supportMessage || undefined,
+  scientificExplanation: setting.scientificExplanation || undefined,
+  beneficialNutrients: setting.beneficialNutrients || [],
+  preferredCategories: (setting.preferredCategories || []).map((c: string) => c.toLowerCase().replace('_', ' ')),
+  excludeCategories: (setting.excludeCategories || []).map((c: string) => c.toLowerCase().replace('_', ' '))
+})
+
 export const MoodSelector = ({ onSelectMood, onClose }: MoodSelectorProps) => {
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(null)
   const [showScience, setShowScience] = useState<MoodType | null>(null)
+  const [moodOptions, setMoodOptions] = useState<MoodOption[]>(getMoodOptions())
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Fetch dynamic mood settings from API
+  useEffect(() => {
+    const fetchMoodSettings = async () => {
+      try {
+        setIsLoading(true)
+        const settings = await moodSettingsApi.getActiveMoodSettings()
+        if (settings && settings.length > 0) {
+          const converted = settings.map(convertToMoodOption)
+          setDynamicMoodSettings(converted)
+          setMoodOptions(converted)
+        }
+      } catch (error) {
+        console.error('Failed to fetch mood settings, using fallback:', error)
+        // Keep using static options
+        setMoodOptions(getMoodOptions())
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchMoodSettings()
+  }, [])
 
   const handleSelectMood = (mood: MoodOption) => {
     setSelectedMood(mood.value)
     setTimeout(() => {
       onSelectMood(mood.value)
     }, 300)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 bg-black/50 z-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+          <p className="text-gray-600">Loading mood options...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -39,7 +89,7 @@ export const MoodSelector = ({ onSelectMood, onClose }: MoodSelectorProps) => {
         {/* Mood Options - Scrollable */}
         <div className="p-4 sm:p-6 overflow-y-auto">
           <div className="grid grid-cols-3 gap-3">
-          {MOOD_OPTIONS.map((mood) => (
+          {moodOptions.map((mood) => (
             <div key={mood.value} className="relative flex justify-center">
               <button
                 onClick={() => handleSelectMood(mood)}

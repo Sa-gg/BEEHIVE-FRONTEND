@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
@@ -8,6 +8,7 @@ import { ordersApi } from '../../../infrastructure/api/orders.api'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { useSettingsStore } from '../../store/settingsStore'
 import { printWithIframe } from '../../../shared/utils/printUtils'
+import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
 
 // Helper to format order number - removes date prefix for cleaner display
 // ORD-20251227-00001 -> ORD-00001
@@ -43,6 +44,8 @@ interface Order {
   completedAt?: string | null
   subtotal: number
   tax: number
+  createdBy?: string | null
+  processedBy?: string | null
 }
 
 export const OrdersPage = () => {
@@ -81,6 +84,49 @@ export const OrdersPage = () => {
   const [gridColumns, setGridColumns] = useState<number>(() => {
     const saved = localStorage.getItem('orderGridColumns')
     return saved ? parseInt(saved) : 1
+  })
+
+  // Function to refresh orders list
+  const refreshOrders = useCallback(async () => {
+    try {
+      const fetchedOrders = await ordersApi.getAll()
+      const ordersWithNames = fetchedOrders.map(order => ({
+        ...order,
+        customerName: order.customerName || 'Guest',
+        items: order.order_items.map(item => ({
+          id: item.id,
+          menuItemId: item.menuItemId,
+          name: menuItems.get(item.menuItemId) || `Unknown Item`,
+          quantity: item.quantity,
+          price: item.price,
+          subtotal: item.subtotal
+        }))
+      }))
+      const activeOrders = ordersWithNames.filter(
+        order => !(order.status === 'COMPLETED' && order.paymentStatus === 'PAID')
+      )
+      setOrders(activeOrders)
+    } catch (error) {
+      console.error('Failed to fetch updated orders:', error)
+    }
+  }, [menuItems])
+
+  // Real-time order events handler - just refresh data (sound/banner handled by AdminLayout)
+  const handleNewOrder = useCallback(() => {
+    console.log('OrdersPage: New order received, refreshing list')
+    refreshOrders()
+  }, [refreshOrders])
+
+  const handleOrderUpdate = useCallback(() => {
+    console.log('OrdersPage: Order updated, refreshing list')
+    refreshOrders()
+  }, [refreshOrders])
+
+  // Subscribe to real-time order events (for data refresh only - notifications handled globally)
+  useOrderEvents({
+    type: 'cashier',
+    onNewOrder: handleNewOrder,
+    onOrderUpdate: handleOrderUpdate
   })
 
   // Save grid columns preference
@@ -189,10 +235,16 @@ export const OrdersPage = () => {
 
   const updateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
     try {
-      await ordersApi.updateStatus(orderId, newStatus)
+      // Get the updated order from API response (includes processedBy when completed)
+      const updatedOrder = await ordersApi.updateStatus(orderId, newStatus)
       setOrders(prev => prev.map(order => 
         order.id === orderId 
-          ? { ...order, status: newStatus, completedAt: newStatus === 'COMPLETED' ? new Date().toISOString() : order.completedAt }
+          ? { 
+              ...order, 
+              status: newStatus, 
+              completedAt: newStatus === 'COMPLETED' ? new Date().toISOString() : order.completedAt,
+              processedBy: updatedOrder.processedBy || order.processedBy
+            }
           : order
       ))
     } catch (error: any) {
@@ -580,12 +632,17 @@ export const OrdersPage = () => {
   
   const filteredOrders = orders
     .filter(order => {
+      // Exclude cancelled orders from "all" - they only show in "cancelled" category
+      if (selectedStatus === 'all' && order.status === 'CANCELLED') {
+        return false
+      }
+      
       const matchesStatus = selectedStatus === 'all' || order.status.toLowerCase() === selectedStatus.toLowerCase()
       const matchesSearch = searchQuery.trim() === '' || 
         formatOrderNumber(order.orderNumber).toLowerCase().includes(searchQuery.toLowerCase()) ||
         (order.customerName && order.customerName.toLowerCase().includes(searchQuery.toLowerCase()))
       
-      // Only show cancelled orders from today
+      // Only show cancelled orders from today in the cancelled category
       if (order.status === 'CANCELLED') {
         const orderDate = new Date(order.createdAt).toISOString().split('T')[0]
         if (orderDate !== today) return false
@@ -791,6 +848,14 @@ export const OrdersPage = () => {
                 className="whitespace-nowrap"
               >
                 Completed
+              </Button>
+              <Button
+                variant={selectedStatus === 'cancelled' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedStatus('cancelled')}
+                className="whitespace-nowrap text-red-600 hover:text-red-700"
+              >
+                Cancelled
               </Button>
             </div>
           </div>
