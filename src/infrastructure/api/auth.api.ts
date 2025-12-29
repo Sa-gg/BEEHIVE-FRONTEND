@@ -67,5 +67,11 @@ export const authApi = {
   async addLoyaltyPoints(userId: string, points: number): Promise<User> {
     const response = await api.post<User>('/api/auth/loyalty-points', { userId, points });
     return response.data;
+  },
+
+  // Validate manager PIN for authorization
+  async validateManagerPin(pin: string): Promise<{ valid: boolean; manager?: { id: string; name: string } }> {
+    const response = await api.post<{ valid: boolean; manager?: { id: string; name: string } }>('/api/auth/validate-manager-pin', { pin });
+    return response.data;
   }
 };

@@ -3,12 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Clock, CheckCircle, XCircle, Package, Search, Filter, Eye, Loader2, Printer, Merge, X, Grid3X3, LayoutGrid } from 'lucide-react'
-import { ordersApi } from '../../../infrastructure/api/orders.api'
+import { Clock, CheckCircle, XCircle, Package, Search, Filter, Eye, Loader2, Printer, Merge, X, Grid3X3, LayoutGrid, MoreVertical, AlertTriangle, Ban, DollarSign, Gift, FileX, Link2 } from 'lucide-react'
+import { ordersApi, type PaymentStatus, type OrderStatus } from '../../../infrastructure/api/orders.api'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { useSettingsStore } from '../../store/settingsStore'
 import { printWithIframe } from '../../../shared/utils/printUtils'
 import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
+import { ManagerPinModal } from '../../components/common/ManagerPinModal'
 
 // Helper to format order number - removes date prefix for cleaner display
 // ORD-20251227-00001 -> ORD-00001
@@ -35,17 +36,22 @@ interface Order {
   customerName: string | null
   items: OrderItem[]
   totalAmount: number
-  status: 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED'
-  paymentStatus: 'PAID' | 'UNPAID' | 'REFUNDED'
+  discountAmount: number
+  status: OrderStatus
+  paymentStatus: PaymentStatus
   paymentMethod?: string | null
   orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY'
   tableNumber?: string | null
   createdAt: string
   completedAt?: string | null
+  paidAt?: string | null
   subtotal: number
   tax: number
   createdBy?: string | null
   processedBy?: string | null
+  linkedOrderId?: string | null
+  notes?: string | null
+  authorizedBy?: string | null
 }
 
 export const OrdersPage = () => {
@@ -85,6 +91,19 @@ export const OrdersPage = () => {
     const saved = localStorage.getItem('orderGridColumns')
     return saved ? parseInt(saved) : 1
   })
+
+  // Manager PIN modal state
+  const [showManagerPinModal, setShowManagerPinModal] = useState(false)
+  const [pendingAction, setPendingAction] = useState<{
+    type: 'void' | 'refund' | 'complimentary' | 'writeOff' | 'voidAndReorder'
+    orderId: string
+    order?: Order
+  } | null>(null)
+  const [actionReason, setActionReason] = useState('')
+  const [showReasonModal, setShowReasonModal] = useState(false)
+  
+  // More actions dropdown state
+  const [openMoreActionsId, setOpenMoreActionsId] = useState<string | null>(null)
 
   // Function to refresh orders list
   const refreshOrders = useCallback(async () => {
@@ -233,6 +252,16 @@ export const OrdersPage = () => {
     CANCELLED: { label: 'Cancelled', color: 'bg-red-100 text-red-800 border-red-200', icon: XCircle },
   }
 
+  // Payment status configuration
+  const paymentStatusConfig: Record<PaymentStatus, { label: string; color: string; icon: any }> = {
+    UNPAID: { label: 'Unpaid', color: 'bg-orange-100 text-orange-800 border-orange-200', icon: DollarSign },
+    PAID: { label: 'Paid', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle },
+    REFUNDED: { label: 'Refunded', color: 'bg-purple-100 text-purple-800 border-purple-200', icon: DollarSign },
+    COMPLIMENTARY: { label: 'Complimentary', color: 'bg-pink-100 text-pink-800 border-pink-200', icon: Gift },
+    WRITTEN_OFF: { label: 'Written Off', color: 'bg-gray-100 text-gray-800 border-gray-200', icon: FileX },
+    VOIDED: { label: 'Voided', color: 'bg-red-100 text-red-800 border-red-200', icon: Ban },
+  }
+
   const updateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
     try {
       // Get the updated order from API response (includes processedBy when completed)
@@ -292,6 +321,94 @@ export const OrdersPage = () => {
       alert(`Failed to update payment method: ${error.response?.data?.error || error.message}`)
     }
   }
+
+  // ============ Manager Authorization Actions ============
+  
+  // Start action that requires manager authorization
+  const startAuthorizedAction = (type: 'void' | 'refund' | 'complimentary' | 'writeOff' | 'voidAndReorder', orderId: string, order?: Order) => {
+    setPendingAction({ type, orderId, order })
+    setActionReason('')
+    setShowReasonModal(true)
+    setOpenMoreActionsId(null)
+  }
+
+  // Handle reason submission and open PIN modal
+  const handleReasonSubmit = () => {
+    if (!actionReason.trim()) {
+      alert('Please enter a reason for this action')
+      return
+    }
+    setShowReasonModal(false)
+    setShowManagerPinModal(true)
+  }
+
+  // Execute the pending action after manager authorization
+  const executePendingAction = async (managerId: string, managerName: string) => {
+    if (!pendingAction) return
+
+    try {
+      const { type, orderId, order } = pendingAction
+
+      switch (type) {
+        case 'void':
+          await ordersApi.voidOrder(orderId, actionReason, managerId)
+          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'CANCELLED', paymentStatus: 'VOIDED', notes: actionReason, authorizedBy: managerId } : o))
+          alert(`Order voided successfully. Authorized by: ${managerName}`)
+          break
+
+        case 'refund':
+          await ordersApi.refundOrder(orderId, actionReason, managerId)
+          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, paymentStatus: 'REFUNDED', notes: actionReason, authorizedBy: managerId } : o))
+          alert(`Order refunded successfully. Authorized by: ${managerName}`)
+          break
+
+        case 'complimentary':
+          await ordersApi.markAsComplimentary(orderId, actionReason, managerId)
+          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, paymentStatus: 'COMPLIMENTARY', notes: actionReason, authorizedBy: managerId } : o))
+          alert(`Order marked as complimentary. Authorized by: ${managerName}`)
+          break
+
+        case 'writeOff':
+          await ordersApi.writeOff(orderId, actionReason, managerId)
+          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, paymentStatus: 'WRITTEN_OFF', notes: actionReason, authorizedBy: managerId } : o))
+          alert(`Order written off. Authorized by: ${managerName}`)
+          break
+
+        case 'voidAndReorder':
+          // First void the order
+          await ordersApi.voidOrder(orderId, actionReason, managerId)
+          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'CANCELLED', paymentStatus: 'VOIDED', notes: actionReason, authorizedBy: managerId } : o))
+          
+          // Then navigate to POS with order items pre-filled
+          if (order) {
+            navigate('/admin/pos', { state: { reorderFrom: order, linkedOrderId: orderId } })
+          }
+          break
+      }
+
+      // Reset state
+      setPendingAction(null)
+      setActionReason('')
+      
+      // Close order details modal if open
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder(null)
+      }
+    } catch (error: any) {
+      console.error(`Failed to execute ${pendingAction.type} action:`, error)
+      alert(`Failed to ${pendingAction.type} order: ${error.response?.data?.error || error.message}`)
+    }
+  }
+
+  // Cancel pending action
+  const cancelPendingAction = () => {
+    setPendingAction(null)
+    setActionReason('')
+    setShowReasonModal(false)
+    setShowManagerPinModal(false)
+  }
+
+  // ============ End Manager Authorization Actions ============
 
   // Toggle order selection for merge
   const toggleOrderForMerge = (orderId: string) => {
@@ -632,23 +749,49 @@ export const OrdersPage = () => {
   
   const filteredOrders = orders
     .filter(order => {
-      // Exclude cancelled orders from "all" - they only show in "cancelled" category
-      if (selectedStatus === 'all' && order.status === 'CANCELLED') {
-        return false
-      }
-      
-      const matchesStatus = selectedStatus === 'all' || order.status.toLowerCase() === selectedStatus.toLowerCase()
+      // Search filter
       const matchesSearch = searchQuery.trim() === '' || 
         formatOrderNumber(order.orderNumber).toLowerCase().includes(searchQuery.toLowerCase()) ||
         (order.customerName && order.customerName.toLowerCase().includes(searchQuery.toLowerCase()))
-      
-      // Only show cancelled orders from today in the cancelled category
-      if (order.status === 'CANCELLED') {
-        const orderDate = new Date(order.createdAt).toISOString().split('T')[0]
-        if (orderDate !== today) return false
+
+      if (!matchesSearch) return false
+
+      // Status filter logic
+      switch (selectedStatus) {
+        case 'all':
+          // Exclude cancelled/voided orders from "all" view
+          return order.status !== 'CANCELLED'
+          
+        case 'pending':
+          return order.status === 'PENDING'
+          
+        case 'preparing':
+          return order.status === 'PREPARING'
+          
+        case 'completed':
+          return order.status === 'COMPLETED'
+          
+        case 'cancelled': {
+          // Show cancelled orders from today only
+          const orderDate = new Date(order.createdAt).toISOString().split('T')[0]
+          return order.status === 'CANCELLED' && orderDate === today
+        }
+          
+        case 'unpaid':
+          // Show all unpaid orders that aren't cancelled
+          return order.paymentStatus === 'UNPAID' && order.status !== 'CANCELLED'
+          
+        case 'paid':
+          // Show all paid orders (including completed)
+          return order.paymentStatus === 'PAID'
+          
+        case 'linked':
+          // Show orders that have a linkedOrderId (are linked to another order)
+          return order.linkedOrderId !== null
+          
+        default:
+          return true
       }
-      
-      return matchesStatus && matchesSearch
     })
     // Sort: PENDING first, then PREPARING, then COMPLETED, then CANCELLED
     .sort((a, b) => {
@@ -815,7 +958,7 @@ export const OrdersPage = () => {
             </div>
 
             {/* Row 2: Status Filter */}
-            <div className="flex items-center gap-2 overflow-x-auto">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
               <Filter className="h-4 w-4 text-gray-500 flex-shrink-0" />
               <Button
                 variant={selectedStatus === 'all' ? 'default' : 'outline'}
@@ -848,6 +991,35 @@ export const OrdersPage = () => {
                 className="whitespace-nowrap"
               >
                 Completed
+              </Button>
+              
+              {/* Divider */}
+              <div className="w-px h-6 bg-gray-300 mx-1" />
+              
+              {/* Payment status filters */}
+              <Button
+                variant={selectedStatus === 'unpaid' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedStatus('unpaid')}
+                className="whitespace-nowrap text-orange-600"
+              >
+                💰 Unpaid
+              </Button>
+              <Button
+                variant={selectedStatus === 'paid' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedStatus('paid')}
+                className="whitespace-nowrap text-green-600"
+              >
+                ✓ Paid
+              </Button>
+              <Button
+                variant={selectedStatus === 'linked' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedStatus('linked')}
+                className="whitespace-nowrap text-blue-600"
+              >
+                🔗 Linked
               </Button>
               <Button
                 variant={selectedStatus === 'cancelled' ? 'default' : 'outline'}
@@ -952,15 +1124,16 @@ export const OrdersPage = () => {
                           <span className="font-semibold text-lg" style={{ color: '#F9C900' }}>
                             ₱{order.totalAmount.toFixed(2)}
                           </span>
-                          <Badge variant={order.paymentStatus === 'PAID' ? 'default' : 'outline'} className="text-xs">
-                            {order.paymentStatus === 'PAID' ? '✓ Paid' : 'Unpaid'}
+                          <Badge className={`text-xs ${paymentStatusConfig[order.paymentStatus]?.color || 'bg-gray-100 text-gray-800'}`}>
+                            {paymentStatusConfig[order.paymentStatus]?.label || order.paymentStatus}
                           </Badge>
                         </div>
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex flex-wrap lg:flex-col gap-2">
+                    {/* Actions - Based on status and payment status */}
+                    <div className="flex flex-wrap lg:flex-col gap-2 relative">
+                      {/* PENDING Orders (Mobile/Customer orders) */}
                       {order.status === 'PENDING' && (
                         <>
                           <Button
@@ -969,7 +1142,7 @@ export const OrdersPage = () => {
                             variant="outline"
                             className="flex-1 lg:flex-none lg:min-w-[120px] border-blue-300 text-blue-600 hover:bg-blue-50"
                           >
-                            Edit Order
+                            ✏️ Edit Order
                           </Button>
                           <Button
                             size="sm"
@@ -977,7 +1150,7 @@ export const OrdersPage = () => {
                             className="flex-1 lg:flex-none lg:min-w-[120px]"
                             style={{ backgroundColor: '#F9C900', color: '#000000' }}
                           >
-                            Start Preparing
+                            👨‍🍳 Start Preparing
                           </Button>
                           <Button
                             size="sm"
@@ -985,51 +1158,224 @@ export const OrdersPage = () => {
                             onClick={() => updateOrderStatus(order.id, 'CANCELLED')}
                             className="flex-1 lg:flex-none text-red-600 border-red-300 hover:bg-red-50"
                           >
-                            Cancel
+                            ❌ Cancel Order
                           </Button>
                         </>
                       )}
-                      {order.status === 'PREPARING' && (
-                        <Button
-                          size="sm"
-                          onClick={() => updateOrderStatus(order.id, 'COMPLETED')}
-                          className="lg:min-w-[120px]"
-                          style={{ backgroundColor: '#F9C900', color: '#000000' }}
-                        >
-                          Mark Complete
-                        </Button>
+
+                      {/* PREPARING Orders - Unpaid */}
+                      {order.status === 'PREPARING' && order.paymentStatus === 'UNPAID' && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => updateOrderStatus(order.id, 'COMPLETED')}
+                            className="lg:min-w-[120px]"
+                            style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                          >
+                            ✅ Mark Complete
+                          </Button>
+                          
+                          {/* More Actions Menu */}
+                          <div className="relative">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setOpenMoreActionsId(openMoreActionsId === order.id ? null : order.id)
+                              }}
+                              className="flex items-center gap-1"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                              More
+                            </Button>
+                            
+                            {openMoreActionsId === order.id && (
+                              <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                                <button
+                                  onClick={() => startAuthorizedAction('void', order.id, order)}
+                                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                >
+                                  <Ban className="h-4 w-4" />
+                                  Void Order
+                                </button>
+                                <button
+                                  onClick={() => handleReorder(order)}
+                                  className="w-full px-4 py-2 text-left text-sm text-green-600 hover:bg-green-50 flex items-center gap-2"
+                                >
+                                  <Link2 className="h-4 w-4" />
+                                  Add Linked Order
+                                </button>
+                                <button
+                                  onClick={() => startAuthorizedAction('voidAndReorder', order.id, order)}
+                                  className="w-full px-4 py-2 text-left text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-2"
+                                >
+                                  <AlertTriangle className="h-4 w-4" />
+                                  Void & Re-order
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </>
                       )}
-                      {order.status === 'COMPLETED' && (
-                        <Button
-                          size="sm"
-                          onClick={() => printReceipt(order)}
-                          className="flex items-center gap-1 lg:min-w-[140px]"
-                          style={{ backgroundColor: '#F9C900', color: '#000000' }}
-                        >
-                          <Printer className="h-4 w-4" />
-                          {order.paymentStatus === 'PAID' ? 'Print Receipt' : 'Mark Paid & Print'}
-                        </Button>
+
+                      {/* PREPARING Orders - Already Paid */}
+                      {order.status === 'PREPARING' && order.paymentStatus === 'PAID' && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => updateOrderStatus(order.id, 'COMPLETED')}
+                            className="lg:min-w-[120px]"
+                            style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                          >
+                            ✅ Mark Complete
+                          </Button>
+                          
+                          {/* More Actions Menu */}
+                          <div className="relative">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setOpenMoreActionsId(openMoreActionsId === order.id ? null : order.id)
+                              }}
+                              className="flex items-center gap-1"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                              More
+                            </Button>
+                            
+                            {openMoreActionsId === order.id && (
+                              <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                                <button
+                                  onClick={() => startAuthorizedAction('refund', order.id, order)}
+                                  className="w-full px-4 py-2 text-left text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-2"
+                                >
+                                  <DollarSign className="h-4 w-4" />
+                                  Void & Refund
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </>
                       )}
-                      {/* Reorder button for non-pending, non-paid orders */}
-                      {order.status !== 'PENDING' && order.status !== 'CANCELLED' && order.paymentStatus !== 'PAID' && (
+
+                      {/* COMPLETED Orders - Unpaid */}
+                      {order.status === 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => printReceipt(order)}
+                            className="flex items-center gap-1 lg:min-w-[140px]"
+                            style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                          >
+                            <Printer className="h-4 w-4" />
+                            Mark Paid & Print
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => markAsPaid(order.id)}
+                            className="flex items-center gap-1 border-green-300 text-green-600 hover:bg-green-50"
+                          >
+                            <DollarSign className="h-4 w-4" />
+                            Mark as Paid
+                          </Button>
+                          
+                          {/* More Actions Menu */}
+                          <div className="relative">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setOpenMoreActionsId(openMoreActionsId === order.id ? null : order.id)
+                              }}
+                              className="flex items-center gap-1"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                              More
+                            </Button>
+                            
+                            {openMoreActionsId === order.id && (
+                              <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                                <button
+                                  onClick={() => startAuthorizedAction('complimentary', order.id, order)}
+                                  className="w-full px-4 py-2 text-left text-sm text-pink-600 hover:bg-pink-50 flex items-center gap-2"
+                                >
+                                  <Gift className="h-4 w-4" />
+                                  Mark as Complimentary
+                                </button>
+                                <button
+                                  onClick={() => startAuthorizedAction('writeOff', order.id, order)}
+                                  className="w-full px-4 py-2 text-left text-sm text-gray-600 hover:bg-gray-50 flex items-center gap-2"
+                                >
+                                  <FileX className="h-4 w-4" />
+                                  Report Non-Payment
+                                </button>
+                                <button
+                                  onClick={() => printReceipt(order)}
+                                  className="w-full px-4 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-2"
+                                >
+                                  <Printer className="h-4 w-4" />
+                                  Print Total Bill
+                                </button>
+                                <button
+                                  onClick={() => handleReorder(order)}
+                                  className="w-full px-4 py-2 text-left text-sm text-green-600 hover:bg-green-50 flex items-center gap-2"
+                                >
+                                  <Link2 className="h-4 w-4" />
+                                  Add Linked Order
+                                </button>
+                                <button
+                                  onClick={() => startAuthorizedAction('voidAndReorder', order.id, order)}
+                                  className="w-full px-4 py-2 text-left text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-2"
+                                >
+                                  <AlertTriangle className="h-4 w-4" />
+                                  Void & Re-order
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {/* COMPLETED Orders - Already Paid */}
+                      {order.status === 'COMPLETED' && order.paymentStatus === 'PAID' && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => printReceipt(order)}
+                            className="flex items-center gap-1 lg:min-w-[140px]"
+                            style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                          >
+                            <Printer className="h-4 w-4" />
+                            Print Receipt
+                          </Button>
+                        </>
+                      )}
+
+                      {/* View Details button - always show except for cancelled */}
+                      {order.status !== 'CANCELLED' && (
                         <Button
                           size="sm"
-                          onClick={() => handleReorder(order)}
                           variant="outline"
-                          className="flex-1 lg:flex-none lg:min-w-[120px] border-green-300 text-green-600 hover:bg-green-50"
+                          onClick={() => setSelectedOrder(order)}
+                          className="flex items-center gap-1"
                         >
-                          Reorder
+                          <Eye className="h-4 w-4" />
+                          View Details
                         </Button>
                       )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setSelectedOrder(order)}
-                        className="flex items-center gap-1"
-                      >
-                        <Eye className="h-4 w-4" />
-                        View Details
-                      </Button>
+
+                      {/* Linked Order Indicator */}
+                      {order.linkedOrderId && (
+                        <Badge variant="outline" className="text-xs text-blue-600 border-blue-200 flex items-center gap-1">
+                          <Link2 className="h-3 w-3" />
+                          Linked Order
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1359,6 +1705,87 @@ export const OrdersPage = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Reason Input Modal */}
+      {showReasonModal && pendingAction && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-50" onClick={cancelPendingAction} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+              <div className="p-6 border-b border-gray-200 bg-amber-50">
+                <div className="flex items-center gap-3">
+                  <div className="bg-amber-100 p-2 rounded-full">
+                    <AlertTriangle className="h-6 w-6 text-amber-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">
+                      {pendingAction.type === 'void' && 'Void Order'}
+                      {pendingAction.type === 'refund' && 'Refund Order'}
+                      {pendingAction.type === 'complimentary' && 'Mark as Complimentary'}
+                      {pendingAction.type === 'writeOff' && 'Report Non-Payment'}
+                      {pendingAction.type === 'voidAndReorder' && 'Void & Re-order'}
+                    </h2>
+                    <p className="text-sm text-gray-600">Please provide a reason for this action</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Reason <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={actionReason}
+                    onChange={(e) => setActionReason(e.target.value)}
+                    placeholder="Enter reason for this action..."
+                    rows={3}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    autoFocus
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="outline" onClick={cancelPendingAction} className="flex-1">
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleReasonSubmit}
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
+                    disabled={!actionReason.trim()}
+                  >
+                    Continue
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Manager PIN Authorization Modal */}
+      <ManagerPinModal
+        isOpen={showManagerPinModal}
+        onClose={cancelPendingAction}
+        onAuthorized={executePendingAction}
+        title={
+          pendingAction?.type === 'void' ? 'Authorize Void Order' :
+          pendingAction?.type === 'refund' ? 'Authorize Refund' :
+          pendingAction?.type === 'complimentary' ? 'Authorize Complimentary' :
+          pendingAction?.type === 'writeOff' ? 'Authorize Write-Off' :
+          pendingAction?.type === 'voidAndReorder' ? 'Authorize Void & Re-order' :
+          'Manager Authorization Required'
+        }
+        description={`Reason: ${actionReason}`}
+        variant={pendingAction?.type === 'void' || pendingAction?.type === 'voidAndReorder' ? 'danger' : 'warning'}
+        actionLabel="Authorize"
+      />
+
+      {/* Click outside handler for More Actions dropdown */}
+      {openMoreActionsId && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => setOpenMoreActionsId(null)}
+        />
       )}
     </AdminLayout>
   )

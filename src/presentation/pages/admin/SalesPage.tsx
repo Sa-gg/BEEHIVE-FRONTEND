@@ -5,10 +5,11 @@ import { Button } from '../../components/common/ui/button'
 import { Input } from '../../components/common/ui/input'
 import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Calendar, Eye, Receipt, Search, ChevronLeft, ChevronRight, Printer, Download } from 'lucide-react'
 import { salesApi, type SalesReport } from '../../../infrastructure/api/sales.api'
-import { ordersApi, type OrderResponse } from '../../../infrastructure/api/orders.api'
+import { ordersApi, type OrderResponse, type PaymentStatus } from '../../../infrastructure/api/orders.api'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { DateFilter, type DateFilterValue, useDefaultDateFilter } from '../../components/common/DateFilter'
 import { printWithIframe } from '../../../shared/utils/printUtils'
+import { ManagerPinModal } from '../../components/common/ManagerPinModal'
 
 const formatOrderNumber = (orderNumber: string) => {
   const match = orderNumber.match(/^ORD-\d{8}-(\d+)$/)
@@ -51,9 +52,32 @@ export const SalesPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterOrderType, setFilterOrderType] = useState<string>('all')
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all')
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState<string>('all')
   const [transactionDateFilter, setTransactionDateFilter] = useState<DateFilterValue>(useDefaultDateFilter('all'))
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(10)
+  
+  // Manager PIN modal state for changing payment status
+  const [showManagerPinModal, setShowManagerPinModal] = useState(false)
+  const [pendingStatusChange, setPendingStatusChange] = useState<{
+    orderId: string
+    newStatus: PaymentStatus
+    reason: string
+  } | null>(null)
+  const [showStatusChangeModal, setShowStatusChangeModal] = useState(false)
+  const [selectedOrderForStatusChange, setSelectedOrderForStatusChange] = useState<OrderResponse | null>(null)
+  const [statusChangeReason, setStatusChangeReason] = useState('')
+  const [selectedNewStatus, setSelectedNewStatus] = useState<PaymentStatus>('PAID')
+
+  // Payment status configuration
+  const paymentStatusConfig: Record<PaymentStatus, { label: string; color: string; bgColor: string }> = {
+    UNPAID: { label: 'Unpaid', color: 'text-orange-700', bgColor: 'bg-orange-100' },
+    PAID: { label: 'Paid', color: 'text-green-700', bgColor: 'bg-green-100' },
+    REFUNDED: { label: 'Refunded', color: 'text-purple-700', bgColor: 'bg-purple-100' },
+    COMPLIMENTARY: { label: 'Complimentary', color: 'text-pink-700', bgColor: 'bg-pink-100' },
+    WRITTEN_OFF: { label: 'Written Off', color: 'text-gray-700', bgColor: 'bg-gray-100' },
+    VOIDED: { label: 'Voided', color: 'text-red-700', bgColor: 'bg-red-100' },
+  }
 
   useEffect(() => { loadMenuItems() }, [])
   useEffect(() => { loadSalesData(); loadTransactions() }, [])
@@ -79,8 +103,10 @@ export const SalesPage = () => {
   const loadTransactions = async () => {
     try {
       const allOrders = await ordersApi.getAll()
+      // Show all completed orders regardless of payment status
+      // This includes PAID, REFUNDED, COMPLIMENTARY, WRITTEN_OFF transactions
       setTransactions(allOrders
-        .filter(o => o.status === 'COMPLETED' && o.paymentStatus === 'PAID')
+        .filter(o => o.status === 'COMPLETED')
         .sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime()))
     } catch (e) { console.error('Error loading transactions:', e) }
   }
@@ -204,6 +230,49 @@ export const SalesPage = () => {
     printWithIframe(printContent)
   }
 
+  // Handle initiating a payment status change (requires manager PIN)
+  const initiateStatusChange = () => {
+    if (!selectedOrderForStatusChange || !statusChangeReason.trim()) return
+    setPendingStatusChange({
+      orderId: selectedOrderForStatusChange.id,
+      newStatus: selectedNewStatus,
+      reason: statusChangeReason
+    })
+    setShowStatusChangeModal(false)
+    setShowManagerPinModal(true)
+  }
+
+  // Handle manager PIN validation success - execute the status change
+  const handleManagerPinSuccess = async (managerId: string, _managerName: string) => {
+    if (!pendingStatusChange) return
+    
+    try {
+      const { orderId, newStatus, reason } = pendingStatusChange
+      
+      if (newStatus === 'REFUNDED') {
+        await ordersApi.refundOrder(orderId, reason, managerId)
+      } else if (newStatus === 'COMPLIMENTARY') {
+        await ordersApi.markAsComplimentary(orderId, reason, managerId)
+      } else if (newStatus === 'WRITTEN_OFF') {
+        await ordersApi.writeOff(orderId, reason, managerId)
+      } else if (newStatus === 'VOIDED') {
+        await ordersApi.voidOrder(orderId, reason, managerId)
+      }
+      
+      // Refresh transactions
+      await loadTransactions()
+      
+      // Reset state
+      setShowManagerPinModal(false)
+      setPendingStatusChange(null)
+      setSelectedOrderForStatusChange(null)
+      setStatusChangeReason('')
+    } catch (error) {
+      console.error('Failed to change payment status:', error)
+      alert('Failed to change payment status. Please try again.')
+    }
+  }
+
   const filteredTransactions = transactions
     .filter(t => {
       // Date filter logic
@@ -227,6 +296,7 @@ export const SalesPage = () => {
       return (!searchQuery || t.orderNumber.toLowerCase().includes(s) || (t.customerName?.toLowerCase() || '').includes(s))
         && (filterOrderType === 'all' || t.orderType === filterOrderType)
         && (filterPaymentMethod === 'all' || t.paymentMethod === filterPaymentMethod)
+        && (filterPaymentStatus === 'all' || t.paymentStatus === filterPaymentStatus)
     })
 
   const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredTransactions.length / (itemsPerPage as number))
@@ -325,6 +395,15 @@ export const SalesPage = () => {
                 <option value="GCASH">GCash</option>
                 <option value="CARD">Card</option>
               </select>
+              <select value={filterPaymentStatus} onChange={e => setFilterPaymentStatus(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100">
+                <option value="all">All Statuses</option>
+                <option value="PAID">✓ Paid</option>
+                <option value="UNPAID">💰 Unpaid</option>
+                <option value="REFUNDED">↩ Refunded</option>
+                <option value="COMPLIMENTARY">🎁 Complimentary</option>
+                <option value="WRITTEN_OFF">📝 Written Off</option>
+                <option value="VOIDED">🚫 Voided</option>
+              </select>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -338,8 +417,7 @@ export const SalesPage = () => {
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Processed By</th>
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Type</th>
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Payment</th>
-                  <th className="px-4 py-4 text-right text-xs font-bold text-amber-800 uppercase tracking-wider">Subtotal</th>
-                  <th className="px-4 py-4 text-right text-xs font-bold text-amber-800 uppercase tracking-wider">VAT (12%)</th>
+                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Status</th>
                   <th className="px-4 py-4 text-right text-xs font-bold text-amber-800 uppercase tracking-wider">Total</th>
                   <th className="px-4 py-4 text-center text-xs font-bold text-amber-800 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -358,8 +436,8 @@ export const SalesPage = () => {
                     </td>
                   </tr>
                 ) : paginatedTransactions.map((t, index) => {
-                  const vat = t.totalAmount * 0.12
                   const orderDate = new Date(t.completedAt || t.createdAt)
+                  const statusInfo = paymentStatusConfig[t.paymentStatus] || paymentStatusConfig.UNPAID
                   return (
                     <tr key={t.id} className={`transition-colors duration-150 hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                       <td className="px-4 py-4">
@@ -390,14 +468,20 @@ export const SalesPage = () => {
                           {t.paymentMethod || 'N/A'}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-right">
-                        <span className="text-sm text-gray-700">₱{(t.totalAmount - vat).toFixed(2)}</span>
+                      <td className="px-4 py-4">
+                        <Badge className={`${statusInfo.bgColor} ${statusInfo.color} text-xs`}>
+                          {statusInfo.label}
+                        </Badge>
                       </td>
                       <td className="px-4 py-4 text-right">
-                        <span className="text-sm text-gray-400">₱{vat.toFixed(2)}</span>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <span className="text-sm font-semibold text-gray-900">₱{t.totalAmount.toFixed(2)}</span>
+                        <span className={`text-sm font-semibold ${
+                          t.paymentStatus === 'REFUNDED' || t.paymentStatus === 'VOIDED' ? 'text-red-600 line-through' :
+                          t.paymentStatus === 'COMPLIMENTARY' ? 'text-pink-600' :
+                          t.paymentStatus === 'WRITTEN_OFF' ? 'text-gray-400' :
+                          'text-gray-900'
+                        }`}>
+                          ₱{t.totalAmount.toFixed(2)}
+                        </span>
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex gap-1.5 justify-center">
@@ -410,9 +494,24 @@ export const SalesPage = () => {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
+                          {/* Show Change Status button only for PAID orders - manager can refund */}
+                          {t.paymentStatus === 'PAID' && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => {
+                                setSelectedOrderForStatusChange(t)
+                                setStatusChangeReason('')
+                                setSelectedNewStatus('REFUNDED')
+                                setShowStatusChangeModal(true)
+                              }}
+                              className="border-purple-200 text-purple-600 hover:bg-purple-50"
+                              title="Change Payment Status"
+                            >
+                              <DollarSign className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button 
-                            size="sm" 
-                            variant="outline" 
                             onClick={() => printReceipt(t)}
                             className="border-gray-200 hover:bg-gray-50"
                             title="Print Receipt"
@@ -546,6 +645,90 @@ export const SalesPage = () => {
           </div>
         </>
       )}
+
+      {/* Status Change Modal */}
+      {showStatusChangeModal && selectedOrderForStatusChange && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowStatusChangeModal(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+              <div className="p-6 border-b bg-gradient-to-r from-purple-50 to-white flex justify-between items-center">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-purple-500" />
+                  Change Payment Status
+                </h2>
+                <button onClick={() => setShowStatusChangeModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 uppercase">Order</p>
+                  <p className="font-semibold">{formatOrderNumber(selectedOrderForStatusChange.orderNumber)}</p>
+                  <p className="text-sm text-gray-600 mt-1">Amount: ₱{selectedOrderForStatusChange.totalAmount.toFixed(2)}</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">New Status</label>
+                  <select
+                    value={selectedNewStatus}
+                    onChange={(e) => setSelectedNewStatus(e.target.value as PaymentStatus)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-100"
+                  >
+                    <option value="REFUNDED">Refunded</option>
+                    <option value="COMPLIMENTARY">Complimentary</option>
+                    <option value="WRITTEN_OFF">Written Off</option>
+                    <option value="VOIDED">Voided</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Reason (Required)</label>
+                  <textarea
+                    value={statusChangeReason}
+                    onChange={(e) => setStatusChangeReason(e.target.value)}
+                    placeholder="Enter reason for status change..."
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-100 resize-none"
+                    rows={3}
+                  />
+                </div>
+                
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                  <strong>Note:</strong> This action requires manager authorization and will be logged.
+                </div>
+                
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setShowStatusChangeModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1 bg-purple-500 hover:bg-purple-600 text-white"
+                    onClick={initiateStatusChange}
+                    disabled={!statusChangeReason.trim()}
+                  >
+                    Continue
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Manager PIN Modal */}
+      <ManagerPinModal
+        isOpen={showManagerPinModal}
+        onClose={() => {
+          setShowManagerPinModal(false)
+          setPendingStatusChange(null)
+        }}
+        onAuthorized={handleManagerPinSuccess}
+        title="Manager Authorization Required"
+        description={pendingStatusChange ? `Authorize changing payment status to ${pendingStatusChange.newStatus}` : ''}
+        variant={pendingStatusChange?.newStatus === 'VOIDED' || pendingStatusChange?.newStatus === 'REFUNDED' ? 'danger' : 'warning'}
+      />
     </AdminLayout>
   )
 }

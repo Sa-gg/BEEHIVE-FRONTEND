@@ -1,6 +1,10 @@
 import { api } from './axiosConfig';
 import { getDeviceId } from '../../shared/utils/deviceId';
 
+// Payment status enum matching backend
+export type PaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED' | 'COMPLIMENTARY' | 'WRITTEN_OFF' | 'VOIDED';
+export type OrderStatus = 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
+
 export interface OrderItem {
   menuItemId: string;
   quantity: number;
@@ -23,9 +27,14 @@ export interface UpdateOrderRequest {
   customerName?: string;
   tableNumber?: string;
   orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
-  status?: 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
+  status?: OrderStatus;
   paymentMethod?: string;
-  paymentStatus?: 'UNPAID' | 'PAID' | 'REFUNDED';
+  paymentStatus?: PaymentStatus;
+  processedBy?: string | null;
+  discountAmount?: number;
+  notes?: string | null;
+  authorizedBy?: string | null;
+  paidAt?: string | null;
 }
 
 export interface OrderResponse {
@@ -34,21 +43,25 @@ export interface OrderResponse {
   customerName: string | null;
   tableNumber: string | null;
   orderType: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
-  status: 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
+  status: OrderStatus;
   subtotal: number;
   tax: number;
   totalAmount: number;
+  discountAmount: number;
   paymentMethod: string | null;
-  paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
+  paymentStatus: PaymentStatus;
   moodContext: string | null;
   moodFeedbackGiven: boolean;
   linkedOrderId: string | null;
   createdBy: string | null;
   processedBy: string | null;  // Cashier who processed the order
   deviceId: string | null;
+  notes: string | null;  // Reason for void/write-off/etc.
+  authorizedBy: string | null;  // Manager who authorized the action
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  paidAt: string | null;  // When payment was received
   order_items: Array<{
     id: string;
     orderId: string;
@@ -155,5 +168,39 @@ export const ordersApi = {
   markMergedOrdersAsPaid: async (orderIds: string[], paymentMethod: string): Promise<OrderResponse[]> => {
     const response = await api.post('/api/orders/merge/pay', { orderIds, paymentMethod });
     return response.data.data;
+  },
+
+  // Void an order (requires manager authorization)
+  voidOrder: async (id: string, reason: string, authorizedBy: string): Promise<OrderResponse> => {
+    const response = await api.patch(`/api/orders/${id}/void`, { reason, authorizedBy });
+    return response.data;
+  },
+
+  // Refund a paid order (requires manager authorization)
+  refundOrder: async (id: string, reason: string, authorizedBy: string): Promise<OrderResponse> => {
+    const response = await api.patch(`/api/orders/${id}/refund`, { reason, authorizedBy });
+    return response.data;
+  },
+
+  // Mark order as complimentary (requires manager authorization)
+  markAsComplimentary: async (id: string, reason: string, authorizedBy: string): Promise<OrderResponse> => {
+    const response = await api.patch(`/api/orders/${id}/complimentary`, { reason, authorizedBy });
+    return response.data;
+  },
+
+  // Write off an unpaid order (customer left without paying, requires manager authorization)
+  writeOff: async (id: string, reason: string, authorizedBy: string): Promise<OrderResponse> => {
+    const response = await api.patch(`/api/orders/${id}/write-off`, { reason, authorizedBy });
+    return response.data;
+  },
+
+  // Mark order as paid with optional payment method
+  markAsPaidSimple: async (id: string, paymentMethod?: string): Promise<OrderResponse> => {
+    const response = await api.patch(`/api/orders/${id}`, { 
+      paymentStatus: 'PAID', 
+      paymentMethod: paymentMethod || 'CASH',
+      paidAt: new Date().toISOString()
+    });
+    return response.data;
   },
 };
