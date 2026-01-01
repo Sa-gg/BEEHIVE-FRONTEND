@@ -35,6 +35,7 @@ export interface UpdateOrderRequest {
   notes?: string | null;
   authorizedBy?: string | null;
   paidAt?: string | null;
+  linkedOrderId?: string | null;
 }
 
 export interface OrderResponse {

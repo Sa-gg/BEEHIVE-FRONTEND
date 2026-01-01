@@ -53,6 +53,7 @@ export const SalesPage = () => {
   const [filterOrderType, setFilterOrderType] = useState<string>('all')
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all')
   const [filterPaymentStatus, setFilterPaymentStatus] = useState<string>('all')
+  const [filterOrderStatus, setFilterOrderStatus] = useState<string>('all')
   const [transactionDateFilter, setTransactionDateFilter] = useState<DateFilterValue>(useDefaultDateFilter('all'))
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(10)
@@ -103,25 +104,27 @@ export const SalesPage = () => {
   const loadTransactions = async () => {
     try {
       const allOrders = await ordersApi.getAll()
-      // Show all completed orders regardless of payment status
-      // This includes PAID, REFUNDED, COMPLIMENTARY, WRITTEN_OFF transactions
+      // Show all orders except PENDING (including PREPARING, READY, COMPLETED, CANCELLED)
+      // This allows tracking orders at all stages of the workflow
       setTransactions(allOrders
-        .filter(o => o.status === 'COMPLETED')
+        .filter(o => o.status !== 'PENDING')
         .sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime()))
     } catch (e) { console.error('Error loading transactions:', e) }
   }
 
   const printReceipt = (t: OrderResponse) => {
-    const vat = t.totalAmount * 0.12, subtotal = t.totalAmount - vat
+    // VAT is inclusive (12/112 of total)
+    const vat = t.totalAmount * (12 / 112), subtotal = t.totalAmount - vat
     const receiptHTML = `<!DOCTYPE html><html><head><title>Receipt</title><style>body{font-family:monospace;width:80mm;margin:0 auto;padding:10mm}.header{text-align:center;border-bottom:2px dashed #000;padding-bottom:10px}.totals{border-top:2px dashed #000;padding-top:10px;margin-top:10px}</style></head><body><div class="header"><b>🐝 BEEHIVE</b><br/><small>Restaurant & Cafe</small></div><div style="margin:10px 0;font-size:12px"><div><b>Order:</b> ${formatOrderNumber(t.orderNumber)}</div><div><b>Date:</b> ${new Date(t.completedAt || t.createdAt).toLocaleString()}</div><div><b>Customer:</b> ${getCustomerDisplayName(t)}</div><div><b>Payment:</b> ${t.paymentMethod || 'N/A'}</div></div><div style="margin:15px 0">${t.order_items.map(i => `<div style="display:flex;justify-content:space-between;font-size:12px"><span>${menuItems.get(i.menuItemId) || i.menuItemId}</span><span>${i.quantity}x ₱${i.subtotal.toFixed(2)}</span></div>`).join('')}</div><div class="totals"><div style="display:flex;justify-content:space-between;font-size:12px"><span>Subtotal:</span><span>₱${subtotal.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;font-size:12px"><span>VAT (12%):</span><span>₱${vat.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;font-size:16px;font-weight:bold"><span>TOTAL:</span><span>₱${t.totalAmount.toFixed(2)}</span></div></div></body></html>`
     printWithIframe(receiptHTML)
   }
 
   const exportCSV = () => {
-    const rows = [['Order #','Date','Time','Customer','Created By','Processed By','Type','Payment','Subtotal','VAT','Total']]
+    const rows = [['Order #','Date','Time','Customer','Created By','Processed By','Type','Payment','Status','Subtotal','VAT','Total']]
     filteredTransactions.forEach(t => {
-      const vat = t.totalAmount * 0.12, d = new Date(t.completedAt || t.createdAt)
-      rows.push([formatOrderNumber(t.orderNumber), d.toLocaleDateString(), d.toLocaleTimeString(), getCustomerDisplayName(t), getCreatedByName(t), getProcessedByName(t), t.orderType, t.paymentMethod || 'N/A', (t.totalAmount - vat).toFixed(2), vat.toFixed(2), t.totalAmount.toFixed(2)])
+      // VAT is inclusive (12/112 of total)
+      const vat = t.totalAmount * (12 / 112), d = new Date(t.completedAt || t.createdAt)
+      rows.push([formatOrderNumber(t.orderNumber), d.toLocaleDateString(), d.toLocaleTimeString(), getCustomerDisplayName(t), getCreatedByName(t), getProcessedByName(t), t.orderType, t.paymentMethod || 'N/A', t.paymentStatus, (t.totalAmount - vat).toFixed(2), vat.toFixed(2), t.totalAmount.toFixed(2)])
     })
     const blob = new Blob([rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')], { type: 'text/csv' })
     const a = document.createElement('a')
@@ -131,9 +134,25 @@ export const SalesPage = () => {
   }
 
   const handlePrintSalesReport = () => {
-    const totalRevenue = filteredTransactions.reduce((sum, t) => sum + t.totalAmount, 0)
-    const totalVAT = totalRevenue * 0.12
+    // Only count PAID orders for revenue (exclude voided, refunded, etc.)
+    const paidTransactions = filteredTransactions.filter(t => t.paymentStatus === 'PAID')
+    const totalRevenue = paidTransactions.reduce((sum, t) => sum + t.totalAmount, 0)
+    // VAT is inclusive (12/112 of total)
+    const totalVAT = totalRevenue * (12 / 112)
     const subtotal = totalRevenue - totalVAT
+    
+    // Helper function to get status label for print
+    const getStatusLabel = (status: string) => {
+      const labels: Record<string, string> = {
+        PAID: 'Paid',
+        UNPAID: 'Unpaid',
+        REFUNDED: 'Refunded',
+        COMPLIMENTARY: 'Complimentary',
+        WRITTEN_OFF: 'Written Off',
+        VOIDED: 'Voided'
+      }
+      return labels[status] || status
+    }
     
     const printContent = `
       <!DOCTYPE html>
@@ -156,6 +175,13 @@ export const SalesPage = () => {
           tr:hover { background: #fffbeb; }
           .total-row { font-weight: bold; background: #fef3c7; }
           .text-right { text-align: right; }
+          .text-center { text-align: center; }
+          .status-paid { color: #15803d; }
+          .status-unpaid { color: #c2410c; }
+          .status-refunded { color: #7c3aed; text-decoration: line-through; }
+          .status-voided { color: #dc2626; text-decoration: line-through; }
+          .status-complimentary { color: #db2777; }
+          .status-written-off { color: #6b7280; }
           .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #666; padding-top: 15px; border-top: 1px solid #e5e7eb; }
           @media print { body { padding: 10px; } }
         </style>
@@ -172,15 +198,15 @@ export const SalesPage = () => {
             <div class="value">${filteredTransactions.length}</div>
           </div>
           <div class="summary-card">
-            <div class="label">Subtotal</div>
+            <div class="label">Subtotal (Paid)</div>
             <div class="value">₱${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
           </div>
           <div class="summary-card">
-            <div class="label">VAT (12%)</div>
+            <div class="label">VAT (12% incl)</div>
             <div class="value">₱${totalVAT.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
           </div>
           <div class="summary-card">
-            <div class="label">Total Revenue</div>
+            <div class="label">Total Revenue (Paid)</div>
             <div class="value">₱${totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
           </div>
         </div>
@@ -195,26 +221,35 @@ export const SalesPage = () => {
               <th>Processed By</th>
               <th>Type</th>
               <th>Payment</th>
+              <th class="text-center">Status</th>
               <th class="text-right">Amount</th>
             </tr>
           </thead>
           <tbody>
             ${filteredTransactions.map(t => {
               const d = new Date(t.completedAt || t.createdAt)
+              const statusClass = t.paymentStatus === 'PAID' ? 'status-paid' :
+                                 t.paymentStatus === 'UNPAID' ? 'status-unpaid' :
+                                 t.paymentStatus === 'REFUNDED' ? 'status-refunded' :
+                                 t.paymentStatus === 'VOIDED' ? 'status-voided' :
+                                 t.paymentStatus === 'COMPLIMENTARY' ? 'status-complimentary' :
+                                 'status-written-off'
+              const amountClass = (t.paymentStatus === 'REFUNDED' || t.paymentStatus === 'VOIDED') ? 'text-right status-refunded' : 'text-right'
               return `
                 <tr>
                   <td>${formatOrderNumber(t.orderNumber)}</td>
                   <td>${d.toLocaleDateString()} ${d.toLocaleTimeString()}</td>
                   <td>${t.customerName || 'Guest'}</td>
                   <td>${t.createdBy || 'Guest'}</td>
-                  <td>${t.processedBy || 'Not completed yet'}</td>
+                  <td>${t.processedBy || '-'}</td>
                   <td>${t.orderType}</td>
                   <td>${t.paymentMethod || 'N/A'}</td>
-                  <td class="text-right">₱${t.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                  <td class="text-center ${statusClass}">${getStatusLabel(t.paymentStatus)}</td>
+                  <td class="${amountClass}">₱${t.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                 </tr>`
             }).join('')}
             <tr class="total-row">
-              <td colspan="7" class="text-right">TOTAL:</td>
+              <td colspan="8" class="text-right">PAID TOTAL:</td>
               <td class="text-right">₱${totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
             </tr>
           </tbody>
@@ -222,7 +257,7 @@ export const SalesPage = () => {
         
         <div class="footer">
           <p>BEEHIVE Restaurant & Cafe - Sales Report</p>
-          <p>${filteredTransactions.length} transactions • Period: ${transactionDateFilter.preset === 'custom' ? 'Custom Range' : transactionDateFilter.preset.charAt(0).toUpperCase() + transactionDateFilter.preset.slice(1)}</p>
+          <p>${filteredTransactions.length} transactions • ${paidTransactions.length} paid • Period: ${transactionDateFilter.preset === 'custom' ? 'Custom Range' : transactionDateFilter.preset.charAt(0).toUpperCase() + transactionDateFilter.preset.slice(1)}</p>
         </div>
       </body>
       </html>
@@ -251,11 +286,18 @@ export const SalesPage = () => {
       
       if (newStatus === 'REFUNDED') {
         await ordersApi.refundOrder(orderId, reason, managerId)
+        // Status is set by backend, but ensure it's COMPLETED for refunds
+        await ordersApi.update(orderId, { status: 'COMPLETED' })
       } else if (newStatus === 'COMPLIMENTARY') {
         await ordersApi.markAsComplimentary(orderId, reason, managerId)
+        // Status is set by backend, but ensure it's COMPLETED
+        await ordersApi.update(orderId, { status: 'COMPLETED' })
       } else if (newStatus === 'WRITTEN_OFF') {
         await ordersApi.writeOff(orderId, reason, managerId)
+        // Status is set by backend, but ensure it's COMPLETED
+        await ordersApi.update(orderId, { status: 'COMPLETED' })
       } else if (newStatus === 'VOIDED') {
+        // voidOrder already sets status to CANCELLED and replenishes stock if order was COMPLETED
         await ordersApi.voidOrder(orderId, reason, managerId)
       }
       
@@ -297,13 +339,14 @@ export const SalesPage = () => {
         && (filterOrderType === 'all' || t.orderType === filterOrderType)
         && (filterPaymentMethod === 'all' || t.paymentMethod === filterPaymentMethod)
         && (filterPaymentStatus === 'all' || t.paymentStatus === filterPaymentStatus)
+        && (filterOrderStatus === 'all' || t.status === filterOrderStatus)
     })
 
   const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredTransactions.length / (itemsPerPage as number))
   const startIdx = itemsPerPage === 'all' ? 0 : (currentPage - 1) * (itemsPerPage as number)
   const paginatedTransactions = filteredTransactions.slice(startIdx, itemsPerPage === 'all' ? undefined : startIdx + (itemsPerPage as number))
 
-  useEffect(() => { setCurrentPage(1) }, [searchQuery, filterOrderType, filterPaymentMethod, transactionDateFilter])
+  useEffect(() => { setCurrentPage(1) }, [searchQuery, filterOrderType, filterPaymentMethod, filterPaymentStatus, filterOrderStatus, transactionDateFilter])
 
   if (loading) return <AdminLayout><div className="flex items-center justify-center h-96"><div className="animate-spin h-12 w-12 border-4 border-yellow-400 border-t-transparent rounded-full"></div></div></AdminLayout>
   if (error || !salesReport) return <AdminLayout><div className="flex items-center justify-center h-96"><p className="text-red-600">{error}</p><Button onClick={loadSalesData}>Retry</Button></div></AdminLayout>
@@ -325,33 +368,51 @@ export const SalesPage = () => {
           </div>
         </div>
 
-        {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-2 border-yellow-200 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-3 rounded-lg bg-yellow-200"><DollarSign className="h-6 w-6 text-yellow-900" /></div>
-              <div className={`flex items-center gap-1 text-sm font-semibold ${metrics.revenueGrowth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {metrics.revenueGrowth >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                {Math.abs(metrics.revenueGrowth).toFixed(1)}%
+        {/* Key Metrics - Compact style */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Total Revenue</p>
+                <p className="text-xl font-bold text-gray-900 mt-1">₱{metrics.totalRevenue.toLocaleString()}</p>
+              </div>
+              <div className="p-2.5 bg-yellow-100 rounded-lg">
+                <DollarSign className="h-5 w-5 text-yellow-600" />
               </div>
             </div>
-            <p className="text-sm font-medium text-gray-600 mb-1">Total Revenue</p>
-            <p className="text-3xl font-bold">₱{metrics.totalRevenue.toLocaleString()}</p>
           </div>
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-xl p-6">
-            <div className="p-3 rounded-lg bg-blue-200 w-fit mb-3"><ShoppingCart className="h-6 w-6 text-blue-900" /></div>
-            <p className="text-sm font-medium text-gray-600 mb-1">Total Orders</p>
-            <p className="text-3xl font-bold">{metrics.totalOrders}</p>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Total Orders</p>
+                <p className="text-xl font-bold text-gray-900 mt-1">{metrics.totalOrders}</p>
+              </div>
+              <div className="p-2.5 bg-blue-100 rounded-lg">
+                <ShoppingCart className="h-5 w-5 text-blue-600" />
+              </div>
+            </div>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl p-6">
-            <div className="p-3 rounded-lg bg-green-200 w-fit mb-3"><TrendingUp className="h-6 w-6 text-green-900" /></div>
-            <p className="text-sm font-medium text-gray-600 mb-1">Avg Order Value</p>
-            <p className="text-3xl font-bold">₱{metrics.averageOrderValue.toFixed(0)}</p>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Avg Order Value</p>
+                <p className="text-xl font-bold text-gray-900 mt-1">₱{metrics.averageOrderValue.toFixed(0)}</p>
+              </div>
+              <div className="p-2.5 bg-green-100 rounded-lg">
+                <TrendingUp className="h-5 w-5 text-green-600" />
+              </div>
+            </div>
           </div>
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-200 rounded-xl p-6">
-            <div className="p-3 rounded-lg bg-purple-200 w-fit mb-3"><Calendar className="h-6 w-6 text-purple-900" /></div>
-            <p className="text-sm font-medium text-gray-600 mb-1">Daily Average</p>
-            <p className="text-3xl font-bold">₱{metrics.dailyAverage.toFixed(0)}</p>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Daily Average</p>
+                <p className="text-xl font-bold text-gray-900 mt-1">₱{metrics.dailyAverage.toFixed(0)}</p>
+              </div>
+              <div className="p-2.5 bg-purple-100 rounded-lg">
+                <Calendar className="h-5 w-5 text-purple-600" />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -366,7 +427,7 @@ export const SalesPage = () => {
                   </div>
                   Sales Transactions
                 </h3>
-                <p className="text-sm text-gray-500 mt-1">Completed and paid orders</p>
+                <p className="text-sm text-gray-500 mt-1">All orders (excluding pending) - preparing, ready, completed, cancelled</p>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={exportCSV} className="border-amber-200 hover:bg-amber-50 hover:border-amber-300">
@@ -396,13 +457,20 @@ export const SalesPage = () => {
                 <option value="CARD">Card</option>
               </select>
               <select value={filterPaymentStatus} onChange={e => setFilterPaymentStatus(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100">
-                <option value="all">All Statuses</option>
+                <option value="all">All Payment Statuses</option>
                 <option value="PAID">✓ Paid</option>
                 <option value="UNPAID">💰 Unpaid</option>
                 <option value="REFUNDED">↩ Refunded</option>
                 <option value="COMPLIMENTARY">🎁 Complimentary</option>
                 <option value="WRITTEN_OFF">📝 Written Off</option>
                 <option value="VOIDED">🚫 Voided</option>
+              </select>
+              <select value={filterOrderStatus} onChange={e => setFilterOrderStatus(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100">
+                <option value="all">All Order Statuses</option>
+                <option value="PREPARING">🍳 Preparing</option>
+                <option value="READY">✅ Ready</option>
+                <option value="COMPLETED">🎉 Completed</option>
+                <option value="CANCELLED">❌ Cancelled</option>
               </select>
             </div>
           </div>
@@ -417,7 +485,8 @@ export const SalesPage = () => {
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Processed By</th>
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Type</th>
                   <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Payment</th>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Payment Status</th>
+                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Order Status</th>
                   <th className="px-4 py-4 text-right text-xs font-bold text-amber-800 uppercase tracking-wider">Total</th>
                   <th className="px-4 py-4 text-center text-xs font-bold text-amber-800 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -438,6 +507,7 @@ export const SalesPage = () => {
                 ) : paginatedTransactions.map((t, index) => {
                   const orderDate = new Date(t.completedAt || t.createdAt)
                   const statusInfo = paymentStatusConfig[t.paymentStatus] || paymentStatusConfig.UNPAID
+                  
                   return (
                     <tr key={t.id} className={`transition-colors duration-150 hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                       <td className="px-4 py-4">
@@ -473,6 +543,21 @@ export const SalesPage = () => {
                           {statusInfo.label}
                         </Badge>
                       </td>
+                      <td className="px-4 py-4">
+                        <Badge className={`text-xs ${
+                          t.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                          t.status === 'PREPARING' ? 'bg-blue-100 text-blue-700' :
+                          t.status === 'READY' ? 'bg-amber-100 text-amber-700' :
+                          t.status === 'CANCELLED' ? 'bg-red-100 text-red-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {t.status === 'COMPLETED' ? 'Completed' :
+                           t.status === 'PREPARING' ? 'Preparing' :
+                           t.status === 'READY' ? 'Ready' :
+                           t.status === 'CANCELLED' ? 'Cancelled' :
+                           t.status}
+                        </Badge>
+                      </td>
                       <td className="px-4 py-4 text-right">
                         <span className={`text-sm font-semibold ${
                           t.paymentStatus === 'REFUNDED' || t.paymentStatus === 'VOIDED' ? 'text-red-600 line-through' :
@@ -494,7 +579,6 @@ export const SalesPage = () => {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          {/* Show Change Status button only for PAID orders - manager can refund */}
                           {t.paymentStatus === 'PAID' && (
                             <Button 
                               size="sm" 
@@ -512,6 +596,8 @@ export const SalesPage = () => {
                             </Button>
                           )}
                           <Button 
+                            size="sm"
+                            variant="outline"
                             onClick={() => printReceipt(t)}
                             className="border-gray-200 hover:bg-gray-50"
                             title="Print Receipt"
@@ -527,15 +613,9 @@ export const SalesPage = () => {
               {paginatedTransactions.length > 0 && (
                 <tfoot className="bg-gray-50 border-t border-gray-200">
                   <tr>
-                    <td colSpan={7} className="px-4 py-3 text-right font-semibold text-gray-600 text-sm">Page Totals:</td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-700 text-sm">
-                      ₱{paginatedTransactions.reduce((sum, t) => sum + (t.totalAmount - t.totalAmount * 0.12), 0).toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-500 text-sm">
-                      ₱{paginatedTransactions.reduce((sum, t) => sum + t.totalAmount * 0.12, 0).toFixed(2)}
-                    </td>
+                    <td colSpan={8} className="px-4 py-3 text-right font-semibold text-gray-600 text-sm">Page Totals:</td>
                     <td className="px-4 py-3 text-right font-bold text-gray-900 text-sm">
-                      ₱{paginatedTransactions.reduce((sum, t) => sum + t.totalAmount, 0).toFixed(2)}
+                      ₱{paginatedTransactions.filter(t => t.paymentStatus === 'PAID').reduce((sum, t) => sum + t.totalAmount, 0).toFixed(2)}
                     </td>
                     <td></td>
                   </tr>
@@ -636,8 +716,8 @@ export const SalesPage = () => {
                   ))}
                 </div>
                 <div className="bg-amber-50 rounded-xl p-4">
-                  <div className="flex justify-between mb-2"><span>Subtotal:</span><span>₱{(selectedTransaction.totalAmount * 0.88).toFixed(2)}</span></div>
-                  <div className="flex justify-between mb-2"><span>VAT (12%):</span><span>₱{(selectedTransaction.totalAmount * 0.12).toFixed(2)}</span></div>
+                  <div className="flex justify-between mb-2"><span>Subtotal:</span><span>₱{(selectedTransaction.totalAmount - (selectedTransaction.totalAmount * (12 / 112))).toFixed(2)}</span></div>
+                  <div className="flex justify-between mb-2"><span>VAT (12% incl):</span><span>₱{(selectedTransaction.totalAmount * (12 / 112)).toFixed(2)}</span></div>
                   <div className="flex justify-between text-xl font-bold pt-2 border-t border-amber-200"><span>Total:</span><span className="text-amber-600">₱{selectedTransaction.totalAmount.toFixed(2)}</span></div>
                 </div>
               </div>

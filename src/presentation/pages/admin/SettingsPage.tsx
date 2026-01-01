@@ -10,8 +10,11 @@ import {
   Package, 
   Settings as SettingsIcon,
   Info,
-  AlertTriangle
+  AlertTriangle,
+  Shield,
+  Key
 } from 'lucide-react'
+import { useAuthStore } from '../../store/authStore'
 
 // Toggle Switch Component
 const ToggleSwitch = ({ 
@@ -103,6 +106,9 @@ const SectionHeader = ({
 }
 
 export const SettingsPage = () => {
+  const { user } = useAuthStore()
+  const isManager = user?.role === 'MANAGER' || user?.role === 'ADMIN'
+  
   const {
     markPaidOnConfirmOrder,
     markPaidOnPrintReceipt,
@@ -110,17 +116,34 @@ export const SettingsPage = () => {
     printKitchenCopy,
     autoOutOfStockWhenIngredientsRunOut,
     showCurrentStockInPOS,
+    cashierCanVoidWithoutPin,
+    cashierCanRefundWithoutPin,
+    cashierCanComplimentaryWithoutPin,
+    cashierCanWriteOffWithoutPin,
+    cashierCanVoidAndReorderWithoutPin,
     setMarkPaidOnConfirmOrder,
     setMarkPaidOnPrintReceipt,
     setPrintReceiptOnConfirmOrder,
     setPrintKitchenCopy,
     setAutoOutOfStockWhenIngredientsRunOut,
     setShowCurrentStockInPOS,
+    setCashierCanVoidWithoutPin,
+    setCashierCanRefundWithoutPin,
+    setCashierCanComplimentaryWithoutPin,
+    setCashierCanWriteOffWithoutPin,
+    setCashierCanVoidAndReorderWithoutPin,
   } = useSettingsStore()
 
   const [isSyncing, setIsSyncing] = useState(false)
   const [openTime, setOpenTime] = useState('08:00')
   const [closeTime, setCloseTime] = useState('22:00')
+  
+  // Manager PIN change state
+  const [showPinChange, setShowPinChange] = useState(false)
+  const [currentPin, setCurrentPin] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
+  const [pinError, setPinError] = useState('')
 
   // Sync with backend settings on mount
   useEffect(() => {
@@ -155,181 +178,299 @@ export const SettingsPage = () => {
     }
   }
 
+  const handlePinChange = async () => {
+    setPinError('')
+    
+    if (currentPin.length !== 4 || !/^\d{4}$/.test(currentPin)) {
+      setPinError('Current PIN must be exactly 4 digits')
+      return
+    }
+    
+    if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+      setPinError('New PIN must be exactly 4 digits')
+      return
+    }
+    
+    if (newPin !== confirmPin) {
+      setPinError('New PINs do not match')
+      return
+    }
+    
+    try {
+      // Update manager PIN via API
+      const response = await settingsApi.updateManagerPin(currentPin, newPin)
+      if (response.success) {
+        alert('Manager PIN updated successfully!')
+        setShowPinChange(false)
+        setCurrentPin('')
+        setNewPin('')
+        setConfirmPin('')
+      }
+    } catch (error: unknown) {
+      console.error('Failed to update PIN:', error)
+      if (error instanceof Error && error.message.includes('401')) {
+        setPinError('Current PIN is incorrect')
+      } else {
+        setPinError('Failed to update PIN. Please try again.')
+      }
+    }
+  }
+
   return (
     <AdminLayout>
-      <div className="p-4 lg:p-8 bg-gray-50/50 min-h-screen">
-        <div className="max-w-4xl mx-auto">
-          {/* Header */}
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2.5 bg-amber-100 rounded-xl">
-                <SettingsIcon className="h-6 w-6 text-amber-600" />
-              </div>
-              <div>
-                <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Settings</h1>
-                <p className="text-gray-500">Configure your BEEHIVE POS system preferences</p>
-              </div>
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-amber-100 rounded-xl">
+            <SettingsIcon className="h-6 w-6 text-amber-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Settings</h1>
+            <p className="text-gray-500">Configure your BEEHIVE POS system preferences</p>
+          </div>
+        </div>
+
+        {/* Settings Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Payment Settings */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <SectionHeader 
+              icon={CreditCard} 
+              title="Payment Settings" 
+              description="Control when orders are automatically marked as paid"
+              color="green"
+            />
+            <div className="divide-y divide-gray-100">
+              <SettingItem
+                title="Mark Paid When Confirming Order"
+                description="Automatically mark orders as paid when they are confirmed in the POS system"
+                enabled={markPaidOnConfirmOrder}
+                onChange={() => setMarkPaidOnConfirmOrder(!markPaidOnConfirmOrder)}
+              />
             </div>
           </div>
 
-          <div className="space-y-6">
-            {/* Payment Settings */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <SectionHeader 
-                icon={CreditCard} 
-                title="Payment Settings" 
-                description="Control when orders are automatically marked as paid"
-                color="green"
+          {/* Printing Settings */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <SectionHeader 
+              icon={Printer} 
+              title="Printing Settings" 
+              description="Configure receipt printing behavior"
+              color="blue"
+            />
+            <div className="divide-y divide-gray-100">
+              <SettingItem
+                title="Print Receipt When Confirming Order"
+                description="Automatically print receipt after confirming orders in POS"
+                enabled={printReceiptOnConfirmOrder}
+                onChange={() => setPrintReceiptOnConfirmOrder(!printReceiptOnConfirmOrder)}
               />
-              <div className="divide-y divide-gray-100">
-                <SettingItem
-                  title="Mark Paid When Confirming Order"
-                  description="Automatically mark orders as paid when they are confirmed in the POS system"
-                  enabled={markPaidOnConfirmOrder}
-                  onChange={() => setMarkPaidOnConfirmOrder(!markPaidOnConfirmOrder)}
-                />
-                <SettingItem
-                  title="Mark Paid When Printing Receipt"
-                  description="Automatically mark orders as paid when printing receipts from the Orders page"
-                  enabled={markPaidOnPrintReceipt}
-                  onChange={() => setMarkPaidOnPrintReceipt(!markPaidOnPrintReceipt)}
-                />
-              </div>
-            </div>
-
-            {/* Printing Settings */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <SectionHeader 
-                icon={Printer} 
-                title="Printing Settings" 
-                description="Configure receipt printing behavior"
-                color="blue"
+              <SettingItem
+                title="Print Kitchen Copy (2 Receipts)"
+                description="Print an extra receipt for the kitchen when using the print button"
+                enabled={printKitchenCopy}
+                onChange={() => setPrintKitchenCopy(!printKitchenCopy)}
               />
-              <div className="divide-y divide-gray-100">
-                <SettingItem
-                  title="Print Receipt When Confirming Order"
-                  description="Automatically print receipt after confirming orders in POS (does not mark as paid)"
-                  enabled={printReceiptOnConfirmOrder}
-                  onChange={() => setPrintReceiptOnConfirmOrder(!printReceiptOnConfirmOrder)}
-                />
-                <SettingItem
-                  title="Print Kitchen Copy (2 Receipts)"
-                  description="Print an extra receipt for the kitchen when using the print button. Helps speed up kitchen workflow."
-                  enabled={printKitchenCopy}
-                  onChange={() => setPrintKitchenCopy(!printKitchenCopy)}
-                />
-              </div>
             </div>
+          </div>
 
-            {/* Inventory Settings */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <SectionHeader 
-                icon={Package} 
-                title="Smart Inventory Settings" 
-                description="Configure how inventory affects menu availability"
-                color="purple"
+          {/* Inventory Settings */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <SectionHeader 
+              icon={Package} 
+              title="Smart Inventory Settings" 
+              description="Configure how inventory affects menu availability"
+              color="purple"
+            />
+            <div className="divide-y divide-gray-100">
+              <SettingItem
+                title="Auto Out-of-Stock When Ingredients Run Out"
+                description="Automatically mark menu items as out of stock when their ingredients are depleted"
+                enabled={autoOutOfStockWhenIngredientsRunOut}
+                onChange={() => setAutoOutOfStockWhenIngredientsRunOut(!autoOutOfStockWhenIngredientsRunOut)}
+                warning={autoOutOfStockWhenIngredientsRunOut}
               />
-              <div className="divide-y divide-gray-100">
-                <SettingItem
-                  title="Auto Out-of-Stock When Ingredients Run Out"
-                  description="Automatically mark menu items as out of stock when their ingredients are depleted. If OFF, items show as 0 stock but remain orderable."
-                  enabled={autoOutOfStockWhenIngredientsRunOut}
-                  onChange={() => setAutoOutOfStockWhenIngredientsRunOut(!autoOutOfStockWhenIngredientsRunOut)}
-                  warning={autoOutOfStockWhenIngredientsRunOut}
-                />
-                <SettingItem
-                  title="Show Current Stock in POS"
-                  description="Display the available stock count on menu items in the POS page. Helps cashiers see inventory levels at a glance."
-                  enabled={showCurrentStockInPOS}
-                  onChange={() => setShowCurrentStockInPOS(!showCurrentStockInPOS)}
-                />
-              </div>
-
-              {/* Inventory Info Box */}
-              <div className="px-6 py-4 bg-amber-50/50 border-t border-amber-100">
-                <div className="flex gap-3">
-                  <Info className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-amber-800">
-                    <p className="font-medium mb-1">About Smart Inventory</p>
-                    <ul className="list-disc ml-4 space-y-1 text-amber-700">
-                      <li>The system tracks ingredient usage but may not be 100% accurate due to real-world factors</li>
-                      <li>When "Auto Out-of-Stock" is OFF, cashiers can still take orders even when stock shows 0</li>
-                      <li>Stock transactions will note when orders are processed despite low ingredients</li>
-                      <li>Use the Products page to manually mark items as out of stock when needed</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Store Hours Settings */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <SectionHeader 
-                icon={Clock} 
-                title="Store Operating Hours" 
-                description="Configure when your store opens and closes"
-                color="amber"
+              <SettingItem
+                title="Show Current Stock in POS"
+                description="Display the available stock count on menu items in the POS page"
+                enabled={showCurrentStockInPOS}
+                onChange={() => setShowCurrentStockInPOS(!showCurrentStockInPOS)}
               />
-              <div className="divide-y divide-gray-100">
-                {/* Open Time */}
-                <div className="px-6 py-5 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
-                  <div className="flex-1 pr-4">
-                    <h3 className="text-base font-medium text-gray-900">Opening Time</h3>
-                    <p className="text-sm text-gray-500 mt-1">The time your store opens for business each day</p>
-                  </div>
-                  <input
-                    type="time"
-                    value={openTime}
-                    onChange={(e) => handleTimeChange('openTime', e.target.value)}
-                    disabled={isSyncing}
-                    className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed bg-white"
-                  />
-                </div>
-
-                {/* Close Time */}
-                <div className="px-6 py-5 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
-                  <div className="flex-1 pr-4">
-                    <h3 className="text-base font-medium text-gray-900">Closing Time</h3>
-                    <p className="text-sm text-gray-500 mt-1">The time your store closes for business each day</p>
-                  </div>
-                  <input
-                    type="time"
-                    value={closeTime}
-                    onChange={(e) => handleTimeChange('closeTime', e.target.value)}
-                    disabled={isSyncing}
-                    className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed bg-white"
-                  />
-                </div>
-              </div>
             </div>
+          </div>
 
-            {/* Info Box */}
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
-              <div className="flex gap-3">
-                <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-blue-800">
-                  <h3 className="font-semibold mb-2">Quick Reference</h3>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="font-medium text-blue-900 mb-1">Payment Settings</p>
-                      <ul className="list-disc ml-4 space-y-0.5 text-blue-700">
-                        <li>Mark Paid on Confirm: Orders paid immediately on confirmation</li>
-                        <li>Mark Paid on Print: Orders paid when receipt is printed</li>
-                      </ul>
-                    </div>
-                    <div>
-                      <p className="font-medium text-blue-900 mb-1">Inventory Settings</p>
-                      <ul className="list-disc ml-4 space-y-0.5 text-blue-700">
-                        <li>Auto Out-of-Stock: Control automatic menu availability</li>
-                        <li>Show Stock in POS: Toggle stock display for cashiers</li>
-                      </ul>
-                    </div>
-                  </div>
+          {/* Store Hours Settings */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <SectionHeader 
+              icon={Clock} 
+              title="Store Operating Hours" 
+              description="Configure when your store opens and closes"
+              color="amber"
+            />
+            <div className="divide-y divide-gray-100">
+              {/* Open Time */}
+              <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                <div className="flex-1 pr-4">
+                  <h3 className="text-sm font-medium text-gray-900">Opening Time</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">The time your store opens for business</p>
                 </div>
+                <input
+                  type="time"
+                  value={openTime}
+                  onChange={(e) => handleTimeChange('openTime', e.target.value)}
+                  disabled={isSyncing}
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50 bg-white"
+                />
+              </div>
+
+              {/* Close Time */}
+              <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                <div className="flex-1 pr-4">
+                  <h3 className="text-sm font-medium text-gray-900">Closing Time</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">The time your store closes for business</p>
+                </div>
+                <input
+                  type="time"
+                  value={closeTime}
+                  onChange={(e) => handleTimeChange('closeTime', e.target.value)}
+                  disabled={isSyncing}
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50 bg-white"
+                />
               </div>
             </div>
           </div>
         </div>
+
+        {/* Manager Settings - Only visible to managers/admins */}
+        {isManager && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Manager PIN Settings */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <SectionHeader 
+                icon={Key} 
+                title="Manager PIN" 
+                description="Change the manager authorization PIN"
+                color="amber"
+              />
+              <div className="px-6 py-5">
+                {!showPinChange ? (
+                  <button
+                    onClick={() => setShowPinChange(true)}
+                    className="px-4 py-2 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors font-medium text-sm"
+                  >
+                    Change Manager PIN
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Current PIN</label>
+                      <input
+                        type="password"
+                        maxLength={4}
+                        value={currentPin}
+                        onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                        placeholder="Enter current PIN"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">New PIN (4 digits)</label>
+                      <input
+                        type="password"
+                        maxLength={4}
+                        value={newPin}
+                        onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                        placeholder="Enter new 4-digit PIN"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New PIN</label>
+                      <input
+                        type="password"
+                        maxLength={4}
+                        value={confirmPin}
+                        onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                        placeholder="Confirm new PIN"
+                      />
+                    </div>
+                    {pinError && (
+                      <p className="text-sm text-red-600">{pinError}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handlePinChange}
+                        className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm"
+                      >
+                        Update PIN
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowPinChange(false)
+                          setCurrentPin('')
+                          setNewPin('')
+                          setConfirmPin('')
+                          setPinError('')
+                        }}
+                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Cashier Permissions */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <SectionHeader 
+                icon={Shield} 
+                title="Cashier Permissions" 
+                description="Configure which actions cashiers can perform without manager PIN"
+                color="purple"
+              />
+              <div className="divide-y divide-gray-100">
+                <SettingItem
+                  title="Void Order Without PIN"
+                  description="Allow cashiers to void orders without manager PIN"
+                  enabled={cashierCanVoidWithoutPin}
+                  onChange={() => setCashierCanVoidWithoutPin(!cashierCanVoidWithoutPin)}
+                  warning={cashierCanVoidWithoutPin}
+                />
+                <SettingItem
+                  title="Refund Order Without PIN"
+                  description="Allow cashiers to process refunds without manager PIN"
+                  enabled={cashierCanRefundWithoutPin}
+                  onChange={() => setCashierCanRefundWithoutPin(!cashierCanRefundWithoutPin)}
+                  warning={cashierCanRefundWithoutPin}
+                />
+                <SettingItem
+                  title="Mark Complimentary Without PIN"
+                  description="Allow cashiers to mark orders as complimentary without PIN"
+                  enabled={cashierCanComplimentaryWithoutPin}
+                  onChange={() => setCashierCanComplimentaryWithoutPin(!cashierCanComplimentaryWithoutPin)}
+                  warning={cashierCanComplimentaryWithoutPin}
+                />
+                <SettingItem
+                  title="Write-Off Order Without PIN"
+                  description="Allow cashiers to write off unpaid orders without PIN"
+                  enabled={cashierCanWriteOffWithoutPin}
+                  onChange={() => setCashierCanWriteOffWithoutPin(!cashierCanWriteOffWithoutPin)}
+                  warning={cashierCanWriteOffWithoutPin}
+                />
+                <SettingItem
+                  title="Void & Re-order Without PIN"
+                  description="Allow cashiers to void orders and create re-orders without PIN"
+                  enabled={cashierCanVoidAndReorderWithoutPin}
+                  onChange={() => setCashierCanVoidAndReorderWithoutPin(!cashierCanVoidAndReorderWithoutPin)}
+                  warning={cashierCanVoidAndReorderWithoutPin}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   )

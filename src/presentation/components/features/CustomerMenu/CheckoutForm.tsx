@@ -28,9 +28,10 @@ export const CheckoutForm = ({ items, onSubmit, onBack, isSubmitting = false }: 
     }
   }, [isAuthenticated, user])
 
-  const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0)
-  const tax = subtotal * 0.12
-  const total = subtotal + tax
+  // VAT is inclusive (already included in the displayed prices)
+  const total = items.reduce((sum, item) => sum + item.subtotal, 0)
+  const tax = total * (12 / 112) // Extract 12% VAT from inclusive price
+  const subtotal = total - tax
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

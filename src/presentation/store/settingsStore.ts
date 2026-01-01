@@ -12,6 +12,13 @@ interface SettingsState {
   autoOutOfStockWhenIngredientsRunOut: boolean
   showCurrentStockInPOS: boolean
   
+  // Cashier permissions - whether actions require manager PIN
+  cashierCanVoidWithoutPin: boolean
+  cashierCanRefundWithoutPin: boolean
+  cashierCanComplimentaryWithoutPin: boolean
+  cashierCanWriteOffWithoutPin: boolean
+  cashierCanVoidAndReorderWithoutPin: boolean
+  
   // Actions
   setMarkPaidOnConfirmOrder: (value: boolean) => void
   setMarkPaidOnPrintReceipt: (value: boolean) => void
@@ -19,6 +26,11 @@ interface SettingsState {
   setPrintKitchenCopy: (value: boolean) => void
   setAutoOutOfStockWhenIngredientsRunOut: (value: boolean) => void
   setShowCurrentStockInPOS: (value: boolean) => void
+  setCashierCanVoidWithoutPin: (value: boolean) => void
+  setCashierCanRefundWithoutPin: (value: boolean) => void
+  setCashierCanComplimentaryWithoutPin: (value: boolean) => void
+  setCashierCanWriteOffWithoutPin: (value: boolean) => void
+  setCashierCanVoidAndReorderWithoutPin: (value: boolean) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -33,6 +45,13 @@ export const useSettingsStore = create<SettingsState>()(
       // Default settings - Inventory
       autoOutOfStockWhenIngredientsRunOut: false, // Default OFF - don't auto mark out of stock
       showCurrentStockInPOS: true, // Default ON - show stock in POS
+      
+      // Default settings - Cashier permissions (all require PIN by default)
+      cashierCanVoidWithoutPin: false,
+      cashierCanRefundWithoutPin: false,
+      cashierCanComplimentaryWithoutPin: false,
+      cashierCanWriteOffWithoutPin: false,
+      cashierCanVoidAndReorderWithoutPin: false,
       
       // Actions
       setMarkPaidOnConfirmOrder: (value: boolean) => 
@@ -52,6 +71,21 @@ export const useSettingsStore = create<SettingsState>()(
         
       setShowCurrentStockInPOS: (value: boolean) =>
         set({ showCurrentStockInPOS: value }),
+        
+      setCashierCanVoidWithoutPin: (value: boolean) =>
+        set({ cashierCanVoidWithoutPin: value }),
+        
+      setCashierCanRefundWithoutPin: (value: boolean) =>
+        set({ cashierCanRefundWithoutPin: value }),
+        
+      setCashierCanComplimentaryWithoutPin: (value: boolean) =>
+        set({ cashierCanComplimentaryWithoutPin: value }),
+        
+      setCashierCanWriteOffWithoutPin: (value: boolean) =>
+        set({ cashierCanWriteOffWithoutPin: value }),
+        
+      setCashierCanVoidAndReorderWithoutPin: (value: boolean) =>
+        set({ cashierCanVoidAndReorderWithoutPin: value }),
     }),
     {
       name: 'beehive-settings',

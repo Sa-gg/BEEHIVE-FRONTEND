@@ -27,6 +27,7 @@ import { inventoryApi } from '../../../infrastructure/api/inventory.api'
 import { stockTransactionApi } from '../../../infrastructure/api/stockTransaction.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
+import { expensesApi, type Expense } from '../../../infrastructure/api/expenses.api'
 import { formatSmartStock } from '../../../shared/utils/stockFormat'
 import { DateFilter, type DateFilterValue, getDateRangeFromPreset } from '../../components/common/DateFilter'
 import { printWithIframe } from '../../../shared/utils/printUtils'
@@ -49,7 +50,7 @@ import {
 
 const COLORS = ['#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316']
 
-type ReportTab = 'sales' | 'inventory'
+type ReportTab = 'sales' | 'inventory' | 'expenses'
 type PrintOption = 'full' | 'transactions' | 'summary' | 'stock-transactions'
 
 interface SalesTransaction {
@@ -117,12 +118,22 @@ interface InventoryReportData {
   }>
 }
 
+interface ExpenseReportData {
+  totalExpenses: number
+  monthlyExpenses: number
+  expenseCount: number
+  categoryBreakdown: Array<{ name: string; value: number }>
+  dailyTrend: Array<{ day: string; total: number }>
+  expenses: Expense[]
+}
+
 export const ReportsPage = () => {
   const [activeTab, setActiveTab] = useState<ReportTab>('sales')
   const [customDateFilter, setCustomDateFilter] = useState<DateFilterValue>({ preset: 'month', startDate: null, endDate: null })
   const [loading, setLoading] = useState(true)
   const [salesData, setSalesData] = useState<SalesReportData | null>(null)
   const [inventoryData, setInventoryData] = useState<InventoryReportData | null>(null)
+  const [expenseData, setExpenseData] = useState<ExpenseReportData | null>(null)
   const [menuItems, setMenuItems] = useState<Map<string, string>>(new Map())
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
@@ -153,8 +164,10 @@ export const ReportsPage = () => {
     try {
       if (activeTab === 'sales') {
         await loadSalesReport()
-      } else {
+      } else if (activeTab === 'inventory') {
         await loadInventoryReport()
+      } else if (activeTab === 'expenses') {
+        await loadExpensesReport()
       }
     } catch (error) {
       console.error('Failed to load report data:', error)
@@ -454,6 +467,63 @@ export const ReportsPage = () => {
       })
     } catch (error) {
       console.error('Failed to load inventory report:', error)
+    }
+  }
+
+  const loadExpensesReport = async () => {
+    try {
+      const expenses = await expensesApi.getAll()
+      
+      // Get date range from custom filter
+      let startDate: Date | null = null
+      let endDate: Date | null = null
+      
+      if (customDateFilter.preset === 'custom') {
+        startDate = customDateFilter.startDate
+        endDate = customDateFilter.endDate
+      } else {
+        const range = getDateRangeFromPreset(customDateFilter.preset)
+        startDate = range.startDate
+        endDate = range.endDate
+      }
+      
+      // Filter expenses by date range
+      const filteredExpenses = expenses.filter(expense => {
+        const expenseDate = new Date(expense.date)
+        return (!startDate || expenseDate >= startDate) && (!endDate || expenseDate <= endDate)
+      })
+      
+      // Calculate total expenses
+      const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0)
+      const monthlyExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
+      
+      // Category breakdown for pie chart
+      const categoryTotals: Record<string, number> = {}
+      filteredExpenses.forEach(exp => {
+        categoryTotals[exp.category] = (categoryTotals[exp.category] || 0) + exp.amount
+      })
+      const categoryBreakdown = Object.entries(categoryTotals).map(([name, value]) => ({ name, value }))
+      
+      // Daily trend for bar chart
+      const dailyTotals: Record<string, number> = {}
+      filteredExpenses.forEach(exp => {
+        const day = new Date(exp.date).getDate().toString()
+        dailyTotals[day] = (dailyTotals[day] || 0) + exp.amount
+      })
+      const dailyTrend = Object.entries(dailyTotals)
+        .map(([day, total]) => ({ day, total }))
+        .sort((a, b) => parseInt(a.day) - parseInt(b.day))
+      
+      setExpenseData({
+        totalExpenses,
+        monthlyExpenses,
+        expenseCount: filteredExpenses.length,
+        categoryBreakdown,
+        dailyTrend,
+        expenses: filteredExpenses
+      })
+    } catch (error) {
+      console.error('Failed to load expenses report:', error)
     }
   }
 
@@ -859,7 +929,7 @@ export const ReportsPage = () => {
         {/* Tabs & Date Range */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-xl p-4 shadow-sm">
           {/* Tab Buttons */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => setActiveTab('sales')}
               className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
@@ -881,6 +951,17 @@ export const ReportsPage = () => {
             >
               <Package className="h-5 w-5" />
               Inventory Report
+            </button>
+            <button
+              onClick={() => setActiveTab('expenses')}
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
+                activeTab === 'expenses'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <Receipt className="h-5 w-5" />
+              Expenses Report
             </button>
           </div>
 
@@ -908,6 +989,9 @@ export const ReportsPage = () => {
             )}
             {activeTab === 'inventory' && inventoryData && (
               <InventoryReportContent data={inventoryData} formatCurrency={formatCurrency} />
+            )}
+            {activeTab === 'expenses' && expenseData && (
+              <ExpensesReportContent data={expenseData} formatCurrency={formatCurrency} />
             )}
           </div>
         )}
@@ -1668,6 +1752,180 @@ const InventoryReportContent = ({ data, formatCurrency }: { data: InventoryRepor
         </table>
         {data.stockTransactions && data.stockTransactions.length > 50 && (
           <p className="text-center text-sm text-gray-500 mt-4">Showing first 50 of {data.stockTransactions.length} transactions. Export or print for full list.</p>
+        )}
+      </div>
+    </div>
+  </div>
+)
+
+const ExpensesReportContent = ({ data, formatCurrency }: { data: ExpenseReportData; formatCurrency: (value: number) => string }) => (
+  <div className="space-y-6">
+    {/* Stats Overview */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-2xl p-6 border border-orange-100">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-3 rounded-xl bg-orange-200/80">
+            <DollarSign className="h-6 w-6 text-orange-700" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-600">Total All-Time</p>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.totalExpenses)}</p>
+          </div>
+        </div>
+      </div>
+      <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-2xl p-6 border border-amber-100">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-3 rounded-xl bg-amber-200/80">
+            <TrendingDown className="h-6 w-6 text-amber-700" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-600">Period Total</p>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.monthlyExpenses)}</p>
+          </div>
+        </div>
+      </div>
+      <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-2xl p-6 border border-blue-100">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-3 rounded-xl bg-blue-200/80">
+            <Receipt className="h-6 w-6 text-blue-700" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-600">Expense Count</p>
+            <p className="text-2xl font-bold text-gray-900">{data.expenseCount}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Charts Section */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Category Breakdown Pie */}
+      {data.categoryBreakdown.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">Category Breakdown</h3>
+              <p className="text-sm text-gray-500">Distribution by expense type</p>
+            </div>
+          </div>
+          <div className="flex items-center">
+            <ResponsiveContainer width="55%" height={220}>
+              <PieChart>
+                <Pie
+                  data={data.categoryBreakdown}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={85}
+                  paddingAngle={3}
+                  dataKey="value"
+                >
+                  {data.categoryBreakdown.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  formatter={(value: number) => formatCurrency(value)}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex-1 space-y-2">
+              {data.categoryBreakdown.slice(0, 5).map((cat, index) => (
+                <div key={cat.name} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                    <span className="text-sm text-gray-600 truncate max-w-[120px]">{cat.name}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {formatCurrency(cat.value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Trend - Bar Chart */}
+      {data.dailyTrend.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">Expense Trend</h3>
+              <p className="text-sm text-gray-500">Daily totals for selected period</p>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={data.dailyTrend}>
+              <defs>
+                <linearGradient id="expenseBarGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#F59E0B" stopOpacity={1}/>
+                  <stop offset="100%" stopColor="#F97316" stopOpacity={0.8}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9CA3AF' }} tickFormatter={val => `₱${(val/1000).toFixed(0)}k`} />
+              <Tooltip 
+                formatter={(value: number) => [formatCurrency(value), 'Total']}
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
+              />
+              <Bar dataKey="total" fill="url(#expenseBarGradient)" radius={[6, 6, 0, 0]} barSize={20} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+
+    {/* Expense List Table */}
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+      <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900">Expense Records</h3>
+          <p className="text-sm text-gray-500">{data.expenses.length} expenses in selected period</p>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gradient-to-r from-amber-50 to-white border-b border-gray-200">
+            <tr>
+              <th className="py-3 px-4 text-left font-semibold text-gray-700">Date</th>
+              <th className="py-3 px-4 text-left font-semibold text-gray-700">Category</th>
+              <th className="py-3 px-4 text-left font-semibold text-gray-700">Description</th>
+              <th className="py-3 px-4 text-left font-semibold text-gray-700">Frequency</th>
+              <th className="py-3 px-4 text-right font-semibold text-gray-700">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {data.expenses.slice(0, 50).map((expense) => (
+              <tr key={expense.id} className="hover:bg-gray-50">
+                <td className="py-3 px-4">{new Date(expense.date).toLocaleDateString()}</td>
+                <td className="py-3 px-4">
+                  <Badge variant="outline" className="text-xs">{expense.category}</Badge>
+                </td>
+                <td className="py-3 px-4 text-gray-600">{expense.description}</td>
+                <td className="py-3 px-4 text-gray-500 text-xs">{expense.frequency}</td>
+                <td className="py-3 px-4 text-right font-semibold text-orange-600">{formatCurrency(expense.amount)}</td>
+              </tr>
+            ))}
+            {data.expenses.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-gray-500">No expenses found for selected period</td>
+              </tr>
+            )}
+          </tbody>
+          {data.expenses.length > 0 && (
+            <tfoot className="bg-amber-50 border-t-2 border-amber-200">
+              <tr>
+                <td colSpan={4} className="py-3 px-4 font-bold text-right">TOTAL:</td>
+                <td className="py-3 px-4 text-right font-bold text-orange-700">{formatCurrency(data.monthlyExpenses)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+        {data.expenses.length > 50 && (
+          <p className="text-center text-sm text-gray-500 py-4">Showing first 50 of {data.expenses.length} expenses.</p>
         )}
       </div>
     </div>

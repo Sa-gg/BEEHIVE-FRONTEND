@@ -222,11 +222,10 @@ export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrd
   }
 
   const toggleOrderExpanded = (orderId: string) => {
+    // When expanding one card, collapse all others
     setExpandedOrders(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(orderId)) {
-        newSet.delete(orderId)
-      } else {
+      const newSet = new Set<string>()
+      if (!prev.has(orderId)) {
         newSet.add(orderId)
       }
       return newSet
@@ -369,12 +368,25 @@ export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrd
     const canRate = canOrderReceiveFeedback(order) && !hasRated
     const moodEmoji = getMoodEmoji(order.moodContext)
     const orderType = getOrderTypeInfo(order.orderType)
+    
+    // Different border colors based on status for visual distinction
+    const borderColor = order.status === 'READY' 
+      ? 'border-green-300 shadow-green-100' 
+      : order.status === 'PREPARING' 
+        ? 'border-blue-200' 
+        : order.status === 'COMPLETED'
+          ? 'border-gray-200'
+          : 'border-amber-200'
+    
+    const bgColor = isExpanded 
+      ? order.status === 'READY' ? 'bg-green-50' : 'bg-white' 
+      : 'bg-white'
 
     return (
-      <div key={order.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div key={order.id} className={`rounded-2xl border-2 ${borderColor} shadow-sm overflow-hidden transition-all duration-200 ${bgColor} ${isExpanded ? 'ring-2 ring-amber-200' : ''}`}>
         {/* Order Header */}
         <div 
-          className="p-4 cursor-pointer active:bg-gray-50 transition-colors"
+          className={`p-4 cursor-pointer transition-colors ${!isExpanded ? 'hover:bg-gray-50' : ''}`}
           onClick={() => toggleOrderExpanded(order.id)}
         >
           <div className="flex items-center justify-between mb-2">
@@ -390,7 +402,10 @@ export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrd
                 </span>
               )}
             </div>
-            {isExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
+            <div className="flex items-center gap-2">
+              {isExpanded && <span className="text-xs text-amber-600 font-medium">Tap to collapse</span>}
+              {isExpanded ? <ChevronUp className="h-5 w-5 text-amber-500" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
+            </div>
           </div>
 
           {!compact && !['COMPLETED', 'CANCELLED'].includes(order.status) && (

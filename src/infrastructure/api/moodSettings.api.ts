@@ -32,6 +32,16 @@ export interface MoodFeedbackConfig {
   priceRangeWeight: number;
   historicalDataWeight: number;
   timeOfDayWeight: number;
+  explorationBonusWeight: number;    // Max UCB exploration bonus
+  minimumOrdersThreshold: number;    // Min orders before trusting data
+  // Time of day configuration
+  morningStartHour: number;
+  morningEndHour: number;
+  afternoonEndHour: number;
+  morningCategories: string;   // JSON string array
+  afternoonCategories: string; // JSON string array
+  eveningCategories: string;   // JSON string array
+  // UI settings
   showMoodReflection: boolean;
   reflectionDelayMinutes: number;
   createdAt: string;
@@ -79,6 +89,16 @@ export interface UpdateFeedbackConfigDTO {
   priceRangeWeight?: number;
   historicalDataWeight?: number;
   timeOfDayWeight?: number;
+  explorationBonusWeight?: number;
+  minimumOrdersThreshold?: number;
+  // Time of day configuration
+  morningStartHour?: number;
+  morningEndHour?: number;
+  afternoonEndHour?: number;
+  morningCategories?: string[];
+  afternoonCategories?: string[];
+  eveningCategories?: string[];
+  // UI settings
   showMoodReflection?: boolean;
   reflectionDelayMinutes?: number;
 }

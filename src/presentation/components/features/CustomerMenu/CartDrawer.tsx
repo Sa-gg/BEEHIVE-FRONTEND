@@ -21,10 +21,10 @@ export const CartDrawer = ({
   isOpen,
   onClose,
 }: CartDrawerProps) => {
-  // Total is the sum of item prices (which already include VAT)
+  // Total is the sum of item prices (VAT is already included in displayed prices)
   const total = items.reduce((sum, item) => sum + item.subtotal, 0)
-  // VAT is 12% of the total
-  const vat = total * 0.12
+  // VAT is inclusive - extract 12% from the total (12/112)
+  const vat = total * (12 / 112)
   // Subtotal is total minus VAT
   const subtotal = total - vat
 

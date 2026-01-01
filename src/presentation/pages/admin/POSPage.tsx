@@ -44,6 +44,7 @@ export const POSPage = () => {
   const { user } = useAuthStore()
   const editingOrder = location.state?.editingOrder
   const reorderFrom = location.state?.reorderFrom
+  const linkToOrder = location.state?.linkToOrder // New: Link to existing order (empty cart)
   const { markPaidOnConfirmOrder, markPaidOnPrintReceipt, printReceiptOnConfirmOrder, printKitchenCopy } = useSettingsStore()
   
   // Transform order items from backend format to POS format
@@ -60,29 +61,32 @@ export const POSPage = () => {
   
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [loading, setLoading] = useState(true)
+  // For linkToOrder: start with empty cart; for reorderFrom: pre-fill items
   const [orderItems, setOrderItems] = useState<OrderItem[]>(
-    transformOrderItems((editingOrder?.items || reorderFrom?.items) || [])
+    linkToOrder ? [] : transformOrderItems((editingOrder?.items || reorderFrom?.items) || [])
   )
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isEditMode] = useState(!!editingOrder)
   const [isReordering] = useState(!!reorderFrom)
-  const [linkedOrderId] = useState(reorderFrom?.id || null)
+  const [isLinkingOrder] = useState(!!linkToOrder) // New: Adding linked order
+  // For linkToOrder: use the parent order's id; for reorderFrom: use its id
+  const [linkedOrderId] = useState(linkToOrder?.id || reorderFrom?.id || null)
   const [maxServings, setMaxServings] = useState<Record<string, number>>({})
   
-  // Order details state - pre-fill from reorder if available
+  // Order details state - pre-fill from linkToOrder, reorder or edit
   const [customerName, setCustomerName] = useState(
-    editingOrder?.customerName || reorderFrom?.customerName || ''
+    editingOrder?.customerName || linkToOrder?.customerName || reorderFrom?.customerName || ''
   )
   const [tableNumber, setTableNumber] = useState(
-    editingOrder?.tableNumber || reorderFrom?.tableNumber || ''
+    editingOrder?.tableNumber || linkToOrder?.tableNumber || reorderFrom?.tableNumber || ''
   )
   const [paymentMethod, setPaymentMethod] = useState(
     editingOrder?.paymentMethod || reorderFrom?.paymentMethod || 'CASH'
   )
   const [orderType, setOrderType] = useState(
-    editingOrder?.orderType || reorderFrom?.orderType || 'DINE_IN'
+    editingOrder?.orderType || linkToOrder?.orderType || reorderFrom?.orderType || 'DINE_IN'
   )
 
   // Helper function to get full image URL
@@ -350,21 +354,25 @@ export const POSPage = () => {
       return
     }
 
-    // Handle edit mode differently
+    // Handle edit mode - Mark Paid & Print: set PREPARING + PAID
     if (isEditMode && editingOrder) {
       try {
-        // Update order details
+        // Update order details, set status to PREPARING and mark as PAID
         const updateData: any = {
           customerName: customerName || undefined,
           tableNumber: tableNumber || undefined,
           orderType: orderType,
-          paymentMethod: paymentMethod
+          paymentMethod: paymentMethod,
+          status: 'PREPARING', // Set to PREPARING when confirming via Mark Paid & Print
+          paymentStatus: 'PAID' // Mark as paid
         }
         
         await ordersApi.update(editingOrder.id, updateData)
         
         // Print the receipt with existing order data
         printReceiptForOrder(editingOrder)
+        
+        alert(`Order Confirmed, Paid & Preparing!\nOrder Number: ${editingOrder.orderNumber}`)
         
         // Clear order state and navigate back
         clearOrder()
@@ -648,14 +656,15 @@ export const POSPage = () => {
 
   const confirmOrder = async () => {
     if (isEditMode && editingOrder) {
-      // Update existing order
+      // Update existing order and set status to PREPARING
       try {
-        // Update order details
+        // Update order details and set status to PREPARING (cashier confirmed the order)
         const updateData: any = {
           customerName: customerName || undefined,
           tableNumber: tableNumber || undefined,
           orderType: orderType,
-          paymentMethod: paymentMethod
+          paymentMethod: paymentMethod,
+          status: 'PREPARING' // Auto-set to PREPARING when cashier confirms edited order
         }
         
         await ordersApi.update(editingOrder.id, updateData)
@@ -664,7 +673,7 @@ export const POSPage = () => {
         // to update order items. For now, we're only updating order metadata.
         
         // Show success message
-        alert(`Order Updated Successfully!\nOrder Number: ${editingOrder.orderNumber}`)
+        alert(`Order Confirmed & Now Preparing!\nOrder Number: ${editingOrder.orderNumber}`)
         
         // Clear order state
         clearOrder()
@@ -683,7 +692,7 @@ export const POSPage = () => {
           tableNumber: tableNumber || undefined,
           orderType: orderType,
           paymentMethod: paymentMethod,
-          linkedOrderId: linkedOrderId || undefined, // Link to original order if reordering
+          linkedOrderId: linkedOrderId || undefined, // Link to original order if linking or reordering
           createdBy: user?.role === 'MANAGER' ? 'Manager' : 'Cashier', // Track the role who created the order
           items: orderItems.map(item => ({
             menuItemId: item.menuItemId,
@@ -713,11 +722,14 @@ export const POSPage = () => {
         }
         
         // Show success message with order number
-        alert(`Order Created Successfully!\nOrder Number: ${createdOrder.orderNumber}\nTotal: ₱${createdOrder.totalAmount.toFixed(2)}`)
+        const successMsg = isLinkingOrder 
+          ? `Linked Order Created!\nOrder Number: ${createdOrder.orderNumber}\nLinked to: ${linkToOrder?.orderNumber}\nTotal: ₱${createdOrder.totalAmount.toFixed(2)}`
+          : `Order Created Successfully!\nOrder Number: ${createdOrder.orderNumber}\nTotal: ₱${createdOrder.totalAmount.toFixed(2)}`
+        alert(successMsg)
         clearOrder()
         
-        // Navigate to orders page if reordering
-        if (isReordering) {
+        // Navigate to orders page if reordering or linking
+        if (isReordering || isLinkingOrder) {
           navigate('/admin/orders', { replace: true })
         }
       } catch (error: any) {
@@ -796,11 +808,28 @@ export const POSPage = () => {
               </Button>
             </div>
           )}
+          {/* Link Order Mode Banner */}
+          {isLinkingOrder && (
+            <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between flex-shrink-0">
+              <div>
+                <p className="text-sm font-medium">🔗 Adding items to: {linkToOrder?.orderNumber}</p>
+                <p className="text-xs opacity-90">This will create a linked order for {customerName || 'Guest'}</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate('/admin/orders')}
+                className="bg-white text-amber-600 border-white hover:bg-amber-50 font-medium"
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
           {/* Category Tabs */}
           <div className="bg-white border-b border-gray-200 p-3 lg:p-4 flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg lg:text-xl font-bold">
-                {isEditMode ? 'Edit Order - Menu' : isReordering ? 'Reorder - Menu' : 'Menu'}
+                {isEditMode ? 'Edit Order - Menu' : isReordering ? 'Reorder - Menu' : isLinkingOrder ? 'Add Items - Menu' : 'Menu'}
               </h2>
               {/* Search Bar */}
               <div className="relative flex-1 max-w-xs ml-4">

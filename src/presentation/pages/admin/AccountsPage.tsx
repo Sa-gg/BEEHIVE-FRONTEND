@@ -437,11 +437,11 @@ export const AccountsPage = () => {
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
+      <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Account Management</h1>
+            <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Account Management</h1>
             <p className="text-gray-500 mt-1">Manage all user accounts, roles, and permissions</p>
           </div>
           <Button 
@@ -457,58 +457,86 @@ export const AccountsPage = () => {
           </Button>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
-          <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Users className="h-5 w-5 text-gray-600" />
-              <span className="text-sm font-medium text-gray-700">Total</span>
+        {/* Stats Cards - Compact style */}
+        <div className="grid grid-cols-3 lg:grid-cols-7 gap-3">
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Total</p>
+                <p className="text-xl font-bold text-gray-900 mt-1">{isAdmin ? stats.totalUsers : stats.totalUsers - stats.admins}</p>
+              </div>
+              <div className="p-2 bg-gray-100 rounded-lg">
+                <Users className="h-4 w-4 text-gray-600" />
+              </div>
             </div>
-            <p className="text-2xl font-bold text-gray-900">{isAdmin ? stats.totalUsers : stats.totalUsers - stats.admins}</p>
           </div>
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <UserCircle className="h-5 w-5 text-blue-600" />
-              <span className="text-sm font-medium text-blue-900">Customers</span>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Customers</p>
+                <p className="text-xl font-bold text-blue-600 mt-1">{stats.customers}</p>
+              </div>
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <UserCircle className="h-4 w-4 text-blue-600" />
+              </div>
             </div>
-            <p className="text-2xl font-bold text-blue-900">{stats.customers}</p>
           </div>
-          <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Store className="h-5 w-5 text-green-600" />
-              <span className="text-sm font-medium text-green-900">Cashiers</span>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Cashiers</p>
+                <p className="text-xl font-bold text-green-600 mt-1">{stats.cashiers}</p>
+              </div>
+              <div className="p-2 bg-green-100 rounded-lg">
+                <Store className="h-4 w-4 text-green-600" />
+              </div>
             </div>
-            <p className="text-2xl font-bold text-green-900">{stats.cashiers}</p>
           </div>
-          <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <ChefHat className="h-5 w-5 text-orange-600" />
-              <span className="text-sm font-medium text-orange-900">Cooks</span>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Cooks</p>
+                <p className="text-xl font-bold text-orange-600 mt-1">{stats.cooks}</p>
+              </div>
+              <div className="p-2 bg-orange-100 rounded-lg">
+                <ChefHat className="h-4 w-4 text-orange-600" />
+              </div>
             </div>
-            <p className="text-2xl font-bold text-orange-900">{stats.cooks}</p>
           </div>
-          <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <ShieldCheck className="h-5 w-5 text-purple-600" />
-              <span className="text-sm font-medium text-purple-900">Managers</span>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Managers</p>
+                <p className="text-xl font-bold text-purple-600 mt-1">{stats.managers}</p>
+              </div>
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <ShieldCheck className="h-4 w-4 text-purple-600" />
+              </div>
             </div>
-            <p className="text-2xl font-bold text-purple-900">{stats.managers}</p>
           </div>
           {isAdmin && (
-            <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Shield className="h-5 w-5 text-red-600" />
-                <span className="text-sm font-medium text-red-900">Admins</span>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Admins</p>
+                  <p className="text-xl font-bold text-red-600 mt-1">{stats.admins}</p>
+                </div>
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <Shield className="h-4 w-4 text-red-600" />
+                </div>
               </div>
-              <p className="text-2xl font-bold text-red-900">{stats.admins}</p>
             </div>
           )}
-          <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <UserCheck className="h-5 w-5 text-emerald-600" />
-              <span className="text-sm font-medium text-emerald-900">Active</span>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Active</p>
+                <p className="text-xl font-bold text-emerald-600 mt-1">{stats.activeUsers}</p>
+              </div>
+              <div className="p-2 bg-emerald-100 rounded-lg">
+                <UserCheck className="h-4 w-4 text-emerald-600" />
+              </div>
             </div>
-            <p className="text-2xl font-bold text-emerald-900">{stats.activeUsers}</p>
           </div>
         </div>
 

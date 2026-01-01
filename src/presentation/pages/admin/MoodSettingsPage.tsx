@@ -416,10 +416,13 @@ export const MoodSettingsPage = () => {
                 Mood-Based Recommendation System
               </h2>
               <p className="text-purple-800 mb-4">
-                Our intelligent system recommends menu items based on how customers feel, using scientifically-backed 
-                nutritional information about foods that can help improve different moods. The algorithm scores each 
-                menu item and shows the most relevant recommendations.
+                Our intelligent system recommends menu items based on how customers feel, using a multi-factor scoring 
+                algorithm that combines <strong>domain knowledge</strong> (nutritional science), <strong>historical data</strong> (what worked for others), 
+                and <strong>statistical confidence</strong> (Wilson Score + UCB exploration). The system learns and improves over time.
               </p>
+              <div className="bg-white/50 rounded-lg p-3 text-sm">
+                <strong>Maximum Score: ~58 points</strong> = Mood Benefits (20) + Preferred Category (10) + Historical (15) + Featured (5) + Time of Day (5) + Exploration Bonus (3)
+              </div>
             </div>
 
             {/* How Scoring Works */}
@@ -433,46 +436,57 @@ export const MoodSettingsPage = () => {
               <div className="p-4 space-y-4">
                 <p className="text-gray-700">
                   Each menu item receives a score based on multiple factors. Items with higher scores are shown first 
-                  in recommendations. Here's how points are calculated:
+                  in recommendations. <strong>Items with equal scores are shuffled randomly</strong> to prevent position bias.
                 </p>
                 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="bg-green-50 rounded-lg p-4 border border-green-200">
                     <div className="flex items-center gap-2 font-semibold text-green-800 mb-2">
-                      <span className="bg-green-200 text-green-800 text-xs px-2 py-0.5 rounded">+20 pts</span>
+                      <span className="bg-green-200 text-green-800 text-xs px-2 py-0.5 rounded">+{feedbackConfig?.moodBenefitsWeight ?? 20} pts</span>
                       Mood Benefits Match
                     </div>
                     <p className="text-sm text-green-700">
                       Items with scientific explanations for why they help with the selected mood get the highest boost.
-                      These are set in the menu item's "Mood Benefits" field.
+                      Based on nutritional psychology research (omega-3 for mood, magnesium for stress, etc.).
                     </p>
                   </div>
 
                   <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
                     <div className="flex items-center gap-2 font-semibold text-blue-800 mb-2">
-                      <span className="bg-blue-200 text-blue-800 text-xs px-2 py-0.5 rounded">+15 pts</span>
-                      Historical Success
+                      <span className="bg-blue-200 text-blue-800 text-xs px-2 py-0.5 rounded">0-{feedbackConfig?.historicalDataWeight ?? 15} pts</span>
+                      Historical Success (Wilson Score)
                     </div>
                     <p className="text-sm text-blue-700">
-                      Based on order rate and positive feedback from customers who ordered items in the same mood.
-                      Builds over time as more data is collected.
+                      Uses <strong>Wilson Score Confidence Interval</strong> (like Reddit/Yelp) to rank items based on order rate 
+                      AND sample size. Before baseline: order rate only. After baseline: 60% order rate + 40% mood improvement.
                     </p>
                   </div>
 
                   <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
                     <div className="flex items-center gap-2 font-semibold text-purple-800 mb-2">
-                      <span className="bg-purple-200 text-purple-800 text-xs px-2 py-0.5 rounded">+10 pts</span>
+                      <span className="bg-purple-200 text-purple-800 text-xs px-2 py-0.5 rounded">+{feedbackConfig?.preferredCategoryWeight ?? 10} pts</span>
                       Preferred Category
                     </div>
                     <p className="text-sm text-purple-700">
-                      Items in categories that are scientifically linked to the mood (e.g., smoothies for stressed).
+                      Items in categories scientifically linked to the mood (e.g., smoothies for stressed, hot drinks for tired).
                       Configure these in the Mood Settings tab.
+                    </p>
+                  </div>
+
+                  <div className="bg-cyan-50 rounded-lg p-4 border border-cyan-200">
+                    <div className="flex items-center gap-2 font-semibold text-cyan-800 mb-2">
+                      <span className="bg-cyan-200 text-cyan-800 text-xs px-2 py-0.5 rounded">0-{feedbackConfig?.explorationBonusWeight ?? 3} pts</span>
+                      Exploration Bonus (UCB)
+                    </div>
+                    <p className="text-sm text-cyan-700">
+                      <strong>Upper Confidence Bound algorithm</strong> gives bonus to under-sampled items. Prevents popular items 
+                      from dominating while new items never get a chance. Used by Google, Netflix, Spotify.
                     </p>
                   </div>
 
                   <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
                     <div className="flex items-center gap-2 font-semibold text-orange-800 mb-2">
-                      <span className="bg-orange-200 text-orange-800 text-xs px-2 py-0.5 rounded">+5 pts</span>
+                      <span className="bg-orange-200 text-orange-800 text-xs px-2 py-0.5 rounded">+{feedbackConfig?.featuredItemWeight ?? 5} pts</span>
                       Featured Items
                     </div>
                     <p className="text-sm text-orange-700">
@@ -482,24 +496,70 @@ export const MoodSettingsPage = () => {
 
                   <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
                     <div className="flex items-center gap-2 font-semibold text-yellow-800 mb-2">
-                      <span className="bg-yellow-200 text-yellow-800 text-xs px-2 py-0.5 rounded">+5 pts</span>
-                      Time of Day
+                      <span className="bg-yellow-200 text-yellow-800 text-xs px-2 py-0.5 rounded">+{feedbackConfig?.timeOfDayWeight ?? 5} pts</span>
+                      Time of Day (Configurable)
                     </div>
                     <p className="text-sm text-yellow-700">
-                      Morning: hot drinks get priority. Afternoon: cold drinks. Evening: main dishes.
-                      Contextual relevance matters!
+                      Configurable time slots and categories. Default: Morning (6-12) boosts hot drinks, Evening (18+) boosts 
+                      hot drinks & platters. Configure in Algorithm Config tab.
                     </p>
                   </div>
+                </div>
 
-                  <div className="bg-red-50 rounded-lg p-4 border border-red-200">
-                    <div className="flex items-center gap-2 font-semibold text-red-800 mb-2">
-                      <span className="bg-red-200 text-red-800 text-xs px-2 py-0.5 rounded">-50 pts</span>
-                      Excluded Category
+                {/* Statistical Notes */}
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 mt-4">
+                  <h4 className="font-semibold text-gray-800 mb-2">📊 Statistical Safeguards</h4>
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    <li>• <strong>Minimum Orders Threshold ({feedbackConfig?.minimumOrdersThreshold ?? 10}):</strong> Don't trust historical data until item has enough orders</li>
+                    <li>• <strong>Neutral Score:</strong> Items with insufficient data get middle score (not penalized)</li>
+                    <li>• <strong>Tiebreaker Shuffle:</strong> Items with equal scores are randomized to prevent Day 0 position bias</li>
+                    <li>• <strong>Wilson Score:</strong> Accounts for sample size uncertainty (5/5 orders ≠ 500/500 orders)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Three-Stage Learning */}
+            <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-gradient-to-r from-indigo-50 to-violet-50 border-b">
+                <h3 className="font-semibold text-indigo-900 flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Three-Stage Learning System
+                </h3>
+              </div>
+              <div className="p-4">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-start gap-3 bg-amber-50 rounded-lg p-4">
+                    <div className="bg-amber-200 text-amber-800 font-bold px-3 py-1 rounded text-sm">Stage 1</div>
+                    <div>
+                      <div className="font-semibold text-amber-900">Day 0 - No Data (0-{feedbackConfig?.minimumOrdersThreshold ?? 10} orders)</div>
+                      <p className="text-sm text-amber-700 mt-1">
+                        Uses domain knowledge only (mood benefits, preferred categories). Historical score = neutral (7.5/15 pts). 
+                        <strong> Items with equal scores are shuffled randomly</strong> to collect unbiased data.
+                      </p>
                     </div>
-                    <p className="text-sm text-red-700">
-                      Items in excluded categories (e.g., caffeine for anxious) are heavily penalized to avoid 
-                      recommending harmful items.
-                    </p>
+                  </div>
+                  
+                  <div className="flex items-start gap-3 bg-blue-50 rounded-lg p-4">
+                    <div className="bg-blue-200 text-blue-800 font-bold px-3 py-1 rounded text-sm">Stage 2</div>
+                    <div>
+                      <div className="font-semibold text-blue-900">Baseline Period ({feedbackConfig?.minimumOrdersThreshold ?? 10}+ orders, &lt; {feedbackConfig?.baselineThreshold ?? 50} total)</div>
+                      <p className="text-sm text-blue-700 mt-1">
+                        Historical score uses <strong>order rate only</strong> (Wilson Score). No feedback collection yet - 
+                        establishing natural ordering patterns before asking "Did your mood improve?"
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-3 bg-green-50 rounded-lg p-4">
+                    <div className="bg-green-200 text-green-800 font-bold px-3 py-1 rounded text-sm">Stage 3</div>
+                    <div>
+                      <div className="font-semibold text-green-900">Post-Baseline (Feedback Enabled)</div>
+                      <p className="text-sm text-green-700 mt-1">
+                        Full algorithm: Historical = (60% × order rate) + (40% × mood improvement rate). Both use Wilson Score 
+                        for statistical confidence. System can now measure if recommendations actually improve moods.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -524,54 +584,53 @@ export const MoodSettingsPage = () => {
                   <div className="flex-1 bg-gray-50 rounded-lg p-4 text-center">
                     <div className="text-3xl mb-2">🍕</div>
                     <div className="font-semibold">2. Get Recommendations</div>
-                    <p className="text-sm text-gray-600">System shows scored recommendations</p>
+                    <p className="text-sm text-gray-600">Algorithm scores &amp; ranks items</p>
                   </div>
                   <div className="hidden md:flex items-center text-gray-300 text-2xl">→</div>
                   <div className="flex-1 bg-gray-50 rounded-lg p-4 text-center">
                     <div className="text-3xl mb-2">📦</div>
                     <div className="font-semibold">3. Place Order</div>
-                    <p className="text-sm text-gray-600">Order includes mood context</p>
+                    <p className="text-sm text-gray-600">System tracks mood + items ordered</p>
                   </div>
                   <div className="hidden md:flex items-center text-gray-300 text-2xl">→</div>
                   <div className="flex-1 bg-gray-50 rounded-lg p-4 text-center">
                     <div className="text-3xl mb-2">⭐</div>
                     <div className="font-semibold">4. Rate Experience</div>
-                    <p className="text-sm text-gray-600">Customer rates if mood improved</p>
+                    <p className="text-sm text-gray-600">After baseline: "Did mood improve?"</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Feedback System */}
+            {/* Why Baseline? */}
             <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
               <div className="px-4 py-3 bg-gradient-to-r from-pink-50 to-rose-50 border-b">
                 <h3 className="font-semibold text-pink-900 flex items-center gap-2">
                   <Heart className="h-5 w-5" />
-                  Feedback & Learning System
+                  Why Baseline Period Matters
                 </h3>
               </div>
               <div className="p-4 space-y-3">
                 <p className="text-gray-700">
-                  The system learns and improves over time based on customer feedback:
+                  The baseline period ({feedbackConfig?.baselineThreshold ?? 50} orders per mood) establishes <strong>natural ordering patterns</strong> before 
+                  asking for feedback. This is like a clinical trial's control group:
                 </p>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li className="flex items-start gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                    <span><strong>Baseline Threshold:</strong> System needs minimum orders (default: 50) per mood before feedback becomes statistically meaningful.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                    <span><strong>Rating Options:</strong> Customers can rate "Feeling Better", "Same", or "Still Down" - either via automatic reflection modal or manually in My Orders.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                    <span><strong>Historical Score:</strong> Calculated as weighted combination of order rate (60%) and positive feedback rate (40%).</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                    <span><strong>Reflection Delay:</strong> Configurable wait time (default: 15 min) before showing mood reflection - or customers can rate immediately in orders.</span>
-                  </li>
-                </ul>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="bg-red-50 rounded-lg p-3 border border-red-200">
+                    <div className="font-semibold text-red-800 mb-1">❌ Without Baseline</div>
+                    <p className="text-sm text-red-700">
+                      Day 1: System recommends Chamomile Tea → Everyone orders it → System thinks "Chamomile is best!" 
+                      → But did they order because it HELPS or because you TOLD them to?
+                    </p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                    <div className="font-semibold text-green-800 mb-1">✅ With Baseline</div>
+                    <p className="text-sm text-green-700">
+                      Observe natural behavior first → See what customers choose WITHOUT suggestions → 
+                      Then enable feedback → Now you can PROVE if recommendations improve outcomes.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -587,8 +646,8 @@ export const MoodSettingsPage = () => {
                 <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
                   <li><strong>Initialize Settings:</strong> Click "Initialize Settings" button if mood settings are empty.</li>
                   <li><strong>Configure Mood Categories:</strong> In Mood Settings tab, set preferred/excluded categories for each mood.</li>
-                  <li><strong>Add Mood Benefits to Products:</strong> In Products page, add scientific explanations for relevant moods in the AI Prompt section.</li>
-                  <li><strong>Adjust Algorithm Weights:</strong> Fine-tune point values in Algorithm Config to match your business needs.</li>
+                  <li><strong>Add Mood Benefits to Products:</strong> In Products page, add scientific explanations in "Mood Benefits" field.</li>
+                  <li><strong>Adjust Algorithm Weights:</strong> Fine-tune point values and thresholds in Algorithm Config tab.</li>
                   <li><strong>Monitor Analytics:</strong> Track order rates and customer feedback in the Analytics tab.</li>
                 </ol>
               </div>
@@ -1333,6 +1392,213 @@ export const MoodSettingsPage = () => {
                         disabled
                         className="w-full"
                       />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Statistical Settings */}
+                <div className="border-t pt-4 mt-4">
+                  <Label className="font-medium mb-2 block">Statistical &amp; Exploration Settings</Label>
+                  <p className="text-sm text-gray-500 mb-3">Configure Wilson Score and UCB exploration parameters</p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="font-medium mb-2 flex items-center justify-between">
+                        <span>Exploration Bonus (UCB)</span>
+                        <Badge>{editConfig.explorationBonusWeight ?? 3} pts</Badge>
+                      </Label>
+                      <Input
+                        type="range"
+                        min={0}
+                        max={10}
+                        value={editConfig.explorationBonusWeight ?? 3}
+                        onChange={(e) => {
+                          setEditConfig({ ...editConfig, explorationBonusWeight: parseInt(e.target.value) })
+                          setConfigDirty(true)
+                        }}
+                        className="w-full"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Max bonus for under-sampled items (prevents position bias)</p>
+                    </div>
+                    <div>
+                      <Label className="font-medium mb-2 flex items-center justify-between">
+                        <span>Minimum Orders Threshold</span>
+                        <Badge variant="outline">{editConfig.minimumOrdersThreshold ?? 10} orders</Badge>
+                      </Label>
+                      <Input
+                        type="range"
+                        min={1}
+                        max={50}
+                        value={editConfig.minimumOrdersThreshold ?? 10}
+                        onChange={(e) => {
+                          setEditConfig({ ...editConfig, minimumOrdersThreshold: parseInt(e.target.value) })
+                          setConfigDirty(true)
+                        }}
+                        className="w-full"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Don't trust historical data until item has this many orders</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Time of Day Configuration */}
+            <div className="bg-white rounded-xl border overflow-hidden">
+              <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b">
+                <h3 className="font-semibold text-amber-900 flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Time of Day Configuration
+                </h3>
+                <p className="text-sm text-amber-600 mt-1">Configure which categories get boosted at different times</p>
+              </div>
+              <div className="p-4 space-y-4">
+                {/* Time Slots */}
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div>
+                    <Label className="font-medium mb-2 block">Morning Starts</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={11}
+                      value={editConfig.morningStartHour ?? 6}
+                      onChange={(e) => {
+                        setEditConfig({ ...editConfig, morningStartHour: parseInt(e.target.value) || 6 })
+                        setConfigDirty(true)
+                      }}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">{(editConfig.morningStartHour ?? 6)}:00 AM</p>
+                  </div>
+                  <div>
+                    <Label className="font-medium mb-2 block">Morning Ends (Afternoon Starts)</Label>
+                    <Input
+                      type="number"
+                      min={8}
+                      max={15}
+                      value={editConfig.morningEndHour ?? 12}
+                      onChange={(e) => {
+                        setEditConfig({ ...editConfig, morningEndHour: parseInt(e.target.value) || 12 })
+                        setConfigDirty(true)
+                      }}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">{(editConfig.morningEndHour ?? 12)}:00 {(editConfig.morningEndHour ?? 12) >= 12 ? 'PM' : 'AM'}</p>
+                  </div>
+                  <div>
+                    <Label className="font-medium mb-2 block">Afternoon Ends (Evening Starts)</Label>
+                    <Input
+                      type="number"
+                      min={14}
+                      max={22}
+                      value={editConfig.afternoonEndHour ?? 18}
+                      onChange={(e) => {
+                        setEditConfig({ ...editConfig, afternoonEndHour: parseInt(e.target.value) || 18 })
+                        setConfigDirty(true)
+                      }}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">{(editConfig.afternoonEndHour ?? 18) > 12 ? (editConfig.afternoonEndHour ?? 18) - 12 : (editConfig.afternoonEndHour ?? 18)}:00 PM</p>
+                  </div>
+                </div>
+
+                {/* Category Boosts */}
+                <div className="border-t pt-4 mt-4">
+                  <Label className="font-medium mb-3 block">Categories Boosted by Time Period</Label>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    {/* Morning Categories */}
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <Label className="text-sm font-medium text-amber-900 mb-2 block">🌅 Morning Categories</Label>
+                      <div className="space-y-2">
+                        {CATEGORIES.map(cat => {
+                          const morningCats = editConfig.morningCategories 
+                            ? (typeof editConfig.morningCategories === 'string' 
+                                ? JSON.parse(editConfig.morningCategories) 
+                                : editConfig.morningCategories) 
+                            : ['HOT_DRINKS']
+                          const isSelected = morningCats.includes(cat.value)
+                          return (
+                            <label key={cat.value} className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  const newCats = isSelected
+                                    ? morningCats.filter((c: string) => c !== cat.value)
+                                    : [...morningCats, cat.value]
+                                  setEditConfig({ ...editConfig, morningCategories: newCats as any })
+                                  setConfigDirty(true)
+                                }}
+                                className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                              />
+                              <span className="text-sm text-gray-700">{cat.label}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Afternoon Categories */}
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <Label className="text-sm font-medium text-blue-900 mb-2 block">☀️ Afternoon Categories</Label>
+                      <div className="space-y-2">
+                        {CATEGORIES.map(cat => {
+                          const afternoonCats = editConfig.afternoonCategories 
+                            ? (typeof editConfig.afternoonCategories === 'string' 
+                                ? JSON.parse(editConfig.afternoonCategories) 
+                                : editConfig.afternoonCategories) 
+                            : []
+                          const isSelected = afternoonCats.includes(cat.value)
+                          return (
+                            <label key={cat.value} className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  const newCats = isSelected
+                                    ? afternoonCats.filter((c: string) => c !== cat.value)
+                                    : [...afternoonCats, cat.value]
+                                  setEditConfig({ ...editConfig, afternoonCategories: newCats as any })
+                                  setConfigDirty(true)
+                                }}
+                                className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-sm text-gray-700">{cat.label}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Evening Categories */}
+                    <div className="bg-indigo-50 rounded-lg p-3">
+                      <Label className="text-sm font-medium text-indigo-900 mb-2 block">🌙 Evening Categories</Label>
+                      <div className="space-y-2">
+                        {CATEGORIES.map(cat => {
+                          const eveningCats = editConfig.eveningCategories 
+                            ? (typeof editConfig.eveningCategories === 'string' 
+                                ? JSON.parse(editConfig.eveningCategories) 
+                                : editConfig.eveningCategories) 
+                            : ['HOT_DRINKS', 'PLATTER']
+                          const isSelected = eveningCats.includes(cat.value)
+                          return (
+                            <label key={cat.value} className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  const newCats = isSelected
+                                    ? eveningCats.filter((c: string) => c !== cat.value)
+                                    : [...eveningCats, cat.value]
+                                  setEditConfig({ ...editConfig, eveningCategories: newCats as any })
+                                  setConfigDirty(true)
+                                }}
+                                className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                              />
+                              <span className="text-sm text-gray-700">{cat.label}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>

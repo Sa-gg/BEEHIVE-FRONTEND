@@ -41,11 +41,8 @@ import {
   getCategoryDisplay,
   getFrequencyDisplay
 } from '../../../infrastructure/api/expenses.api'
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { DateFilter, type DateFilterValue, filterByDateRange } from '../../components/common/DateFilter'
 import { printWithIframe } from '../../../shared/utils/printUtils'
-
-const COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#8B5CF6', '#EF4444', '#EC4899']
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   [ExpenseCategory.RENT_LEASE]: <Building2 className="h-4 w-4" />,
@@ -502,148 +499,59 @@ export const ExpensesPage = () => {
           </div>
         </div>
 
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Category Breakdown Pie */}
-          {Object.keys(expensesByCategory).length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Category Breakdown</h3>
-                  <p className="text-sm text-gray-500">Current month distribution</p>
-                </div>
-              </div>
-              <div className="flex items-center">
-                <ResponsiveContainer width="55%" height={220}>
-                  <PieChart>
-                    <Pie
-                      data={Object.entries(expensesByCategory).map(([name, value]) => ({ name, value }))}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={85}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {Object.entries(expensesByCategory).map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      formatter={(value: number) => `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="flex-1 space-y-2">
-                  {Object.entries(expensesByCategory).slice(0, 5).map(([cat, amount], index) => (
-                    <div key={cat} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                        <span className="text-sm text-gray-600 truncate max-w-[120px]">{cat}</span>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-900">
-                        ₱{(amount / 1000).toFixed(1)}k
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Monthly Trend - Bar Chart */}
-          {expenses.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Expense Trend</h3>
-                  <p className="text-sm text-gray-500">Daily totals this month</p>
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={(() => {
-                  const dailyTotals: Record<string, number> = {}
-                  monthlyExpenses.forEach(exp => {
-                    const day = new Date(exp.date).getDate().toString()
-                    dailyTotals[day] = (dailyTotals[day] || 0) + exp.amount
-                  })
-                  return Object.entries(dailyTotals)
-                    .map(([day, total]) => ({ day, total }))
-                    .sort((a, b) => parseInt(a.day) - parseInt(b.day))
-                })()}>
-                  <defs>
-                    <linearGradient id="expenseBarGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#F59E0B" stopOpacity={1}/>
-                      <stop offset="100%" stopColor="#F97316" stopOpacity={0.8}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                  <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9CA3AF' }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9CA3AF' }} tickFormatter={val => `₱${(val/1000).toFixed(0)}k`} />
-                  <Tooltip 
-                    formatter={(value: number) => [`₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`, 'Total']}
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
-                  />
-                  <Bar dataKey="total" fill="url(#expenseBarGradient)" radius={[6, 6, 0, 0]} barSize={20} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-
-        {/* Expense Table */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-          <div className="p-5 border-b border-gray-100">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        {/* Expense Table - Like Sales Page */}
+        <div className="bg-white rounded-xl shadow-lg border-2 border-amber-100 overflow-hidden">
+          <div className="p-6 border-b border-amber-100 bg-gradient-to-r from-amber-50/50 to-white">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Expense Records</h2>
-                <p className="text-sm text-gray-500">{filteredExpenses.length} of {expenses.length} entries</p>
+                <h3 className="text-xl font-bold flex items-center gap-2 text-gray-800">
+                  <div className="p-2 bg-amber-100 rounded-lg">
+                    <Receipt className="h-5 w-5 text-amber-600" />
+                  </div>
+                  Expense Records
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">All operational expenses and overhead</p>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Search */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    type="text"
-                    placeholder="Search..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 w-48 h-9 text-sm"
-                  />
-                </div>
-                
-                {/* Date Filter */}
-                <DateFilter
-                  value={dateFilter}
-                  onChange={setDateFilter}
-                  showAllOption={true}
+              <Badge className="bg-gradient-to-r from-amber-100 to-amber-50 text-amber-700 border border-amber-200 px-3 py-1">
+                {filteredExpenses.length} records
+              </Badge>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Search expenses..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 border-gray-200 focus:border-amber-400 focus:ring-amber-400"
                 />
-                
-                {/* Category Filter */}
-                <select
-                  value={filterCategory}
-                  onChange={(e) => setFilterCategory(e.target.value)}
-                  className="h-9 px-3 text-sm border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-amber-500"
-                >
-                  <option value="all">All Categories</option>
-                  {EXPENSE_CATEGORIES.map(cat => (
-                    <option key={cat.value} value={cat.value}>{cat.label}</option>
-                  ))}
-                </select>
-
-                {/* Frequency Filter */}
-                <select
-                  value={filterFrequency}
-                  onChange={(e) => setFilterFrequency(e.target.value)}
-                  className="h-9 px-3 text-sm border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-amber-500"
-                >
-                  <option value="all">All Frequencies</option>
-                  {FREQUENCIES.map(freq => (
-                    <option key={freq.value} value={freq.value}>{freq.label}</option>
-                  ))}
-                </select>
               </div>
+              <DateFilter
+                value={dateFilter}
+                onChange={setDateFilter}
+                showAllOption={true}
+              />
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100"
+              >
+                <option value="all">All Categories</option>
+                {EXPENSE_CATEGORIES.map(cat => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
+              </select>
+              <select
+                value={filterFrequency}
+                onChange={(e) => setFilterFrequency(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100"
+              >
+                <option value="all">All Frequencies</option>
+                {FREQUENCIES.map(freq => (
+                  <option key={freq.value} value={freq.value}>{freq.label}</option>
+                ))}
+              </select>
             </div>
           </div>
 

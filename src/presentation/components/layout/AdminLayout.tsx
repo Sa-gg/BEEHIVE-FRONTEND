@@ -438,7 +438,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                                 >
                                   <p className="text-sm font-medium text-gray-900">{item.name}</p>
                                   <p className="text-xs text-orange-600">
-                                    Low Stock: {item.currentStock}/{item.minStock}
+                                    Low Stock: {item.currentStock.toFixed(2)}/{item.minStock.toFixed(2)}
                                   </p>
                                 </Link>
                               ))}

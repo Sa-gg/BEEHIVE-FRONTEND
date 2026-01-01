@@ -376,8 +376,8 @@ export const ProductsPage = () => {
 
   return (
     <AdminLayout>
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Products</h1>
             <p className="text-sm text-gray-500 mt-1">Manage your menu items and inventory</p>
@@ -397,7 +397,7 @@ export const ProductsPage = () => {
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4">
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
@@ -458,7 +458,7 @@ export const ProductsPage = () => {
         </div>
 
         {/* Filters and Search */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
           <div className="p-4">
             <div className="flex flex-col lg:flex-row gap-4">
               {/* Search */}

@@ -4,7 +4,7 @@ import type { MenuItem } from '../../../core/domain/entities/MenuItem.entity'
 import type { OrderItem } from '../../../core/domain/entities/Order.entity'
 import type { CustomerOrder } from '../../../core/domain/entities/CustomerOrder.entity'
 import type { MoodType, MoodOption } from '../../../shared/utils/moodSystem'
-import { getMoodByValue, analyzeMoodEffectiveness, setDynamicMoodSettings } from '../../../shared/utils/moodSystem'
+import { getMoodByValue, setDynamicMoodSettings } from '../../../shared/utils/moodSystem'
 import { getMoodExplanation } from '../../../shared/utils/nutritionalBenefits'
 import type { MoodFeedbackConfig } from '../../../infrastructure/api/moodSettings.api'
 import { CustomerMenuItemCard } from '../../components/features/CustomerMenu/CustomerMenuItemCard'
@@ -62,6 +62,17 @@ export const MenuPage = () => {
   
   // Algorithm config from database (for dynamic scoring weights)
   const [feedbackConfig, setFeedbackConfig] = useState<MoodFeedbackConfig | null>(null)
+  
+  // Mood item stats from backend (for historical success scoring)
+  // Extended type to include all fields needed for Wilson Score and exploration bonus
+  const [moodItemStats, setMoodItemStats] = useState<Map<string, { 
+    orderRate: number
+    improvementRate: number
+    timesShown: number
+    timesOrdered: number
+    feedbackCount: number
+    moodImproved: number
+  }>>(new Map())
   
   // Track if we've already tracked recommendations for current mood (prevent double-counting)
   const trackedMoodRef = useRef<string | null>(null)
@@ -210,20 +221,89 @@ export const MenuPage = () => {
 
   const currentMood = selectedMood ? getMoodByValue(selectedMood) : null
   
+  // Fetch mood item stats from backend when mood changes
+  useEffect(() => {
+    const fetchMoodItemStats = async () => {
+      if (!selectedMood) {
+        setMoodItemStats(new Map())
+        return
+      }
+      
+      try {
+        // Fetch per-item stats for the selected mood from backend
+        const stats = await moodSettingsApi.getTopItemsForMood(selectedMood, 50)
+        
+        // Create a map of menuItemId -> full stats object for Wilson Score calculations
+        const statsMap = new Map<string, { 
+          orderRate: number
+          improvementRate: number
+          timesShown: number
+          timesOrdered: number
+          feedbackCount: number
+          moodImproved: number
+        }>()
+        
+        if (Array.isArray(stats)) {
+          stats.forEach((stat: any) => {
+            statsMap.set(stat.menuItemId, {
+              orderRate: stat.orderRate || 0,
+              improvementRate: stat.improvementRate || 0,
+              timesShown: stat.timesShown || 0,
+              timesOrdered: stat.timesOrdered || 0,
+              feedbackCount: stat.feedbackCount || 0,
+              moodImproved: stat.moodImproved || 0
+            })
+          })
+        }
+        
+        setMoodItemStats(statsMap)
+      } catch (error) {
+        console.error('Failed to fetch mood item stats:', error)
+        setMoodItemStats(new Map())
+      }
+    }
+    
+    fetchMoodItemStats()
+  }, [selectedMood])
+  
   // Get dynamic scoring weights from config (with fallbacks)
   const scoringWeights = {
     moodBenefits: feedbackConfig?.moodBenefitsWeight ?? 20,
     preferredCategory: feedbackConfig?.preferredCategoryWeight ?? 10,
     historical: feedbackConfig?.historicalDataWeight ?? 15,
     featured: feedbackConfig?.featuredItemWeight ?? 5,
-    timeOfDay: feedbackConfig?.timeOfDayWeight ?? 5
+    timeOfDay: feedbackConfig?.timeOfDayWeight ?? 5,
+    explorationBonus: feedbackConfig?.explorationBonusWeight ?? 3,
+    minimumOrders: feedbackConfig?.minimumOrdersThreshold ?? 10
   }
   
-  // Get current time context for time-based scoring
+  // Get configurable time slots from config
+  const timeConfig = {
+    morningStart: feedbackConfig?.morningStartHour ?? 6,
+    morningEnd: feedbackConfig?.morningEndHour ?? 12,
+    afternoonEnd: feedbackConfig?.afternoonEndHour ?? 18,
+    morningCategories: feedbackConfig?.morningCategories 
+      ? (typeof feedbackConfig.morningCategories === 'string' 
+          ? JSON.parse(feedbackConfig.morningCategories) 
+          : feedbackConfig.morningCategories)
+      : ['HOT_DRINKS'],
+    afternoonCategories: feedbackConfig?.afternoonCategories
+      ? (typeof feedbackConfig.afternoonCategories === 'string'
+          ? JSON.parse(feedbackConfig.afternoonCategories)
+          : feedbackConfig.afternoonCategories)
+      : [],
+    eveningCategories: feedbackConfig?.eveningCategories
+      ? (typeof feedbackConfig.eveningCategories === 'string'
+          ? JSON.parse(feedbackConfig.eveningCategories)
+          : feedbackConfig.eveningCategories)
+      : ['HOT_DRINKS', 'PLATTER']
+  }
+  
+  // Get current time context for time-based scoring (using configurable hours)
   const getTimeContext = (): 'morning' | 'afternoon' | 'evening' => {
     const hour = new Date().getHours()
-    if (hour >= 6 && hour < 12) return 'morning'
-    if (hour >= 12 && hour < 18) return 'afternoon'
+    if (hour >= timeConfig.morningStart && hour < timeConfig.morningEnd) return 'morning'
+    if (hour >= timeConfig.morningEnd && hour < timeConfig.afternoonEnd) return 'afternoon'
     return 'evening'
   }
 
@@ -390,14 +470,100 @@ export const MenuPage = () => {
     }
   }
 
+  // ==================== STATISTICAL HELPER FUNCTIONS ====================
+  
+  /**
+   * Wilson Score Confidence Interval (Lower Bound)
+   * Used by Reddit, Yelp, Amazon for ranking with uncertainty
+   * 
+   * Problem it solves: Item with 5/5 orders (100%) shouldn't beat item with 450/500 (90%)
+   * because 5 orders is too small a sample to be confident
+   * 
+   * @param successes - Number of successful outcomes (e.g., orders, mood improvements)
+   * @param total - Total number of trials (e.g., times shown, feedback count)
+   * @param confidence - Z-score for confidence level (1.96 = 95% confidence)
+   * @returns Lower bound of confidence interval (conservative estimate)
+   */
+  const wilsonScore = (successes: number, total: number, confidence: number = 1.96): number => {
+    if (total === 0) return 0
+    
+    const p = successes / total  // Point estimate (e.g., 100%)
+    const n = total              // Sample size
+    const z = confidence         // Z-score for 95% confidence
+    
+    // Wilson Score formula
+    const denominator = 1 + z * z / n
+    const center = p + z * z / (2 * n)
+    const margin = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    
+    return Math.max(0, (center - margin) / denominator)
+  }
+  
+  /**
+   * Exploration Bonus (Upper Confidence Bound - UCB)
+   * Gives bonus points to under-sampled items to encourage trying them
+   * 
+   * Problem it solves: Popular items get 80% of exposure, new items never get a chance
+   * 
+   * @param itemExposures - Times this item has been shown
+   * @param totalExposures - Total times all items have been shown
+   * @param maxBonus - Maximum bonus points (from config)
+   * @returns Exploration bonus (0 to maxBonus points)
+   */
+  const calculateExplorationBonus = (itemExposures: number, totalExposures: number, maxBonus: number): number => {
+    if (itemExposures === 0 || totalExposures === 0) return maxBonus // Max bonus for unexplored
+    
+    // UCB formula: sqrt(2 × ln(total) / item_exposures)
+    const bonus = Math.sqrt((2 * Math.log(totalExposures + 1)) / itemExposures)
+    return Math.min(bonus * 1.5, maxBonus) // Scale and cap at maxBonus
+  }
+
+  // ==================== CONSTANTS FOR STATISTICAL IMPROVEMENTS ====================
+  // Using configurable values from feedbackConfig with sensible defaults
+  const MINIMUM_ORDERS_THRESHOLD = scoringWeights.minimumOrders  // Don't trust data until X orders
+  const NEUTRAL_HISTORICAL_SCORE = scoringWeights.historical / 2 // Half of max for insufficient data
+  const MAX_EXPLORATION_BONUS = scoringWeights.explorationBonus  // Max UCB bonus points
+
+  /**
+   * Tiebreaker randomization for Day 0 position bias prevention
+   * When items have equal scores, shuffle them to prevent position bias
+   */
+  const shuffleEqualScores = (items: Array<{ item: MenuItem; score: number; hasExplanation: string | null }>): Array<{ item: MenuItem; score: number; hasExplanation: string | null }> => {
+    // Group items by score
+    const scoreGroups = new Map<number, Array<{ item: MenuItem; score: number; hasExplanation: string | null }>>()
+    items.forEach(entry => {
+      const roundedScore = Math.round(entry.score * 100) / 100 // Round to avoid floating point issues
+      if (!scoreGroups.has(roundedScore)) {
+        scoreGroups.set(roundedScore, [])
+      }
+      scoreGroups.get(roundedScore)!.push(entry)
+    })
+    
+    // Shuffle items within each score group (Fisher-Yates shuffle)
+    const shuffleArray = (array: Array<{ item: MenuItem; score: number; hasExplanation: string | null }>): Array<{ item: MenuItem; score: number; hasExplanation: string | null }> => {
+      const shuffled = [...array]
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      }
+      return shuffled
+    }
+    
+    // Get sorted unique scores (descending) and rebuild array
+    const sortedScores = Array.from(scoreGroups.keys()).sort((a, b) => b - a)
+    return sortedScores.flatMap(score => shuffleArray(scoreGroups.get(score)!))
+  }
+
   const getRecommendedItems = (): MenuItem[] => {
     if (!selectedMood) return []
     
     const moodConfig = getMoodByValue(selectedMood)
     if (!moodConfig) return []
 
-    // Get AI-based recommendations from past successes
-    const { topItems } = analyzeMoodEffectiveness(selectedMood)
+    // Get feedback config to check if baseline is reached
+    const baselineReached = feedbackConfig?.feedbackEnabled || false
+    const orderRateWeight = feedbackConfig?.orderRateWeight ?? 0.6
+    const feedbackRateWeight = feedbackConfig?.feedbackRateWeight ?? 0.4
     
     // Ensure menuItems is an array
     const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
@@ -409,38 +575,91 @@ export const MenuPage = () => {
       return item.available
     })
 
+    // Calculate total exposures for exploration bonus (UCB)
+    const totalExposures = Array.from(moodItemStats.values())
+      .reduce((sum, stat) => sum + (stat.timesShown || 0), 0)
+
     // Score each item based on multiple factors using DYNAMIC weights from config
     const timeContext = getTimeContext()
     const scoredItems = recommended.map(item => {
       let score = 0
       
-      // HIGHEST PRIORITY: Items with scientific mood explanations
+      // ==================== 1. MOOD BENEFITS (+20 pts default) ====================
+      // Items with scientific mood explanations get highest priority
       const hasExplanation = getMoodExplanation(item.name, selectedMood, item.moodBenefits)
       if (hasExplanation) {
         score += scoringWeights.moodBenefits
       }
       
-      // Preferred categories boost
+      // ==================== 2. PREFERRED CATEGORY (+10 pts default) ====================
+      // Items in mood's preferred categories get boost
       if (moodConfig.preferredCategories?.includes(item.category)) {
         score += scoringWeights.preferredCategory
       }
       
-      // Items from successful past orders (historical success)
-      if (topItems.includes(item.name)) {
-        score += scoringWeights.historical
+      // ==================== 3. HISTORICAL SUCCESS (0-15 pts, proportional) ====================
+      // Uses Wilson Score for statistical confidence + Exploration Bonus for fairness
+      const itemStats = moodItemStats.get(item.id)
+      
+      if (!itemStats || (itemStats.timesOrdered || 0) < MINIMUM_ORDERS_THRESHOLD) {
+        // FIX #2: Not enough data yet → use neutral score (neither penalized nor boosted)
+        // This prevents new items from being unfairly ranked at 0
+        score += NEUTRAL_HISTORICAL_SCORE
+        
+        // FIX #3: Add exploration bonus for items with little exposure
+        const itemExposures = itemStats?.timesShown || 0
+        score += calculateExplorationBonus(itemExposures, totalExposures, MAX_EXPLORATION_BONUS)
+      } else {
+        // Has sufficient data → use Wilson Score for statistical confidence
+        
+        // FIX #1: Use Wilson Score instead of raw percentage
+        // This accounts for sample size uncertainty
+        const orderRate = wilsonScore(
+          itemStats.timesOrdered || 0, 
+          itemStats.timesShown || 1
+        )
+        
+        let historicalScore: number
+        
+        if (!baselineReached) {
+          // Before baseline: Use only order rate (100% weight)
+          // Formula: historicalScore = wilsonScore(orderRate) × maxHistoricalPoints
+          historicalScore = orderRate * scoringWeights.historical
+        } else {
+          // After baseline: Use combined formula with mood improvement
+          // Formula: historicalScore = (wilsonScore(orderRate) × 60%) + (wilsonScore(improvementRate) × 40%)
+          const improvementRate = itemStats.feedbackCount > 0
+            ? wilsonScore(itemStats.moodImproved || 0, itemStats.feedbackCount)
+            : 0
+          
+          const combinedRate = (orderRate * orderRateWeight) + (improvementRate * feedbackRateWeight)
+          historicalScore = combinedRate * scoringWeights.historical
+        }
+        
+        score += historicalScore
+        
+        // FIX #3: Add exploration bonus even for established items (smaller bonus)
+        const explorationBonus = calculateExplorationBonus(
+          itemStats.timesShown || 1,
+          totalExposures,
+          MAX_EXPLORATION_BONUS
+        )
+        score += explorationBonus
       }
       
-      // Featured/best seller items boost
+      // ==================== 4. FEATURED ITEMS (+5 pts default) ====================
       if (item.featured) {
         score += scoringWeights.featured
       }
       
-      // Time of day context boost (+5 pts)
-      // Morning: boost hot drinks and light breakfast items
-      // Evening: boost hot drinks and comfort food
-      if (timeContext === 'morning' && item.category === 'hot drinks') {
+      // ==================== 5. TIME OF DAY (+5 pts default) ====================
+      // Uses configurable categories from MoodSettings admin panel
+      const itemCategoryUpper = item.category?.toUpperCase().replace(' ', '_')
+      if (timeContext === 'morning' && timeConfig.morningCategories.includes(itemCategoryUpper)) {
         score += scoringWeights.timeOfDay
-      } else if (timeContext === 'evening' && (item.category === 'hot drinks' || item.category === 'platter')) {
+      } else if (timeContext === 'afternoon' && timeConfig.afternoonCategories.includes(itemCategoryUpper)) {
+        score += scoringWeights.timeOfDay
+      } else if (timeContext === 'evening' && timeConfig.eveningCategories.includes(itemCategoryUpper)) {
         score += scoringWeights.timeOfDay
       }
       
@@ -464,9 +683,12 @@ export const MenuPage = () => {
       return false
     })
 
-    // Sort by score and return top items
-    const topRecommended = filteredItems
-      .sort((a, b) => b.score - a.score)
+    // FIX: Use tiebreaker shuffle to prevent Day 0 position bias
+    // Items with equal scores get randomized to ensure fair exposure
+    const shuffledItems = shuffleEqualScores(filteredItems)
+    
+    // Return top items (already sorted by score within shuffleEqualScores)
+    const topRecommended = shuffledItems
       .slice(0, 8)
       .map(scored => scored.item)
     
@@ -496,10 +718,13 @@ export const MenuPage = () => {
       if (hasExplanation) score += scoringWeights.moodBenefits
       if (moodConfig.preferredCategories?.includes(item.category)) score += scoringWeights.preferredCategory
       if (item.featured) score += scoringWeights.featured
-      // Time of day boost
-      if (timeContext === 'morning' && item.category === 'hot drinks') {
+      // Time of day boost (using configurable categories)
+      const itemCategoryUpper = item.category?.toUpperCase().replace(' ', '_')
+      if (timeContext === 'morning' && timeConfig.morningCategories.includes(itemCategoryUpper)) {
         score += scoringWeights.timeOfDay
-      } else if (timeContext === 'evening' && (item.category === 'hot drinks' || item.category === 'platter')) {
+      } else if (timeContext === 'afternoon' && timeConfig.afternoonCategories.includes(itemCategoryUpper)) {
+        score += scoringWeights.timeOfDay
+      } else if (timeContext === 'evening' && timeConfig.eveningCategories.includes(itemCategoryUpper)) {
         score += scoringWeights.timeOfDay
       }
       return { item, score, hasExplanation }
