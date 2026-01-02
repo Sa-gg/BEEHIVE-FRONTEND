@@ -270,10 +270,11 @@ export const MenuPage = () => {
   const scoringWeights = {
     moodBenefits: feedbackConfig?.moodBenefitsWeight ?? 20,
     preferredCategory: feedbackConfig?.preferredCategoryWeight ?? 10,
+    excludedCategoryPenalty: feedbackConfig?.excludedCategoryPenalty ?? 0, // 0 = filter out, >0 = penalty points
     historical: feedbackConfig?.historicalDataWeight ?? 15,
     featured: feedbackConfig?.featuredItemWeight ?? 5,
     timeOfDay: feedbackConfig?.timeOfDayWeight ?? 5,
-    explorationBonus: feedbackConfig?.explorationBonusWeight ?? 3,
+    explorationBonus: feedbackConfig?.explorationBonusWeight ?? 8,
     minimumOrders: feedbackConfig?.minimumOrdersThreshold ?? 10
   }
   
@@ -528,9 +529,9 @@ export const MenuPage = () => {
    * Tiebreaker randomization for Day 0 position bias prevention
    * When items have equal scores, shuffle them to prevent position bias
    */
-  const shuffleEqualScores = (items: Array<{ item: MenuItem; score: number; hasExplanation: string | null }>): Array<{ item: MenuItem; score: number; hasExplanation: string | null }> => {
+  const shuffleEqualScores = <T extends { score: number }>(items: T[]): T[] => {
     // Group items by score
-    const scoreGroups = new Map<number, Array<{ item: MenuItem; score: number; hasExplanation: string | null }>>()
+    const scoreGroups = new Map<number, T[]>()
     items.forEach(entry => {
       const roundedScore = Math.round(entry.score * 100) / 100 // Round to avoid floating point issues
       if (!scoreGroups.has(roundedScore)) {
@@ -540,7 +541,7 @@ export const MenuPage = () => {
     })
     
     // Shuffle items within each score group (Fisher-Yates shuffle)
-    const shuffleArray = (array: Array<{ item: MenuItem; score: number; hasExplanation: string | null }>): Array<{ item: MenuItem; score: number; hasExplanation: string | null }> => {
+    const shuffleArray = <U,>(array: U[]): U[] => {
       const shuffled = [...array]
       for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -569,9 +570,11 @@ export const MenuPage = () => {
     const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
     
     // Start with all available items from API
+    // Excluded categories: if penalty=0, filter out; otherwise apply penalty in scoring
+    const useExcludedCategoryPenalty = scoringWeights.excludedCategoryPenalty > 0
     const recommended = safeMenuItems.filter(item => {
-      // Exclude categories based on mood (e.g., no cold drinks for sad mood)
-      if (moodConfig.excludeCategories?.includes(item.category)) return false
+      // Only filter out excluded categories if penalty is 0 (default behavior)
+      if (!useExcludedCategoryPenalty && moodConfig.excludeCategories?.includes(item.category)) return false
       return item.available
     })
 
@@ -581,20 +584,52 @@ export const MenuPage = () => {
 
     // Score each item based on multiple factors using DYNAMIC weights from config
     const timeContext = getTimeContext()
+    
+    // DEBUG: Log scoring context
+    console.log('\n🎯 ═══════════════════════════════════════════════════════════════')
+    console.log(`📊 MOOD RECOMMENDATION SCORING - "${selectedMood.toUpperCase()}" mood`)
+    console.log('═══════════════════════════════════════════════════════════════')
+    console.log(`⏰ Time: ${timeContext} | 🎚️ Baseline Reached: ${baselineReached}`)
+    console.log(`📈 Total Exposures (for UCB): ${totalExposures}`)
+    console.log(`⚖️ Weights: Benefits=${scoringWeights.moodBenefits}, Category=${scoringWeights.preferredCategory}, Historical=${scoringWeights.historical}, Featured=${scoringWeights.featured}, TimeOfDay=${scoringWeights.timeOfDay}, UCB=${scoringWeights.explorationBonus}`)
+    console.log(`🔢 Min Orders Threshold: ${MINIMUM_ORDERS_THRESHOLD} | Excluded Cat Penalty: ${useExcludedCategoryPenalty ? `-${scoringWeights.excludedCategoryPenalty}` : 'FILTER OUT'}`)
+    console.log('───────────────────────────────────────────────────────────────\n')
+    
     const scoredItems = recommended.map(item => {
       let score = 0
+      
+      // Score breakdown for logging
+      const breakdown = {
+        moodBenefits: 0,
+        preferredCategory: 0,
+        excludedCategory: 0,
+        historical: 0,
+        featured: 0,
+        timeOfDay: 0,
+        explorationBonus: 0,
+        stage: 'day0' as 'day0' | 'baseline' | 'post-baseline'
+      }
       
       // ==================== 1. MOOD BENEFITS (+20 pts default) ====================
       // Items with scientific mood explanations get highest priority
       const hasExplanation = getMoodExplanation(item.name, selectedMood, item.moodBenefits)
       if (hasExplanation) {
         score += scoringWeights.moodBenefits
+        breakdown.moodBenefits = scoringWeights.moodBenefits
       }
       
       // ==================== 2. PREFERRED CATEGORY (+10 pts default) ====================
       // Items in mood's preferred categories get boost
       if (moodConfig.preferredCategories?.includes(item.category)) {
         score += scoringWeights.preferredCategory
+        breakdown.preferredCategory = scoringWeights.preferredCategory
+      }
+      
+      // ==================== 2b. EXCLUDED CATEGORY PENALTY (configurable) ====================
+      // If penalty > 0, apply negative points instead of filtering out
+      if (useExcludedCategoryPenalty && moodConfig.excludeCategories?.includes(item.category)) {
+        score -= scoringWeights.excludedCategoryPenalty
+        breakdown.excludedCategory = -scoringWeights.excludedCategoryPenalty
       }
       
       // ==================== 3. HISTORICAL SUCCESS (0-15 pts, proportional) ====================
@@ -605,10 +640,14 @@ export const MenuPage = () => {
         // FIX #2: Not enough data yet → use neutral score (neither penalized nor boosted)
         // This prevents new items from being unfairly ranked at 0
         score += NEUTRAL_HISTORICAL_SCORE
+        breakdown.historical = NEUTRAL_HISTORICAL_SCORE
+        breakdown.stage = 'day0'
         
         // FIX #3: Add exploration bonus for items with little exposure
         const itemExposures = itemStats?.timesShown || 0
-        score += calculateExplorationBonus(itemExposures, totalExposures, MAX_EXPLORATION_BONUS)
+        const ucbBonus = calculateExplorationBonus(itemExposures, totalExposures, MAX_EXPLORATION_BONUS)
+        score += ucbBonus
+        breakdown.explorationBonus = ucbBonus
       } else {
         // Has sufficient data → use Wilson Score for statistical confidence
         
@@ -621,10 +660,16 @@ export const MenuPage = () => {
         
         let historicalScore: number
         
+        // FIX W3: Cap historical score at 2× neutral score to prevent runaway winners
+        // Neutral = half of historical weight, so max cap = neutral × 2 = historical weight
+        // But we limit to ~67% of weight to ensure new items can compete
+        const HISTORICAL_CAP = NEUTRAL_HISTORICAL_SCORE * 2  // 2× neutral score
+        
         if (!baselineReached) {
           // Before baseline: Use only order rate (100% weight)
           // Formula: historicalScore = wilsonScore(orderRate) × maxHistoricalPoints
-          historicalScore = orderRate * scoringWeights.historical
+          historicalScore = Math.min(orderRate * scoringWeights.historical, HISTORICAL_CAP)
+          breakdown.stage = 'baseline'
         } else {
           // After baseline: Use combined formula with mood improvement
           // Formula: historicalScore = (wilsonScore(orderRate) × 60%) + (wilsonScore(improvementRate) × 40%)
@@ -633,10 +678,12 @@ export const MenuPage = () => {
             : 0
           
           const combinedRate = (orderRate * orderRateWeight) + (improvementRate * feedbackRateWeight)
-          historicalScore = combinedRate * scoringWeights.historical
+          historicalScore = Math.min(combinedRate * scoringWeights.historical, HISTORICAL_CAP)
+          breakdown.stage = 'post-baseline'
         }
         
         score += historicalScore
+        breakdown.historical = historicalScore
         
         // FIX #3: Add exploration bonus even for established items (smaller bonus)
         const explorationBonus = calculateExplorationBonus(
@@ -645,25 +692,38 @@ export const MenuPage = () => {
           MAX_EXPLORATION_BONUS
         )
         score += explorationBonus
+        breakdown.explorationBonus = explorationBonus
       }
       
       // ==================== 4. FEATURED ITEMS (+5 pts default) ====================
       if (item.featured) {
         score += scoringWeights.featured
+        breakdown.featured = scoringWeights.featured
       }
       
       // ==================== 5. TIME OF DAY (+5 pts default) ====================
       // Uses configurable categories from MoodSettings admin panel
+      // FIX W6: Skip time bonus if item is in excluded category for current mood
       const itemCategoryUpper = item.category?.toUpperCase().replace(' ', '_')
-      if (timeContext === 'morning' && timeConfig.morningCategories.includes(itemCategoryUpper)) {
-        score += scoringWeights.timeOfDay
-      } else if (timeContext === 'afternoon' && timeConfig.afternoonCategories.includes(itemCategoryUpper)) {
-        score += scoringWeights.timeOfDay
-      } else if (timeContext === 'evening' && timeConfig.eveningCategories.includes(itemCategoryUpper)) {
-        score += scoringWeights.timeOfDay
+      const isExcludedForMood = moodConfig.excludeCategories?.some(
+        (cat: string) => cat.toUpperCase().replace(' ', '_') === itemCategoryUpper
+      )
+      
+      // Only give time bonus if NOT in excluded categories
+      if (!isExcludedForMood) {
+        if (timeContext === 'morning' && timeConfig.morningCategories.includes(itemCategoryUpper)) {
+          score += scoringWeights.timeOfDay
+          breakdown.timeOfDay = scoringWeights.timeOfDay
+        } else if (timeContext === 'afternoon' && timeConfig.afternoonCategories.includes(itemCategoryUpper)) {
+          score += scoringWeights.timeOfDay
+          breakdown.timeOfDay = scoringWeights.timeOfDay
+        } else if (timeContext === 'evening' && timeConfig.eveningCategories.includes(itemCategoryUpper)) {
+          score += scoringWeights.timeOfDay
+          breakdown.timeOfDay = scoringWeights.timeOfDay
+        }
       }
       
-      return { item, score, hasExplanation }
+      return { item, score, hasExplanation, breakdown }
     })
 
     // Filter items: only show if they have mood benefits OR are in preferred category OR featured
@@ -687,10 +747,51 @@ export const MenuPage = () => {
     // Items with equal scores get randomized to ensure fair exposure
     const shuffledItems = shuffleEqualScores(filteredItems)
     
+    // DEBUG: Log detailed score breakdown for top items
+    console.log('📋 ITEM SCORE BREAKDOWN (sorted by score):')
+    console.log('┌────────────────────────────────────┬──────────┬─────────┬──────┬────────┬─────────┬──────────┬────────┬─────────┬─────────┐')
+    console.log('│ Item Name                          │ Stage    │ Benefits│ Cat+ │ Cat-   │ History │ Featured │ TimeOD │ UCB     │ TOTAL   │')
+    console.log('├────────────────────────────────────┼──────────┼─────────┼──────┼────────┼─────────┼──────────┼────────┼─────────┼─────────┤')
+    
+    shuffledItems.slice(0, 15).forEach(({ item, score, breakdown }, idx) => {
+      const name = item.name.substring(0, 34).padEnd(34)
+      const stage = breakdown.stage.padEnd(8)
+      const benefits = breakdown.moodBenefits.toFixed(1).padStart(7)
+      const catPlus = breakdown.preferredCategory.toFixed(1).padStart(4)
+      const catMinus = breakdown.excludedCategory.toFixed(1).padStart(6)
+      const hist = breakdown.historical.toFixed(2).padStart(7)
+      const feat = breakdown.featured.toFixed(1).padStart(8)
+      const time = breakdown.timeOfDay.toFixed(1).padStart(6)
+      const ucb = breakdown.explorationBonus.toFixed(2).padStart(7)
+      const total = score.toFixed(2).padStart(7)
+      
+      const rankEmoji = idx < 8 ? '✅' : '❌'
+      console.log(`│ ${name} │ ${stage} │ ${benefits} │ ${catPlus} │ ${catMinus} │ ${hist} │ ${feat} │ ${time} │ ${ucb} │ ${total} │ ${rankEmoji}`)
+    })
+    
+    console.log('└────────────────────────────────────┴──────────┴─────────┴──────┴────────┴─────────┴──────────┴────────┴─────────┴─────────┘')
+    console.log(`\n✅ = In Top 8 (will be shown)  ❌ = Below top 8 (filtered out)`)
+    console.log(`🎲 Randomization: Items with EQUAL scores are shuffled (tiebreaker) to prevent position bias`)
+    console.log('═══════════════════════════════════════════════════════════════\n')
+    
     // Return top items (already sorted by score within shuffleEqualScores)
-    const topRecommended = shuffledItems
+    let topRecommended = shuffledItems
       .slice(0, 8)
       .map(scored => scored.item)
+    
+    // Day 0 Position Shuffle: Randomize display order to prevent left-position bias
+    // This is separate from score-based sorting - it's about UI position
+    const shouldShufflePosition = feedbackConfig?.day0PositionShuffle ?? true
+    if (shouldShufflePosition) {
+      // Fisher-Yates shuffle for display order
+      const shuffled = [...topRecommended]
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      }
+      topRecommended = shuffled
+      console.log('🔀 Day 0 Position Shuffle: Display order randomized to prevent left-position bias')
+    }
     
     return topRecommended
   }
@@ -892,8 +993,21 @@ export const MenuPage = () => {
                   Recommended for You
                 </h3>
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                  {recommendedItems.map((item) => (
-                    <div key={item.id} className="shrink-0" style={{ width: '140px' }}>
+                  {recommendedItems.map((item, index) => (
+                    <div key={item.id} className="shrink-0 relative" style={{ width: '140px' }}>
+                      {/* Ranking badge (only shows if enabled in config) */}
+                      {feedbackConfig?.showRankingNumbers && (
+                        <div 
+                          className={`absolute -top-2 -left-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shadow-md ${
+                            index === 0 ? 'bg-yellow-400 text-yellow-900' :
+                            index === 1 ? 'bg-gray-300 text-gray-700' :
+                            index === 2 ? 'bg-amber-600 text-white' :
+                            'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          #{index + 1}
+                        </div>
+                      )}
                       <CustomerMenuItemCard item={item} onAddToCart={addToCart} currentMood={selectedMood} compact getImageUrl={getImageUrl} />
                     </div>
                   ))}

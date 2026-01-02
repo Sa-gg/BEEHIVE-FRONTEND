@@ -28,12 +28,14 @@ export interface MoodFeedbackConfig {
   feedbackRateWeight: number;
   moodBenefitsWeight: number;
   preferredCategoryWeight: number;
+  excludedCategoryPenalty: number;   // Negative points for excluded category
   featuredItemWeight: number;
   priceRangeWeight: number;
   historicalDataWeight: number;
   timeOfDayWeight: number;
   explorationBonusWeight: number;    // Max UCB exploration bonus
   minimumOrdersThreshold: number;    // Min orders before trusting data
+  day0PositionShuffle: boolean;      // Shuffle display order to prevent position bias
   // Time of day configuration
   morningStartHour: number;
   morningEndHour: number;
@@ -44,6 +46,7 @@ export interface MoodFeedbackConfig {
   // UI settings
   showMoodReflection: boolean;
   reflectionDelayMinutes: number;
+  showRankingNumbers: boolean;   // Show ranking numbers on recommended items
   createdAt: string;
   updatedAt: string;
 }
