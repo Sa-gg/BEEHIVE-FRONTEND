@@ -10,6 +10,7 @@ import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { DateFilter, type DateFilterValue, useDefaultDateFilter } from '../../components/common/DateFilter'
 import { printWithIframe } from '../../../shared/utils/printUtils'
 import { ManagerPinModal } from '../../components/common/ManagerPinModal'
+import { generateReceiptHTML } from '../../../shared/utils/receiptTemplate'
 
 const formatOrderNumber = (orderNumber: string) => {
   const match = orderNumber.match(/^ORD-\d{8}-(\d+)$/)
@@ -113,9 +114,19 @@ export const SalesPage = () => {
   }
 
   const printReceipt = (t: OrderResponse) => {
-    // VAT is inclusive (12/112 of total)
-    const vat = t.totalAmount * (12 / 112), subtotal = t.totalAmount - vat
-    const receiptHTML = `<!DOCTYPE html><html><head><title>Receipt</title><style>body{font-family:monospace;width:80mm;margin:0 auto;padding:10mm}.header{text-align:center;border-bottom:2px dashed #000;padding-bottom:10px}.totals{border-top:2px dashed #000;padding-top:10px;margin-top:10px}</style></head><body><div class="header"><b>🐝 BEEHIVE</b><br/><small>Restaurant & Cafe</small></div><div style="margin:10px 0;font-size:12px"><div><b>Order:</b> ${formatOrderNumber(t.orderNumber)}</div><div><b>Date:</b> ${new Date(t.completedAt || t.createdAt).toLocaleString()}</div><div><b>Customer:</b> ${getCustomerDisplayName(t)}</div><div><b>Payment:</b> ${t.paymentMethod || 'N/A'}</div></div><div style="margin:15px 0">${t.order_items.map(i => `<div style="display:flex;justify-content:space-between;font-size:12px"><span>${menuItems.get(i.menuItemId) || i.menuItemId}</span><span>${i.quantity}x ₱${i.subtotal.toFixed(2)}</span></div>`).join('')}</div><div class="totals"><div style="display:flex;justify-content:space-between;font-size:12px"><span>Subtotal:</span><span>₱${subtotal.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;font-size:12px"><span>VAT (12%):</span><span>₱${vat.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;font-size:16px;font-weight:bold"><span>TOTAL:</span><span>₱${t.totalAmount.toFixed(2)}</span></div></div></body></html>`
+    const receiptHTML = generateReceiptHTML({
+      orderNumber: t.orderNumber,
+      createdAt: t.completedAt || t.createdAt,
+      customerName: getCustomerDisplayName(t),
+      orderType: t.orderType,
+      paymentMethod: t.paymentMethod || 'N/A',
+      items: t.order_items.map(i => ({
+        name: menuItems.get(i.menuItemId) || i.menuItemId,
+        quantity: i.quantity,
+        price: i.price
+      })),
+      totalAmount: t.totalAmount
+    })
     printWithIframe(receiptHTML)
   }
 

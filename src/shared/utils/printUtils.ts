@@ -1,6 +1,7 @@
 /**
  * Print utility that uses an iframe instead of opening a new tab
  * This prevents focus issues when the print dialog is cancelled
+ * @param htmlContent - The HTML content to print
  */
 export const printWithIframe = (htmlContent: string): void => {
   // Remove any existing print iframe
@@ -43,10 +44,10 @@ export const printWithIframe = (htmlContent: string): void => {
       } catch (e) {
         console.error('Print failed:', e)
       }
-      // Remove iframe after a delay to ensure print dialog has appeared
+      // Remove iframe after printing
       setTimeout(() => {
         iframe.remove()
       }, 1000)
-    }, 250)
+    }, 300)
   }
 }

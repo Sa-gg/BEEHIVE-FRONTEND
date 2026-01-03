@@ -1,0 +1,624 @@
+/**
+ * Unified Receipt Template for 58mm Thermal Paper
+ * Used across POS, OrdersPage, and SalesPage for consistent receipt printing
+ */
+
+export interface ReceiptItem {
+  name: string
+  quantity: number
+  price: number
+  subtotal?: number
+}
+
+export interface ReceiptData {
+  orderNumber: string
+  createdAt?: string | Date
+  customerName?: string
+  tableNumber?: string
+  orderType?: string
+  paymentMethod?: string
+  paymentStatus?: string
+  items: ReceiptItem[]
+  subtotal?: number
+  tax?: number
+  totalAmount: number
+  notes?: string
+  processedBy?: string
+  createdBy?: string
+}
+
+export interface MergedReceiptData {
+  orderNumbers: string[]
+  customerName?: string
+  tableNumber?: string
+  orderType?: string
+  paymentMethod?: string
+  items: ReceiptItem[]
+  subtotal?: number
+  tax?: number
+  totalAmount: number
+}
+
+export interface LinkedOrdersReceiptData {
+  parentOrder: {
+    orderNumber: string
+    customerName?: string
+    tableNumber?: string
+  }
+  orders: Array<{
+    orderNumber: string
+    items: ReceiptItem[]
+    totalAmount: number
+  }>
+  combinedSubtotal: number
+  combinedTax: number
+  combinedTotal: number
+}
+
+// 48mm printable width for POS58 thermal printer = ~32 characters at 12px font
+const PAPER_WIDTH = '48mm'
+
+/**
+ * Base CSS styles for 58mm thermal receipt
+ * Optimized for thermal printers with bold, readable fonts
+ */
+const getBaseStyles = () => `
+  @media print {
+    @page {
+      size: ${PAPER_WIDTH} auto;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    html, body {
+      margin: 0 !important;
+      padding: 0 1mm !important;
+      background: white !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    background: transparent !important;
+  }
+  html, body {
+    font-family: 'Courier New', 'Lucida Console', monospace;
+    width: ${PAPER_WIDTH};
+    max-width: ${PAPER_WIDTH};
+    margin: 0;
+    padding: 1mm;
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 1.4;
+    background: white !important;
+    color: #000;
+  }
+  .header {
+    text-align: center;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 2px dashed #000;
+  }
+  .logo {
+    font-size: 20px;
+    font-weight: bold;
+    letter-spacing: 2px;
+  }
+  .tagline {
+    font-size: 10px;
+    font-weight: bold;
+    margin-top: 3px;
+  }
+  .divider {
+    border-top: 2px dashed #000;
+    margin: 8px 0;
+  }
+  .divider-solid {
+    border-top: 2px solid #000;
+    margin: 8px 0;
+  }
+  .info-section {
+    margin: 8px 0;
+    font-size: 12px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 3px 0;
+    font-weight: bold;
+  }
+  .info-label {
+    font-weight: bold;
+  }
+  .info-value {
+    font-weight: bold;
+    text-align: right;
+    max-width: 60%;
+    word-break: break-word;
+  }
+  .items-section {
+    margin: 10px 0;
+    padding: 8px 0;
+    border-top: 2px dashed #000;
+    border-bottom: 2px dashed #000;
+  }
+  .items-header {
+    display: flex;
+    font-weight: bold;
+    font-size: 11px;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #000;
+  }
+  .item-row {
+    display: flex;
+    font-size: 12px;
+    font-weight: bold;
+    margin: 4px 0;
+  }
+  .item-name {
+    flex: 1;
+    word-break: break-word;
+    padding-right: 4px;
+    font-weight: bold;
+  }
+  .item-qty {
+    width: 28px;
+    text-align: center;
+    font-weight: bold;
+  }
+  .item-price {
+    width: 55px;
+    text-align: right;
+    font-weight: bold;
+  }
+  .totals-section {
+    margin: 8px 0;
+  }
+  .total-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 4px 0;
+    font-size: 12px;
+    font-weight: bold;
+  }
+  .total-row.subtotal {
+    padding-top: 6px;
+  }
+  .total-row.grand {
+    font-size: 16px;
+    font-weight: bold;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 2px solid #000;
+  }
+  .footer {
+    text-align: center;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 2px dashed #000;
+    font-size: 12px;
+    font-weight: bold;
+  }
+  .footer-thanks {
+    font-weight: bold;
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+  .footer-social {
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: bold;
+  }
+  .footer-printed {
+    display: none;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: bold;
+    border-radius: 2px;
+    border: 2px solid #000;
+  }
+  .badge-paid {
+    background: transparent !important;
+  }
+  .badge-pending {
+    background: transparent !important;
+  }
+  .merged-notice {
+    background: transparent !important;
+    padding: 6px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: bold;
+    margin: 8px 0;
+    border: 2px dashed #000;
+  }
+  .order-section {
+    border-bottom: 2px dashed #000;
+    padding: 8px 0;
+    margin-bottom: 8px;
+  }
+  .order-title {
+    font-weight: bold;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+`
+
+/**
+ * Format order number for display
+ */
+export const formatOrderNumber = (orderNumber: number | string): string => {
+  const num = typeof orderNumber === 'string' ? parseInt(orderNumber) : orderNumber
+  return `#${String(num).padStart(4, '0')}`
+}
+
+/**
+ * Format currency for receipt
+ */
+const formatCurrency = (amount: number): string => {
+  return `₱${amount.toFixed(2)}`
+}
+
+/**
+ * Get order type display text
+ */
+const getOrderTypeDisplay = (orderType?: string): string => {
+  switch (orderType) {
+    case 'DINE_IN': return 'Dine In'
+    case 'TAKEOUT': return 'Takeout'
+    case 'DELIVERY': return 'Delivery'
+    default: return orderType || 'N/A'
+  }
+}
+
+/**
+ * Generate standard receipt HTML for single order
+ */
+export const generateReceiptHTML = (data: ReceiptData): string => {
+  const createdDate = data.createdAt ? new Date(data.createdAt) : new Date()
+  // Auto-calculate VAT (12% inclusive) if not provided
+  const tax = data.tax ?? (data.totalAmount * (12 / 112))
+  const subtotal = data.subtotal ?? (data.totalAmount - tax)
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Receipt - ${formatOrderNumber(data.orderNumber)}</title>
+      <style>${getBaseStyles()}</style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="logo">🐝 BEEHIVE</div>
+        <div class="tagline">Cafe & Restaurant</div>
+      </div>
+
+      <div class="info-section">
+        <div class="info-row">
+          <span class="info-label">Order:</span>
+          <span class="info-value">${formatOrderNumber(data.orderNumber)}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Date:</span>
+          <span class="info-value">${createdDate.toLocaleDateString()}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Time:</span>
+          <span class="info-value">${createdDate.toLocaleTimeString()}</span>
+        </div>
+        ${data.customerName ? `
+        <div class="info-row">
+          <span class="info-label">Customer:</span>
+          <span class="info-value">${data.customerName}</span>
+        </div>` : ''}
+        ${data.tableNumber ? `
+        <div class="info-row">
+          <span class="info-label">Table:</span>
+          <span class="info-value">${data.tableNumber}</span>
+        </div>` : ''}
+        <div class="info-row">
+          <span class="info-label">Type:</span>
+          <span class="info-value">${getOrderTypeDisplay(data.orderType)}</span>
+        </div>
+        ${data.paymentMethod ? `
+        <div class="info-row">
+          <span class="info-label">Payment:</span>
+          <span class="info-value">${data.paymentMethod}</span>
+        </div>` : ''}
+        ${data.paymentStatus ? `
+        <div class="info-row">
+          <span class="info-label">Status:</span>
+          <span class="info-value">
+            <span class="badge ${data.paymentStatus === 'PAID' ? 'badge-paid' : 'badge-pending'}">${data.paymentStatus}</span>
+          </span>
+        </div>` : ''}
+      </div>
+
+      <div class="items-section">
+        <div class="items-header">
+          <span class="item-name">Item</span>
+          <span class="item-qty">Qty</span>
+          <span class="item-price">Amount</span>
+        </div>
+        ${data.items.map(item => `
+          <div class="item-row">
+            <span class="item-name">${item.name}</span>
+            <span class="item-qty">${item.quantity}</span>
+            <span class="item-price">${formatCurrency(item.subtotal || (item.price * item.quantity))}</span>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="totals-section">
+        <div class="total-row subtotal">
+          <span>Subtotal:</span>
+          <span>${formatCurrency(subtotal)}</span>
+        </div>
+        <div class="total-row">
+          <span>VAT (12%):</span>
+          <span>${formatCurrency(tax)}</span>
+        </div>
+        <div class="total-row grand">
+          <span>TOTAL:</span>
+          <span>${formatCurrency(data.totalAmount)}</span>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="footer-thanks">Thank you for dining with us!</div>
+        <div>Please come again!</div>
+        <div class="footer-social">FB: BEEHIVECAFEANDRESTO</div>
+      </div>
+    </body>
+    </html>
+  `
+}
+
+/**
+ * Generate merged receipt HTML for multiple orders
+ */
+export const generateMergedReceiptHTML = (data: MergedReceiptData): string => {
+  // Auto-calculate VAT (12% inclusive) if not provided
+  const tax = data.tax ?? (data.totalAmount * (12 / 112))
+  const subtotal = data.subtotal ?? (data.totalAmount - tax)
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Merged Receipt</title>
+      <style>${getBaseStyles()}</style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="logo">🐝 BEEHIVE</div>
+        <div class="tagline">Cafe & Restaurant</div>
+      </div>
+
+      <div class="merged-notice">
+        <strong>MERGED RECEIPT</strong><br/>
+        Orders: ${data.orderNumbers.map(n => formatOrderNumber(n)).join(' + ')}
+      </div>
+
+      <div class="info-section">
+        <div class="info-row">
+          <span class="info-label">Date:</span>
+          <span class="info-value">${new Date().toLocaleString()}</span>
+        </div>
+        ${data.customerName ? `
+        <div class="info-row">
+          <span class="info-label">Customer:</span>
+          <span class="info-value">${data.customerName}</span>
+        </div>` : ''}
+        ${data.tableNumber ? `
+        <div class="info-row">
+          <span class="info-label">Table:</span>
+          <span class="info-value">${data.tableNumber}</span>
+        </div>` : ''}
+        <div class="info-row">
+          <span class="info-label">Type:</span>
+          <span class="info-value">${getOrderTypeDisplay(data.orderType)}</span>
+        </div>
+        ${data.paymentMethod ? `
+        <div class="info-row">
+          <span class="info-label">Payment:</span>
+          <span class="info-value">${data.paymentMethod}</span>
+        </div>` : ''}
+      </div>
+
+      <div class="items-section">
+        <div class="items-header">
+          <span class="item-name">Item</span>
+          <span class="item-qty">Qty</span>
+          <span class="item-price">Amount</span>
+        </div>
+        ${data.items.map(item => `
+          <div class="item-row">
+            <span class="item-name">${item.name}</span>
+            <span class="item-qty">${item.quantity}</span>
+            <span class="item-price">${formatCurrency(item.subtotal || (item.price * item.quantity))}</span>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="totals-section">
+        <div class="total-row subtotal">
+          <span>Subtotal:</span>
+          <span>${formatCurrency(subtotal)}</span>
+        </div>
+        <div class="total-row">
+          <span>VAT (12%):</span>
+          <span>${formatCurrency(tax)}</span>
+        </div>
+        <div class="total-row grand">
+          <span>TOTAL:</span>
+          <span>${formatCurrency(data.totalAmount)}</span>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="footer-thanks">Thank you for dining with us!</div>
+        <div>Please come again!</div>
+        <div class="footer-social">FB: BEEHIVECAFEANDRESTO</div>
+      </div>
+    </body>
+    </html>
+  `
+}
+
+/**
+ * Generate combined receipt HTML for linked orders
+ */
+export const generateLinkedOrdersReceiptHTML = (data: LinkedOrdersReceiptData): string => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Combined Receipt</title>
+      <style>${getBaseStyles()}</style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="logo">🐝 BEEHIVE</div>
+        <div class="tagline">Cafe & Restaurant</div>
+        <div style="margin-top: 4px; font-size: 10px; font-weight: bold;">COMBINED BILL</div>
+      </div>
+
+      <div class="info-section">
+        <div class="info-row">
+          <span class="info-label">Customer:</span>
+          <span class="info-value">${data.parentOrder.customerName || 'Guest'}</span>
+        </div>
+        ${data.parentOrder.tableNumber ? `
+        <div class="info-row">
+          <span class="info-label">Table:</span>
+          <span class="info-value">${data.parentOrder.tableNumber}</span>
+        </div>` : ''}
+        <div class="info-row">
+          <span class="info-label">Date:</span>
+          <span class="info-value">${new Date().toLocaleDateString()}</span>
+        </div>
+      </div>
+
+      ${data.orders.map((order, idx) => `
+        <div class="order-section">
+          <div class="order-title">Order ${idx + 1}: ${formatOrderNumber(order.orderNumber)}</div>
+          ${order.items.map(item => `
+            <div class="item-row">
+              <span class="item-name">${item.name} x${item.quantity}</span>
+              <span class="item-price">${formatCurrency(item.subtotal || (item.price * item.quantity))}</span>
+            </div>
+          `).join('')}
+          <div class="total-row" style="font-size: 10px; margin-top: 4px;">
+            <span>Order Total:</span>
+            <span>${formatCurrency(order.totalAmount)}</span>
+          </div>
+        </div>
+      `).join('')}
+
+      <div class="totals-section">
+        <div class="total-row subtotal">
+          <span>Subtotal:</span>
+          <span>${formatCurrency(data.combinedSubtotal)}</span>
+        </div>
+        <div class="total-row">
+          <span>VAT (12% incl):</span>
+          <span>${formatCurrency(data.combinedTax)}</span>
+        </div>
+        <div class="total-row grand">
+          <span>GRAND TOTAL:</span>
+          <span>${formatCurrency(data.combinedTotal)}</span>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="footer-thanks">Thank you for dining with us!</div>
+        <div>Please come again!</div>
+        <div class="footer-social">FB: BEEHIVECAFEANDRESTO</div>
+      </div>
+    </body>
+    </html>
+  `
+}
+
+/**
+ * Generate kitchen copy receipt (simplified version for kitchen)
+ */
+export const generateKitchenReceiptHTML = (data: ReceiptData): string => {
+  const createdDate = data.createdAt ? new Date(data.createdAt) : new Date()
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Kitchen Copy</title>
+      <style>
+        ${getBaseStyles()}
+        .kitchen-title {
+          text-align: center;
+          font-size: 18px;
+          font-weight: bold;
+          padding: 6px;
+          border: 2px solid #000;
+          margin-bottom: 10px;
+        }
+        .kitchen-item {
+          font-size: 14px;
+          font-weight: bold;
+          margin: 6px 0;
+          padding: 4px 0;
+          border-bottom: 1px dashed #000;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="kitchen-title">KITCHEN COPY</div>
+      
+      <div class="info-section">
+        <div class="info-row">
+          <span>Order:</span>
+          <span style="font-size: 16px;">${formatOrderNumber(data.orderNumber)}</span>
+        </div>
+        <div class="info-row">
+          <span>Time:</span>
+          <span>${createdDate.toLocaleTimeString()}</span>
+        </div>
+        ${data.tableNumber ? `
+        <div class="info-row">
+          <span>Table:</span>
+          <span style="font-size: 16px;">${data.tableNumber}</span>
+        </div>` : ''}
+        <div class="info-row">
+          <span>Type:</span>
+          <span style="font-size: 14px;">${getOrderTypeDisplay(data.orderType)}</span>
+        </div>
+        ${data.customerName ? `
+        <div class="info-row">
+          <span>Customer:</span>
+          <span>${data.customerName}</span>
+        </div>` : ''}
+      </div>
+
+      <div class="divider"></div>
+
+      <div style="margin: 10px 0;">
+        ${data.items.map(item => `
+          <div class="kitchen-item">
+            <span style="font-size: 16px;">${item.quantity}x</span> ${item.name}
+          </div>
+        `).join('')}
+      </div>
+    </body>
+    </html>
+  `
+}

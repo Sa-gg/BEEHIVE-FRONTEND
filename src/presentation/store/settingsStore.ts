@@ -7,6 +7,7 @@ interface SettingsState {
   markPaidOnPrintReceipt: boolean
   printReceiptOnConfirmOrder: boolean
   printKitchenCopy: boolean
+  autoPrintOnReceiptButton: boolean // Auto-print when clicking any print receipt button
   
   // Inventory settings
   autoOutOfStockWhenIngredientsRunOut: boolean
@@ -24,6 +25,7 @@ interface SettingsState {
   setMarkPaidOnPrintReceipt: (value: boolean) => void
   setPrintReceiptOnConfirmOrder: (value: boolean) => void
   setPrintKitchenCopy: (value: boolean) => void
+  setAutoPrintOnReceiptButton: (value: boolean) => void
   setAutoOutOfStockWhenIngredientsRunOut: (value: boolean) => void
   setShowCurrentStockInPOS: (value: boolean) => void
   setCashierCanVoidWithoutPin: (value: boolean) => void
@@ -41,6 +43,7 @@ export const useSettingsStore = create<SettingsState>()(
       markPaidOnPrintReceipt: true,
       printReceiptOnConfirmOrder: false,
       printKitchenCopy: false,
+      autoPrintOnReceiptButton: true, // Default ON - auto print when clicking receipt buttons
       
       // Default settings - Inventory
       autoOutOfStockWhenIngredientsRunOut: false, // Default OFF - don't auto mark out of stock
@@ -65,6 +68,9 @@ export const useSettingsStore = create<SettingsState>()(
       
       setPrintKitchenCopy: (value: boolean) => 
         set({ printKitchenCopy: value }),
+      
+      setAutoPrintOnReceiptButton: (value: boolean) =>
+        set({ autoPrintOnReceiptButton: value }),
         
       setAutoOutOfStockWhenIngredientsRunOut: (value: boolean) =>
         set({ autoOutOfStockWhenIngredientsRunOut: value }),

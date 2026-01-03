@@ -13,6 +13,7 @@ import { useAuthStore } from '../../store/authStore'
 import { recipeApi } from '../../../infrastructure/api/recipe.api'
 import { useSettingsStore } from '../../store/settingsStore'
 import { printWithIframe } from '../../../shared/utils/printUtils'
+import { generateReceiptHTML, generateKitchenReceiptHTML } from '../../../shared/utils/receiptTemplate'
 
 // Helper to format order number - removes date prefix for cleaner display
 const formatOrderNumber = (orderNumber: string): string => {
@@ -228,122 +229,21 @@ export const POSPage = () => {
 
   const printReceiptForOrder = (order: any) => {
     const items = orderItems.length > 0 ? orderItems : order.order_items || []
-    // Calculate VAT from total (12% inclusive)
-    const total = order.totalAmount
-    const vat = total * 0.12
-    const subtotal = total - vat
-
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Receipt - BEEHIVE</title>
-        <style>
-          @media print {
-            body { margin: 0; }
-          }
-          body {
-            font-family: 'Courier New', monospace;
-            width: 80mm;
-            margin: 0 auto;
-            padding: 10mm;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 10px;
-            border-bottom: 2px dashed #000;
-            padding-bottom: 10px;
-          }
-          .logo {
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 5px;
-          }
-          .info { margin: 10px 0; font-size: 12px; }
-          .items { margin: 15px 0; }
-          .item {
-            display: flex;
-            justify-content: space-between;
-            margin: 5px 0;
-            font-size: 12px;
-          }
-          .item-name { flex: 1; }
-          .item-qty { width: 40px; text-align: center; }
-          .item-price { width: 60px; text-align: right; }
-          .totals {
-            border-top: 2px dashed #000;
-            padding-top: 10px;
-            margin-top: 10px;
-          }
-          .total-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 5px 0;
-            font-size: 12px;
-          }
-          .total-row.grand {
-            font-size: 16px;
-            font-weight: bold;
-            border-top: 2px solid #000;
-            padding-top: 5px;
-            margin-top: 5px;
-          }
-          .footer {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 12px;
-            border-top: 2px dashed #000;
-            padding-top: 10px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="logo">🐝 BEEHIVE</div>
-          <div style="font-size: 10px;">Your Neighborhood Pizza & More</div>
-        </div>
-        
-        <div class="info">
-          <div>Order #: ${formatOrderNumber(order.orderNumber)}</div>
-          <div>Date: ${new Date(order.createdAt || Date.now()).toLocaleString()}</div>
-          ${order.customerName ? `<div>Customer: ${order.customerName}</div>` : ''}
-          ${order.tableNumber ? `<div>Table: ${order.tableNumber}</div>` : ''}
-          <div>Type: ${order.orderType || orderType}</div>
-          <div>Payment: ${order.paymentMethod || paymentMethod}</div>
-        </div>
-        
-        <div class="items">
-          ${items.map((item: any) => `
-            <div class="item">
-              <span class="item-name">${item.name}</span>
-              <span class="item-qty">${item.quantity}x</span>
-              <span class="item-price">₱${(item.price * item.quantity).toFixed(2)}</span>
-            </div>
-          `).join('')}
-        </div>
-        
-        <div class="totals">
-          <div class="total-row">
-            <span>Subtotal:</span>
-            <span>₱${subtotal.toFixed(2)}</span>
-          </div>
-          <div class="total-row">
-            <span>VAT (12%):</span>
-            <span>₱${vat.toFixed(2)}</span>
-          </div>
-          <div class="total-row grand">
-            <span>TOTAL:</span>
-            <span>₱${total.toFixed(2)}</span>
-          </div>
-        </div>
-        
-        <div class="footer">
-          <p>Thank you for your order!</p>
-          <p>Visit us again soon! 🐝</p>
-        </div>
-      </body>
-      </html>
-    `
+    
+    const receiptHTML = generateReceiptHTML({
+      orderNumber: order.orderNumber,
+      createdAt: order.createdAt,
+      customerName: order.customerName,
+      tableNumber: order.tableNumber,
+      orderType: order.orderType || orderType,
+      paymentMethod: order.paymentMethod || paymentMethod,
+      items: items.map((item: any) => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price
+      })),
+      totalAmount: order.totalAmount
+    })
 
     printWithIframe(receiptHTML)
   }
@@ -428,228 +328,37 @@ export const POSPage = () => {
     }
 
     const total = orderItems.reduce((sum, item) => sum + item.subtotal, 0)
-    // Calculate VAT from total (12% inclusive)
-    const vat = total * 0.12
-    const subtotal = total - vat
 
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Receipt - BEEHIVE</title>
-        <style>
-          @media print {
-            body { margin: 0; }
-          }
-          body {
-            font-family: 'Courier New', monospace;
-            width: 80mm;
-            margin: 0 auto;
-            padding: 10mm;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 10px;
-            border-bottom: 2px dashed #000;
-            padding-bottom: 10px;
-          }
-          .logo {
-            font-size: 24px;
-            font-weight: bold;
-            color: #F9C900;
-          }
-          .info {
-            margin: 10px 0;
-            font-size: 12px;
-          }
-          .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 3px 0;
-          }
-          .items {
-            margin: 15px 0;
-            border-top: 1px dashed #000;
-            border-bottom: 1px dashed #000;
-            padding: 10px 0;
-          }
-          .item {
-            display: flex;
-            justify-content: space-between;
-            margin: 5px 0;
-            font-size: 12px;
-          }
-          .item-name {
-            flex: 1;
-          }
-          .item-qty {
-            width: 30px;
-            text-align: center;
-          }
-          .item-price {
-            width: 60px;
-            text-align: right;
-          }
-          .totals {
-            margin: 10px 0;
-          }
-          .total-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 5px 0;
-            font-size: 12px;
-          }
-          .total-row.grand {
-            font-size: 14px;
-            font-weight: bold;
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid #000;
-          }
-          .footer {
-            text-align: center;
-            margin-top: 20px;
-            padding-top: 10px;
-            border-top: 2px dashed #000;
-            font-size: 11px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="logo">BEEHIVE</div>
-          <div style="font-size: 10px; margin-top: 5px;">Cafe & Restaurant</div>
-          <div style="font-size: 10px;">Enjoy your food with a relaxing ambiance</div>
-        </div>
-
-        <div class="info">
-          <div class="info-row">
-            <span>Date:</span>
-            <span>${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</span>
-          </div>
-          ${customerName ? `<div class="info-row"><span>Customer:</span><span>${customerName}</span></div>` : ''}
-          ${tableNumber && orderType === 'DINE_IN' ? `<div class="info-row"><span>Table:</span><span>${tableNumber}</span></div>` : ''}
-          <div class="info-row">
-            <span>Order Type:</span>
-            <span>${orderType === 'DINE_IN' ? 'Dine In' : orderType === 'TAKEOUT' ? 'Take Away' : 'Delivery'}</span>
-          </div>
-          <div class="info-row">
-            <span>Payment:</span>
-            <span>${paymentMethod}</span>
-          </div>
-        </div>
-
-        <div class="items">
-          ${orderItems.map(item => `
-            <div class="item">
-              <span class="item-name">${item.name}</span>
-              <span class="item-qty">x${item.quantity}</span>
-              <span class="item-price">₱${item.subtotal.toFixed(2)}</span>
-            </div>
-          `).join('')}
-        </div>
-
-        <div class="totals">
-          <div class="total-row">
-            <span>Subtotal:</span>
-            <span>₱${subtotal.toFixed(2)}</span>
-          </div>
-          <div class="total-row">
-            <span>VAT (12%):</span>
-            <span>₱${vat.toFixed(2)}</span>
-          </div>
-          <div class="total-row grand">
-            <span>TOTAL:</span>
-            <span>₱${total.toFixed(2)}</span>
-          </div>
-        </div>
-
-        <div class="footer">
-          <div>Thank you for dining with us!</div>
-          <div style="margin-top: 5px;">Please come again</div>
-          <div style="margin-top: 10px; font-size: 9px;">
-            Facebook: BEEHIVECAFEANDRESTO
-          </div>
-        </div>
-      </body>
-      </html>
-    `
+    const receiptHTML = generateReceiptHTML({
+      orderNumber: '', // Will be auto-generated or use existing
+      createdAt: new Date().toISOString(),
+      customerName: customerName || undefined,
+      tableNumber: tableNumber || undefined,
+      orderType: orderType,
+      paymentMethod: paymentMethod,
+      items: orderItems.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price
+      })),
+      totalAmount: total
+    })
 
     printWithIframe(receiptHTML)
 
     // If kitchen copy setting is enabled, print a second receipt for kitchen
     if (printKitchenCopy) {
       setTimeout(() => {
-        const kitchenReceiptHTML = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <title>Kitchen Copy - BEEHIVE</title>
-              <style>
-                @media print { body { margin: 0; } }
-                body {
-                  font-family: 'Courier New', monospace;
-                  width: 80mm;
-                  margin: 0 auto;
-                  padding: 10mm;
-                }
-                .header {
-                  text-align: center;
-                  margin-bottom: 10px;
-                  border-bottom: 2px dashed #000;
-                  padding-bottom: 10px;
-                }
-                .kitchen-label {
-                  font-size: 20px;
-                  font-weight: bold;
-                  background: #000;
-                  color: #fff;
-                  padding: 5px 10px;
-                  margin-bottom: 10px;
-                }
-                .info {
-                  margin: 10px 0;
-                  font-size: 12px;
-                }
-                .items {
-                  margin: 15px 0;
-                  border-top: 1px dashed #000;
-                  border-bottom: 1px dashed #000;
-                  padding: 10px 0;
-                }
-                .item {
-                  display: flex;
-                  justify-content: space-between;
-                  margin: 8px 0;
-                  font-size: 14px;
-                  font-weight: bold;
-                }
-              </style>
-            </head>
-            <body>
-              <div class="header">
-                <div class="kitchen-label">🍳 KITCHEN COPY</div>
-                <div style="font-size: 10px;">Order for Kitchen</div>
-              </div>
-
-              <div class="info">
-                <div style="font-size: 14px; font-weight: bold;">Order Type: ${orderType === 'DINE_IN' ? 'DINE IN' : orderType === 'TAKEOUT' ? 'TAKE AWAY' : 'DELIVERY'}</div>
-                ${customerName ? `<div>Customer: ${customerName}</div>` : ''}
-                ${tableNumber && orderType === 'DINE_IN' ? `<div style="font-size: 16px; font-weight: bold;">TABLE: ${tableNumber}</div>` : ''}
-                <div>Time: ${new Date().toLocaleTimeString()}</div>
-              </div>
-
-              <div class="items">
-                ${orderItems.map(item => `
-                  <div class="item">
-                    <span>${item.quantity}x ${item.name}</span>
-                  </div>
-                `).join('')}
-              </div>
-            </body>
-            </html>
-          `
-          printWithIframe(kitchenReceiptHTML)
+        const kitchenReceiptHTML = generateKitchenReceiptHTML({
+          orderType: orderType,
+          customerName: customerName || undefined,
+          tableNumber: tableNumber || undefined,
+          items: orderItems.map(item => ({
+            name: item.name,
+            quantity: item.quantity
+          }))
+        })
+        printWithIframe(kitchenReceiptHTML)
       }, 500) // Small delay to allow first print to complete
     }
   }

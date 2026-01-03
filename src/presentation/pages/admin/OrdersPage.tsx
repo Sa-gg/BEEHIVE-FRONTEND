@@ -9,6 +9,7 @@ import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { printWithIframe } from '../../../shared/utils/printUtils'
 import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
 import { ManagerPinModal } from '../../components/common/ManagerPinModal'
+import { generateReceiptHTML, generateMergedReceiptHTML, generateLinkedOrdersReceiptHTML } from '../../../shared/utils/receiptTemplate'
 
 // Helper to format order number - removes date prefix for cleaner display
 // ORD-20251227-00001 -> ORD-00001
@@ -501,85 +502,19 @@ export const OrdersPage = () => {
   const printMergedReceipt = () => {
     if (!mergedOrderData) return
 
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Merged Receipt - ${mergedOrderData.orderNumbers.join(', ')}</title>
-        <style>
-          @media print { body { margin: 0; } }
-          body { font-family: 'Courier New', monospace; width: 80mm; margin: 0 auto; padding: 10mm; }
-          .header { text-align: center; margin-bottom: 10px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
-          .logo { font-size: 24px; font-weight: bold; }
-          .merged-notice { background: #f0f0f0; padding: 5px; margin: 10px 0; text-align: center; font-size: 11px; }
-          .info { margin: 10px 0; font-size: 12px; }
-          .items { margin: 15px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 10px 0; }
-          .item { display: flex; justify-content: space-between; margin: 5px 0; font-size: 12px; }
-          .item-name { flex: 1; }
-          .item-qty { width: 30px; text-align: center; }
-          .item-price { width: 60px; text-align: right; }
-          .totals { margin: 10px 0; }
-          .total-row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 12px; }
-          .total-row.grand { font-size: 14px; font-weight: bold; margin-top: 10px; padding-top: 10px; border-top: 1px solid #000; }
-          .footer { text-align: center; margin-top: 20px; padding-top: 10px; border-top: 2px dashed #000; font-size: 11px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="logo">🐝 BEEHIVE</div>
-          <div style="font-size: 10px;">Restaurant & Cafe</div>
-        </div>
-
-        <div class="merged-notice">
-          <strong>MERGED RECEIPT</strong><br/>
-          Orders: ${mergedOrderData.orderNumbers.map(n => formatOrderNumber(n)).join(' + ')}
-        </div>
-
-        <div class="info">
-          <div>Date: ${new Date().toLocaleString()}</div>
-          ${mergedOrderData.customerName ? `<div>Customer: ${mergedOrderData.customerName}</div>` : ''}
-          ${mergedOrderData.tableNumber ? `<div>Table: ${mergedOrderData.tableNumber}</div>` : ''}
-          <div>Type: ${mergedOrderData.orderType === 'DINE_IN' ? 'Dine In' : mergedOrderData.orderType === 'TAKEOUT' ? 'Takeout' : 'Delivery'}</div>
-          <div>Payment: ${mergePaymentMethod}</div>
-        </div>
-
-        <div class="items">
-          <div style="display: flex; font-weight: bold; margin-bottom: 5px; font-size: 11px;">
-            <span style="flex: 1;">Item</span>
-            <span style="width: 30px; text-align: center;">Qty</span>
-            <span style="width: 60px; text-align: right;">Amount</span>
-          </div>
-          ${mergedOrderData.items.map(item => `
-            <div class="item">
-              <span class="item-name">${item.name}</span>
-              <span class="item-qty">${item.quantity}</span>
-              <span class="item-price">₱${item.subtotal.toFixed(2)}</span>
-            </div>
-          `).join('')}
-        </div>
-
-        <div class="totals">
-          <div class="total-row">
-            <span>Subtotal:</span>
-            <span>₱${mergedOrderData.subtotal.toFixed(2)}</span>
-          </div>
-          <div class="total-row">
-            <span>VAT (12%):</span>
-            <span>₱${mergedOrderData.tax.toFixed(2)}</span>
-          </div>
-          <div class="total-row grand">
-            <span>TOTAL:</span>
-            <span>₱${mergedOrderData.totalAmount.toFixed(2)}</span>
-          </div>
-        </div>
-
-        <div class="footer">
-          <p>Thank you for dining with us!</p>
-          <p>Please come again 🐝</p>
-        </div>
-      </body>
-      </html>
-    `
+    const receiptHTML = generateMergedReceiptHTML({
+      orderNumbers: mergedOrderData.orderNumbers,
+      customerName: mergedOrderData.customerName || undefined,
+      tableNumber: mergedOrderData.tableNumber || undefined,
+      orderType: mergedOrderData.orderType,
+      paymentMethod: mergePaymentMethod,
+      items: mergedOrderData.items.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price
+      })),
+      totalAmount: mergedOrderData.totalAmount
+    })
 
     printWithIframe(receiptHTML)
   }
@@ -627,163 +562,20 @@ export const OrdersPage = () => {
       await markAsPaid(order.id)
     }
 
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Receipt - ${order.orderNumber}</title>
-        <style>
-          @media print {
-            body { margin: 0; }
-          }
-          body {
-            font-family: 'Courier New', monospace;
-            width: 80mm;
-            margin: 0 auto;
-            padding: 10mm;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 10px;
-            border-bottom: 2px dashed #000;
-            padding-bottom: 10px;
-          }
-          .logo {
-            font-size: 24px;
-            font-weight: bold;
-            color: #F9C900;
-          }
-          .info {
-            margin: 10px 0;
-            font-size: 12px;
-          }
-          .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 3px 0;
-          }
-          .items {
-            margin: 15px 0;
-            border-top: 1px dashed #000;
-            border-bottom: 1px dashed #000;
-            padding: 10px 0;
-          }
-          .item {
-            display: flex;
-            justify-content: space-between;
-            margin: 5px 0;
-            font-size: 12px;
-          }
-          .item-name {
-            flex: 1;
-          }
-          .item-qty {
-            width: 30px;
-            text-align: center;
-          }
-          .item-price {
-            width: 60px;
-            text-align: right;
-          }
-          .totals {
-            margin: 10px 0;
-          }
-          .total-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 5px 0;
-            font-size: 12px;
-          }
-          .total-row.grand {
-            font-size: 14px;
-            font-weight: bold;
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid #000;
-          }
-          .footer {
-            text-align: center;
-            margin-top: 20px;
-            padding-top: 10px;
-            border-top: 2px dashed #000;
-            font-size: 11px;
-          }
-          .status-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: bold;
-            margin-top: 5px;
-          }
-          .completed {
-            background-color: #d1fae5;
-            color: #065f46;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="logo">BEEHIVE</div>
-          <div style="font-size: 10px; margin-top: 5px;">Cafe & Restaurant</div>
-          <div style="font-size: 10px;">Enjoy your food with a relaxing ambiance</div>
-        </div>
-
-        <div class="info">
-          <div class="info-row">
-            <span>Order #:</span>
-            <span>${formatOrderNumber(order.orderNumber)}</span>
-          </div>
-          <div class="info-row">
-            <span>Date:</span>
-            <span>${new Date(order.createdAt).toLocaleDateString()} ${new Date(order.createdAt).toLocaleTimeString()}</span>
-          </div>
-          ${order.customerName ? `<div class="info-row"><span>Customer:</span><span>${order.customerName}</span></div>` : ''}
-          ${order.tableNumber ? `<div class="info-row"><span>Table:</span><span>${order.tableNumber}</span></div>` : ''}
-          <div class="info-row">
-            <span>Status:</span>
-            <span class="status-badge completed">COMPLETED</span>
-          </div>
-        </div>
-
-        <div class="items">
-          ${order.items.map(item => `
-            <div class="item">
-              <span class="item-name">${item.name}</span>
-              <span class="item-qty">x${item.quantity}</span>
-              <span class="item-price">₱${item.subtotal.toFixed(2)}</span>
-            </div>
-          `).join('')}
-        </div>
-
-        <div class="totals">
-          <div class="total-row">
-            <span>Subtotal:</span>
-            <span>₱${order.subtotal.toFixed(2)}</span>
-          </div>
-          <div class="total-row">
-            <span>Tax (12%):</span>
-            <span>₱${order.tax.toFixed(2)}</span>
-          </div>
-          <div class="total-row grand">
-            <span>TOTAL:</span>
-            <span>₱${order.totalAmount.toFixed(2)}</span>
-          </div>
-        </div>
-
-        <div class="footer">
-          <div>Thank you for dining with us!</div>
-          <div style="margin-top: 5px;">Please come again</div>
-          <div style="margin-top: 10px; font-size: 9px;">
-            Facebook: BEEHIVECAFEANDRESTO
-          </div>
-          <div style="margin-top: 5px; font-size: 9px;">
-            Printed: ${new Date().toLocaleString()}
-          </div>
-        </div>
-      </body>
-      </html>
-    `
+    const receiptHTML = generateReceiptHTML({
+      orderNumber: order.orderNumber,
+      createdAt: order.createdAt,
+      customerName: order.customerName || undefined,
+      tableNumber: order.tableNumber || undefined,
+      orderType: order.orderType,
+      paymentMethod: order.paymentMethod,
+      items: order.items.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price
+      })),
+      totalAmount: order.totalAmount
+    })
 
     printWithIframe(receiptHTML)
   }
@@ -925,86 +717,21 @@ export const OrdersPage = () => {
 
     const parentOrder = group[0]
     const combinedTotal = getLinkedOrdersTotal(parentOrderId)
-    const combinedTax = combinedTotal * (12/112)
-    const combinedSubtotal = combinedTotal - combinedTax
 
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Combined Receipt</title>
-        <style>
-          body { font-family: monospace; width: 80mm; margin: 0 auto; padding: 10mm 5mm; font-size: 12px; }
-          .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-          .order-section { border-bottom: 1px dashed #ccc; padding: 8px 0; margin-bottom: 8px; }
-          .order-title { font-weight: bold; font-size: 11px; color: #666; margin-bottom: 4px; }
-          .items { margin: 5px 0; }
-          .item { display: flex; justify-content: space-between; font-size: 11px; }
-          .totals { border-top: 2px dashed #000; padding-top: 10px; margin-top: 10px; }
-          .total-row { display: flex; justify-content: space-between; margin: 3px 0; }
-          .total-row.grand { font-weight: bold; font-size: 14px; border-top: 1px solid #000; padding-top: 5px; margin-top: 5px; }
-          .footer { text-align: center; margin-top: 15px; font-size: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div style="font-size: 18px; font-weight: bold;">🐝 BEEHIVE</div>
-          <div>Restaurant & Cafe</div>
-          <div style="margin-top: 5px; font-size: 11px;">COMBINED BILL</div>
-        </div>
-
-        <div style="margin-bottom: 10px; font-size: 11px;">
-          <div><strong>Customer:</strong> ${parentOrder.customerName || 'Guest'}</div>
-          ${parentOrder.tableNumber ? `<div><strong>Table:</strong> ${parentOrder.tableNumber}</div>` : ''}
-          <div><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
-        </div>
-
-        ${group.map((order, idx) => `
-          <div class="order-section">
-            <div class="order-title">Order ${idx + 1}: ${formatOrderNumber(order.orderNumber)}</div>
-            <div class="items">
-              ${order.items.map(item => `
-                <div class="item">
-                  <span>${item.name} x${item.quantity}</span>
-                  <span>₱${item.subtotal.toFixed(2)}</span>
-                </div>
-              `).join('')}
-            </div>
-            <div class="total-row" style="font-size: 11px; margin-top: 5px;">
-              <span>Order Total:</span>
-              <span>₱${order.totalAmount.toFixed(2)}</span>
-            </div>
-          </div>
-        `).join('')}
-
-        <div class="totals">
-          <div class="total-row">
-            <span>Subtotal:</span>
-            <span>₱${combinedSubtotal.toFixed(2)}</span>
-          </div>
-          <div class="total-row">
-            <span>VAT (12% incl):</span>
-            <span>₱${combinedTax.toFixed(2)}</span>
-          </div>
-          <div class="total-row grand">
-            <span>GRAND TOTAL:</span>
-            <span>₱${combinedTotal.toFixed(2)}</span>
-          </div>
-        </div>
-
-        <div class="footer">
-          <div>Thank you for dining with us!</div>
-          <div style="margin-top: 5px;">Please come again</div>
-          <div style="margin-top: 10px; font-size: 9px;">
-            Facebook: BEEHIVECAFEANDRESTO
-          </div>
-          <div style="margin-top: 5px; font-size: 9px;">
-            Printed: ${new Date().toLocaleString()}
-          </div>
-        </div>
-      </body>
-      </html>
-    `
+    const receiptHTML = generateLinkedOrdersReceiptHTML({
+      customerName: parentOrder.customerName || undefined,
+      tableNumber: parentOrder.tableNumber || undefined,
+      orders: group.map(order => ({
+        orderNumber: order.orderNumber,
+        items: order.items.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price
+        })),
+        totalAmount: order.totalAmount
+      })),
+      combinedTotal
+    })
 
     printWithIframe(receiptHTML)
   }
