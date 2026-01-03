@@ -22,6 +22,11 @@ export interface ReceiptData {
   subtotal?: number
   tax?: number
   totalAmount: number
+  deliveryFee?: number
+  serviceFee?: number
+  discountAmount?: number
+  cashReceived?: number
+  changeAmount?: number
   notes?: string
   processedBy?: string
   createdBy?: string
@@ -252,10 +257,29 @@ const getBaseStyles = () => `
 
 /**
  * Format order number for display
+ * Handles both numeric and string formats like "ORD-20251214-1"
  */
 export const formatOrderNumber = (orderNumber: number | string): string => {
-  const num = typeof orderNumber === 'string' ? parseInt(orderNumber) : orderNumber
-  return `#${String(num).padStart(4, '0')}`
+  if (!orderNumber) return '#0000'
+  
+  // If it's a string in format "ORD-YYYYMMDD-N", extract the sequence number
+  if (typeof orderNumber === 'string') {
+    // Try to match "ORD-YYYYMMDD-N" format
+    const match = orderNumber.match(/ORD-\d{8}-(\d+)/)
+    if (match) {
+      return `#${String(parseInt(match[1])).padStart(4, '0')}`
+    }
+    // If it's already just a number string, format it
+    const parsed = parseInt(orderNumber)
+    if (!isNaN(parsed)) {
+      return `#${String(parsed).padStart(4, '0')}`
+    }
+    // Otherwise return the original string with # prefix
+    return `#${orderNumber}`
+  }
+  
+  // If it's a number, format directly
+  return `#${String(orderNumber).padStart(4, '0')}`
 }
 
 /**
@@ -282,9 +306,17 @@ const getOrderTypeDisplay = (orderType?: string): string => {
  */
 export const generateReceiptHTML = (data: ReceiptData): string => {
   const createdDate = data.createdAt ? new Date(data.createdAt) : new Date()
-  // Auto-calculate VAT (12% inclusive) if not provided
-  const tax = data.tax ?? (data.totalAmount * (12 / 112))
-  const subtotal = data.subtotal ?? (data.totalAmount - tax)
+  // Calculate items total first (before fees/discount)
+  const itemsTotal = data.items.reduce((sum, item) => sum + (item.subtotal || item.price * item.quantity), 0)
+  // Auto-calculate VAT (12% inclusive) from items total
+  const tax = data.tax ?? (itemsTotal * (12 / 112))
+  const subtotal = data.subtotal ?? (itemsTotal - tax)
+  // Get fees and discount
+  const deliveryFee = data.deliveryFee || 0
+  const serviceFee = data.serviceFee || 0
+  const discountAmount = data.discountAmount || 0
+  // Final total = items + fees - discount
+  const finalTotal = data.totalAmount || (itemsTotal + deliveryFee + serviceFee - discountAmount)
   
   return `
     <!DOCTYPE html>
@@ -365,10 +397,34 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
           <span>VAT (12%):</span>
           <span>${formatCurrency(tax)}</span>
         </div>
+        ${deliveryFee > 0 ? `
+        <div class="total-row">
+          <span>Delivery Fee:</span>
+          <span>${formatCurrency(deliveryFee)}</span>
+        </div>` : ''}
+        ${serviceFee > 0 ? `
+        <div class="total-row">
+          <span>Service Fee:</span>
+          <span>${formatCurrency(serviceFee)}</span>
+        </div>` : ''}
+        ${discountAmount > 0 ? `
+        <div class="total-row">
+          <span>Discount:</span>
+          <span>-${formatCurrency(discountAmount)}</span>
+        </div>` : ''}
         <div class="total-row grand">
           <span>TOTAL:</span>
-          <span>${formatCurrency(data.totalAmount)}</span>
+          <span>${formatCurrency(finalTotal)}</span>
         </div>
+        ${data.cashReceived && data.cashReceived > 0 ? `
+        <div class="total-row" style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #000;">
+          <span>Cash:</span>
+          <span>${formatCurrency(data.cashReceived)}</span>
+        </div>
+        <div class="total-row">
+          <span>Change:</span>
+          <span>${formatCurrency(data.changeAmount || 0)}</span>
+        </div>` : ''}
       </div>
 
       <div class="footer">

@@ -14,6 +14,8 @@ import { recipeApi } from '../../../infrastructure/api/recipe.api'
 import { useSettingsStore } from '../../store/settingsStore'
 import { printWithIframe } from '../../../shared/utils/printUtils'
 import { generateReceiptHTML, generateKitchenReceiptHTML } from '../../../shared/utils/receiptTemplate'
+import { CashCalculatorModal } from '../../components/common/CashCalculatorModal'
+import { FeeInputModal, type FeeType } from '../../components/common/FeeInputModal'
 
 // Helper to format order number - removes date prefix for cleaner display
 const formatOrderNumber = (orderNumber: string): string => {
@@ -46,7 +48,7 @@ export const POSPage = () => {
   const editingOrder = location.state?.editingOrder
   const reorderFrom = location.state?.reorderFrom
   const linkToOrder = location.state?.linkToOrder // New: Link to existing order (empty cart)
-  const { markPaidOnConfirmOrder, markPaidOnPrintReceipt, printReceiptOnConfirmOrder, printKitchenCopy } = useSettingsStore()
+  const { markPaidOnConfirmOrder, markPaidOnPrintReceipt, printReceiptOnConfirmOrder, printKitchenCopy, cashChangeEnabled } = useSettingsStore()
   
   // Transform order items from backend format to POS format
   const transformOrderItems = (items: any[]): OrderItem[] => {
@@ -89,6 +91,17 @@ export const POSPage = () => {
   const [orderType, setOrderType] = useState(
     editingOrder?.orderType || linkToOrder?.orderType || reorderFrom?.orderType || 'DINE_IN'
   )
+
+  // Fees and discount state
+  const [deliveryFee, setDeliveryFee] = useState(editingOrder?.deliveryFee || 0)
+  const [serviceFee, setServiceFee] = useState(editingOrder?.serviceFee || 0)
+  const [discountAmount, setDiscountAmount] = useState(editingOrder?.discountAmount || 0)
+  
+  // Modal states
+  const [showCashModal, setShowCashModal] = useState(false)
+  const [showFeeModal, setShowFeeModal] = useState(false)
+  const [currentFeeType, setCurrentFeeType] = useState<FeeType>('delivery')
+  const [pendingAction, setPendingAction] = useState<'confirm' | 'print' | null>(null)
 
   // Helper function to get full image URL
   const getImageUrl = (imagePath: string | null) => {
@@ -225,9 +238,76 @@ export const POSPage = () => {
     setTableNumber('')
     setPaymentMethod('CASH')
     setOrderType('DINE_IN')
+    setDeliveryFee(0)
+    setServiceFee(0)
+    setDiscountAmount(0)
   }
 
-  const printReceiptForOrder = (order: any) => {
+  // Fee modal handlers
+  const handleDeliveryFeeClick = () => {
+    setCurrentFeeType('delivery')
+    setShowFeeModal(true)
+  }
+
+  const handleServiceFeeClick = () => {
+    setCurrentFeeType('service')
+    setShowFeeModal(true)
+  }
+
+  const handleDiscountClick = () => {
+    setCurrentFeeType('discount')
+    setShowFeeModal(true)
+  }
+
+  const handleFeeConfirm = (amount: number) => {
+    if (currentFeeType === 'delivery') {
+      setDeliveryFee(amount)
+    } else if (currentFeeType === 'service') {
+      setServiceFee(amount)
+    } else if (currentFeeType === 'discount') {
+      setDiscountAmount(amount)
+    }
+    setShowFeeModal(false)
+  }
+
+  // Calculate grand total with fees
+  const calculateGrandTotal = () => {
+    const itemsTotal = orderItems.reduce((sum, item) => sum + item.subtotal, 0)
+    return itemsTotal + deliveryFee + serviceFee - discountAmount
+  }
+
+  // Handle cash modal confirmation
+  const handleCashConfirm = async (cashReceived: number, changeAmount: number) => {
+    setShowCashModal(false)
+    
+    if (pendingAction === 'print') {
+      await executePrintReceipt(cashReceived, changeAmount)
+    } else if (pendingAction === 'confirm') {
+      await executeConfirmOrder(cashReceived, changeAmount)
+    }
+    setPendingAction(null)
+  }
+
+  // Trigger cash modal for Mark Paid & Print Receipt (only if cashChangeEnabled and CASH payment)
+  const handleMarkPaidAndPrint = () => {
+    if (orderItems.length === 0) {
+      alert('No items to print')
+      return
+    }
+    if (paymentMethod === 'CASH' && cashChangeEnabled) {
+      setPendingAction('print')
+      setShowCashModal(true)
+    } else {
+      executePrintReceipt(0, 0)
+    }
+  }
+
+  // Confirm Order - NEVER shows cash modal, just creates order (unpaid or paid based on setting)
+  const handleConfirmOrder = () => {
+    executeConfirmOrder(0, 0)
+  }
+
+  const printReceiptForOrder = (order: any, cashReceived?: number, changeAmount?: number) => {
     const items = orderItems.length > 0 ? orderItems : order.order_items || []
     
     const receiptHTML = generateReceiptHTML({
@@ -242,13 +322,18 @@ export const POSPage = () => {
         quantity: item.quantity,
         price: item.price
       })),
-      totalAmount: order.totalAmount
+      totalAmount: order.totalAmount,
+      deliveryFee: order.deliveryFee || deliveryFee,
+      serviceFee: order.serviceFee || serviceFee,
+      discountAmount: order.discountAmount || discountAmount,
+      cashReceived: cashReceived,
+      changeAmount: changeAmount
     })
 
     printWithIframe(receiptHTML)
   }
 
-  const printReceipt = async () => {
+  const executePrintReceipt = async (cashReceived: number, changeAmount: number) => {
     if (orderItems.length === 0) {
       alert('No items to print')
       return
@@ -263,6 +348,11 @@ export const POSPage = () => {
           tableNumber: tableNumber || undefined,
           orderType: orderType,
           paymentMethod: paymentMethod,
+          deliveryFee: deliveryFee,
+          serviceFee: serviceFee,
+          discountAmount: discountAmount,
+          cashReceived: cashReceived > 0 ? cashReceived : undefined,
+          changeAmount: changeAmount > 0 ? changeAmount : undefined,
           status: 'PREPARING', // Set to PREPARING when confirming via Mark Paid & Print
           paymentStatus: 'PAID' // Mark as paid
         }
@@ -270,7 +360,7 @@ export const POSPage = () => {
         await ordersApi.update(editingOrder.id, updateData)
         
         // Print the receipt with existing order data
-        printReceiptForOrder(editingOrder)
+        printReceiptForOrder(editingOrder, cashReceived, changeAmount)
         
         alert(`Order Confirmed, Paid & Preparing!\nOrder Number: ${editingOrder.orderNumber}`)
         
@@ -291,6 +381,11 @@ export const POSPage = () => {
         tableNumber: tableNumber || undefined,
         orderType: orderType,
         paymentMethod: paymentMethod,
+        deliveryFee: deliveryFee,
+        serviceFee: serviceFee,
+        discountAmount: discountAmount,
+        cashReceived: cashReceived > 0 ? cashReceived : undefined,
+        changeAmount: changeAmount > 0 ? changeAmount : undefined,
         linkedOrderId: linkedOrderId || undefined, // Link to original order if reordering
         createdBy: user?.role === 'MANAGER' ? 'Manager' : 'Cashier', // Track the role who created the order
         items: orderItems.map(item => ({
@@ -313,8 +408,54 @@ export const POSPage = () => {
         await ordersApi.update(createdOrder.id, { paymentStatus: 'PAID' })
       }
       
+      // Store the order items before clearing for receipt printing
+      const itemsForReceipt = orderItems.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price
+      }))
+      const total = calculateGrandTotal()
+      
       // Clear the order after successful creation
       clearOrder()
+      
+      // Print receipt with actual order number from created order
+      const receiptHTML = generateReceiptHTML({
+        orderNumber: createdOrder.orderNumber,
+        createdAt: createdOrder.createdAt || new Date().toISOString(),
+        customerName: customerName || undefined,
+        tableNumber: tableNumber || undefined,
+        orderType: orderType,
+        paymentMethod: paymentMethod,
+        items: itemsForReceipt,
+        totalAmount: total,
+        deliveryFee: deliveryFee,
+        serviceFee: serviceFee,
+        discountAmount: discountAmount,
+        cashReceived: cashReceived > 0 ? cashReceived : undefined,
+        changeAmount: changeAmount > 0 ? changeAmount : undefined
+      })
+
+      printWithIframe(receiptHTML)
+
+      // If kitchen copy setting is enabled, print a second receipt for kitchen
+      if (printKitchenCopy) {
+        setTimeout(() => {
+          const kitchenReceiptHTML = generateKitchenReceiptHTML({
+            orderType: orderType,
+            customerName: customerName || undefined,
+            tableNumber: tableNumber || undefined,
+            items: itemsForReceipt.map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+              price: 0 // Kitchen copy doesn't need price but type requires it
+            })),
+            orderNumber: createdOrder.orderNumber,
+            totalAmount: 0
+          })
+          printWithIframe(kitchenReceiptHTML)
+        }, 500) // Small delay to allow first print to complete
+      }
       
       // Navigate back if reordering
       if (isReordering) {
@@ -326,44 +467,9 @@ export const POSPage = () => {
       alert(`Failed to create order: ${error.response?.data?.error || error.message}`)
       return
     }
-
-    const total = orderItems.reduce((sum, item) => sum + item.subtotal, 0)
-
-    const receiptHTML = generateReceiptHTML({
-      orderNumber: '', // Will be auto-generated or use existing
-      createdAt: new Date().toISOString(),
-      customerName: customerName || undefined,
-      tableNumber: tableNumber || undefined,
-      orderType: orderType,
-      paymentMethod: paymentMethod,
-      items: orderItems.map(item => ({
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price
-      })),
-      totalAmount: total
-    })
-
-    printWithIframe(receiptHTML)
-
-    // If kitchen copy setting is enabled, print a second receipt for kitchen
-    if (printKitchenCopy) {
-      setTimeout(() => {
-        const kitchenReceiptHTML = generateKitchenReceiptHTML({
-          orderType: orderType,
-          customerName: customerName || undefined,
-          tableNumber: tableNumber || undefined,
-          items: orderItems.map(item => ({
-            name: item.name,
-            quantity: item.quantity
-          }))
-        })
-        printWithIframe(kitchenReceiptHTML)
-      }, 500) // Small delay to allow first print to complete
-    }
   }
 
-  const confirmOrder = async () => {
+  const executeConfirmOrder = async (cashReceived: number, changeAmount: number) => {
     if (isEditMode && editingOrder) {
       // Update existing order and set status to PREPARING
       try {
@@ -373,13 +479,24 @@ export const POSPage = () => {
           tableNumber: tableNumber || undefined,
           orderType: orderType,
           paymentMethod: paymentMethod,
+          deliveryFee: deliveryFee,
+          serviceFee: serviceFee,
+          discountAmount: discountAmount,
+          cashReceived: cashReceived > 0 ? cashReceived : undefined,
+          changeAmount: changeAmount > 0 ? changeAmount : undefined,
           status: 'PREPARING' // Auto-set to PREPARING when cashier confirms edited order
+        }
+        
+        if (markPaidOnConfirmOrder) {
+          updateData.paymentStatus = 'PAID'
         }
         
         await ordersApi.update(editingOrder.id, updateData)
         
-        // Note: For a full implementation, you would need a backend endpoint 
-        // to update order items. For now, we're only updating order metadata.
+        // Auto-print receipt if setting is enabled
+        if (printReceiptOnConfirmOrder) {
+          printReceiptForOrder(editingOrder, cashReceived, changeAmount)
+        }
         
         // Show success message
         alert(`Order Confirmed & Now Preparing!\nOrder Number: ${editingOrder.orderNumber}`)
@@ -401,6 +518,11 @@ export const POSPage = () => {
           tableNumber: tableNumber || undefined,
           orderType: orderType,
           paymentMethod: paymentMethod,
+          deliveryFee: deliveryFee,
+          serviceFee: serviceFee,
+          discountAmount: discountAmount,
+          cashReceived: cashReceived > 0 ? cashReceived : undefined,
+          changeAmount: changeAmount > 0 ? changeAmount : undefined,
           linkedOrderId: linkedOrderId || undefined, // Link to original order if linking or reordering
           createdBy: user?.role === 'MANAGER' ? 'Manager' : 'Cashier', // Track the role who created the order
           items: orderItems.map(item => ({
@@ -420,14 +542,14 @@ export const POSPage = () => {
         // Refresh max servings to account for new PREPARING order
         await refreshMaxServings()
         
-        // Mark as paid if setting is enabled
+        // Mark as paid if setting is enabled (cash already included in create)
         if (markPaidOnConfirmOrder) {
           await ordersApi.update(createdOrder.id, { paymentStatus: 'PAID' })
         }
         
         // Auto-print receipt if setting is enabled
         if (printReceiptOnConfirmOrder) {
-          printReceiptForOrder(createdOrder)
+          printReceiptForOrder(createdOrder, cashReceived, changeAmount)
         }
         
         // Show success message with order number
@@ -617,15 +739,21 @@ export const POSPage = () => {
             tableNumber={tableNumber}
             paymentMethod={paymentMethod}
             orderType={orderType}
+            deliveryFee={deliveryFee}
+            serviceFee={serviceFee}
+            discountAmount={discountAmount}
             onCustomerNameChange={setCustomerName}
             onTableNumberChange={setTableNumber}
             onPaymentMethodChange={setPaymentMethod}
             onOrderTypeChange={setOrderType}
+            onDeliveryFeeClick={handleDeliveryFeeClick}
+            onServiceFeeClick={handleServiceFeeClick}
+            onDiscountClick={handleDiscountClick}
             onUpdateQuantity={updateQuantity}
             onRemove={removeItem}
             onClearOrder={clearOrder}
-            onConfirmOrder={confirmOrder}
-            onPrintReceipt={printReceipt}
+            onConfirmOrder={handleConfirmOrder}
+            onPrintReceipt={handleMarkPaidAndPrint}
           />
         </div>
 
@@ -660,23 +788,55 @@ export const POSPage = () => {
                 tableNumber={tableNumber}
                 paymentMethod={paymentMethod}
                 orderType={orderType}
+                deliveryFee={deliveryFee}
+                serviceFee={serviceFee}
+                discountAmount={discountAmount}
                 onCustomerNameChange={setCustomerName}
                 onTableNumberChange={setTableNumber}
                 onPaymentMethodChange={setPaymentMethod}
                 onOrderTypeChange={setOrderType}
+                onDeliveryFeeClick={handleDeliveryFeeClick}
+                onServiceFeeClick={handleServiceFeeClick}
+                onDiscountClick={handleDiscountClick}
                 onUpdateQuantity={updateQuantity}
                 onRemove={removeItem}
                 onClearOrder={clearOrder}
                 onConfirmOrder={() => {
-                  confirmOrder()
+                  handleConfirmOrder()
                   setIsCartOpen(false)
                 }}
-                onPrintReceipt={printReceipt}
+                onPrintReceipt={handleMarkPaidAndPrint}
               />
             </div>
           </>
         )}
       </div>
+
+      {/* Cash Calculator Modal */}
+      <CashCalculatorModal
+        isOpen={showCashModal}
+        onClose={() => {
+          setShowCashModal(false)
+          setPendingAction(null)
+        }}
+        onConfirm={handleCashConfirm}
+        totalAmount={calculateGrandTotal()}
+        title={pendingAction === 'print' ? 'Payment - Print Receipt' : 'Payment'}
+      />
+
+      {/* Fee Input Modal */}
+      <FeeInputModal
+        isOpen={showFeeModal}
+        onClose={() => setShowFeeModal(false)}
+        onConfirm={handleFeeConfirm}
+        feeType={currentFeeType}
+        currentAmount={
+          currentFeeType === 'delivery' ? deliveryFee :
+          currentFeeType === 'service' ? serviceFee :
+          discountAmount
+        }
+        subtotal={orderItems.reduce((sum, item) => sum + item.subtotal, 0)}
+      />
     </AdminLayout>
   )
 }

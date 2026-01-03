@@ -8,6 +8,7 @@ interface SettingsState {
   printReceiptOnConfirmOrder: boolean
   printKitchenCopy: boolean
   autoPrintOnReceiptButton: boolean // Auto-print when clicking any print receipt button
+  cashChangeEnabled: boolean // Show cash/change modal when marking orders as paid
   
   // Inventory settings
   autoOutOfStockWhenIngredientsRunOut: boolean
@@ -26,6 +27,7 @@ interface SettingsState {
   setPrintReceiptOnConfirmOrder: (value: boolean) => void
   setPrintKitchenCopy: (value: boolean) => void
   setAutoPrintOnReceiptButton: (value: boolean) => void
+  setCashChangeEnabled: (value: boolean) => void
   setAutoOutOfStockWhenIngredientsRunOut: (value: boolean) => void
   setShowCurrentStockInPOS: (value: boolean) => void
   setCashierCanVoidWithoutPin: (value: boolean) => void
@@ -44,6 +46,7 @@ export const useSettingsStore = create<SettingsState>()(
       printReceiptOnConfirmOrder: false,
       printKitchenCopy: false,
       autoPrintOnReceiptButton: true, // Default ON - auto print when clicking receipt buttons
+      cashChangeEnabled: true, // Default ON - show cash/change modal for CASH payments
       
       // Default settings - Inventory
       autoOutOfStockWhenIngredientsRunOut: false, // Default OFF - don't auto mark out of stock
@@ -71,6 +74,9 @@ export const useSettingsStore = create<SettingsState>()(
       
       setAutoPrintOnReceiptButton: (value: boolean) =>
         set({ autoPrintOnReceiptButton: value }),
+      
+      setCashChangeEnabled: (value: boolean) =>
+        set({ cashChangeEnabled: value }),
         
       setAutoOutOfStockWhenIngredientsRunOut: (value: boolean) =>
         set({ autoOutOfStockWhenIngredientsRunOut: value }),

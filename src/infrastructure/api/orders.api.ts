@@ -18,6 +18,11 @@ export interface CreateOrderRequest {
   moodContext?: string;
   linkedOrderId?: string;
   createdBy?: string;
+  deliveryFee?: number;
+  serviceFee?: number;
+  discountAmount?: number;
+  cashReceived?: number;
+  changeAmount?: number;
   items: OrderItem[];
   paymentMethod?: string;
   deviceId?: string; // For guest tracking
@@ -32,6 +37,10 @@ export interface UpdateOrderRequest {
   paymentStatus?: PaymentStatus;
   processedBy?: string | null;
   discountAmount?: number;
+  deliveryFee?: number;
+  serviceFee?: number;
+  cashReceived?: number | null;
+  changeAmount?: number | null;
   notes?: string | null;
   authorizedBy?: string | null;
   paidAt?: string | null;
@@ -49,6 +58,10 @@ export interface OrderResponse {
   tax: number;
   totalAmount: number;
   discountAmount: number;
+  deliveryFee: number;
+  serviceFee: number;
+  cashReceived: number | null;
+  changeAmount: number | null;
   paymentMethod: string | null;
   paymentStatus: PaymentStatus;
   moodContext: string | null;

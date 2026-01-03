@@ -11,10 +11,16 @@ interface OrderSummaryProps {
   tableNumber: string
   paymentMethod: string
   orderType: string
+  deliveryFee: number
+  serviceFee: number
+  discountAmount: number
   onCustomerNameChange: (value: string) => void
   onTableNumberChange: (value: string) => void
   onPaymentMethodChange: (value: string) => void
   onOrderTypeChange: (value: string) => void
+  onDeliveryFeeClick: () => void
+  onServiceFeeClick: () => void
+  onDiscountClick: () => void
   onUpdateQuantity: (menuItemId: string, quantity: number) => void
   onRemove: (menuItemId: string) => void
   onClearOrder: () => void
@@ -28,22 +34,30 @@ export const OrderSummary = ({
   tableNumber,
   paymentMethod,
   orderType,
+  deliveryFee,
+  serviceFee,
+  discountAmount,
   onCustomerNameChange,
   onTableNumberChange,
   onPaymentMethodChange,
   onOrderTypeChange,
+  onDeliveryFeeClick,
+  onServiceFeeClick,
+  onDiscountClick,
   onUpdateQuantity,
   onRemove,
   onClearOrder,
   onConfirmOrder,
   onPrintReceipt,
 }: OrderSummaryProps) => {
-  // Total is the sum of item prices (which already include VAT)
-  const total = items.reduce((sum, item) => sum + item.subtotal, 0)
-  // VAT is 12% of the total
-  const vat = total * 0.12
-  // Subtotal is total minus VAT
-  const subtotal = total - vat
+  // Subtotal is the sum of item prices (which already include VAT)
+  const itemsTotal = items.reduce((sum, item) => sum + item.subtotal, 0)
+  // VAT is 12% of the items total
+  const vat = itemsTotal * 0.12
+  // Subtotal before VAT
+  const subtotal = itemsTotal - vat
+  // Total with fees and discount applied
+  const total = itemsTotal + deliveryFee + serviceFee - discountAmount
 
   // const getOrderTypeIcon = () => {
   //   switch (orderType) {
@@ -188,6 +202,48 @@ export const OrderSummary = ({
               <span className="text-gray-600">VAT (12%)</span>
               <span className="font-medium text-gray-900">₱{vat.toFixed(2)}</span>
             </div>
+            
+            {/* Delivery Fee - Clickable */}
+            {orderType === 'DELIVERY' && (
+              <div className="flex justify-between items-center text-sm">
+                <button
+                  onClick={onDeliveryFeeClick}
+                  className="text-blue-600 underline underline-offset-2 hover:text-blue-800 transition-colors cursor-pointer"
+                >
+                  Delivery Fee
+                </button>
+                <span className="font-medium text-gray-900">
+                  {deliveryFee > 0 ? `₱${deliveryFee.toFixed(2)}` : '₱0.00'}
+                </span>
+              </div>
+            )}
+            
+            {/* Service Fee - Clickable */}
+            <div className="flex justify-between items-center text-sm">
+              <button
+                onClick={onServiceFeeClick}
+                className="text-purple-600 underline underline-offset-2 hover:text-purple-800 transition-colors cursor-pointer"
+              >
+                Service Fee
+              </button>
+              <span className="font-medium text-gray-900">
+                {serviceFee > 0 ? `₱${serviceFee.toFixed(2)}` : '₱0.00'}
+              </span>
+            </div>
+            
+            {/* Discount - Clickable */}
+            <div className="flex justify-between items-center text-sm">
+              <button
+                onClick={onDiscountClick}
+                className="text-green-600 underline underline-offset-2 hover:text-green-800 transition-colors cursor-pointer"
+              >
+                Discount
+              </button>
+              <span className="font-medium text-green-600">
+                {discountAmount > 0 ? `-₱${discountAmount.toFixed(2)}` : '₱0.00'}
+              </span>
+            </div>
+            
             <div className="flex justify-between items-center pt-2 border-t border-gray-200">
               <span className="text-base font-semibold text-gray-900">Total</span>
               <span className="text-xl font-bold text-gray-900">₱{total.toFixed(2)}</span>

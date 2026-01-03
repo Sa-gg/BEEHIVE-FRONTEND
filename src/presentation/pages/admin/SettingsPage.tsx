@@ -114,6 +114,7 @@ export const SettingsPage = () => {
     markPaidOnPrintReceipt,
     printReceiptOnConfirmOrder,
     printKitchenCopy,
+    cashChangeEnabled,
     autoOutOfStockWhenIngredientsRunOut,
     showCurrentStockInPOS,
     cashierCanVoidWithoutPin,
@@ -125,6 +126,7 @@ export const SettingsPage = () => {
     setMarkPaidOnPrintReceipt,
     setPrintReceiptOnConfirmOrder,
     setPrintKitchenCopy,
+    setCashChangeEnabled,
     setAutoOutOfStockWhenIngredientsRunOut,
     setShowCurrentStockInPOS,
     setCashierCanVoidWithoutPin,
@@ -246,6 +248,12 @@ export const SettingsPage = () => {
                 description="Automatically mark orders as paid when they are confirmed in the POS system"
                 enabled={markPaidOnConfirmOrder}
                 onChange={() => setMarkPaidOnConfirmOrder(!markPaidOnConfirmOrder)}
+              />
+              <SettingItem
+                title="Cash & Change Calculator"
+                description="Show calculator modal to enter cash received and calculate change when marking CASH orders as paid"
+                enabled={cashChangeEnabled}
+                onChange={() => setCashChangeEnabled(!cashChangeEnabled)}
               />
             </div>
           </div>

@@ -125,7 +125,12 @@ export const SalesPage = () => {
         quantity: i.quantity,
         price: i.price
       })),
-      totalAmount: t.totalAmount
+      totalAmount: t.totalAmount,
+      deliveryFee: (t as any).deliveryFee,
+      serviceFee: (t as any).serviceFee,
+      discountAmount: t.discountAmount,
+      cashReceived: (t as any).cashReceived,
+      changeAmount: (t as any).changeAmount
     })
     printWithIframe(receiptHTML)
   }
@@ -727,9 +732,24 @@ export const SalesPage = () => {
                   ))}
                 </div>
                 <div className="bg-amber-50 rounded-xl p-4">
-                  <div className="flex justify-between mb-2"><span>Subtotal:</span><span>₱{(selectedTransaction.totalAmount - (selectedTransaction.totalAmount * (12 / 112))).toFixed(2)}</span></div>
+                  <div className="flex justify-between mb-2"><span>Items Subtotal:</span><span>₱{(selectedTransaction.totalAmount - (selectedTransaction.totalAmount * (12 / 112)) - ((selectedTransaction as any).deliveryFee || 0) - ((selectedTransaction as any).serviceFee || 0) + (selectedTransaction.discountAmount || 0)).toFixed(2)}</span></div>
                   <div className="flex justify-between mb-2"><span>VAT (12% incl):</span><span>₱{(selectedTransaction.totalAmount * (12 / 112)).toFixed(2)}</span></div>
+                  {(selectedTransaction as any).deliveryFee > 0 && (
+                    <div className="flex justify-between mb-2"><span>Delivery Fee:</span><span>₱{(selectedTransaction as any).deliveryFee.toFixed(2)}</span></div>
+                  )}
+                  {(selectedTransaction as any).serviceFee > 0 && (
+                    <div className="flex justify-between mb-2"><span>Service Fee:</span><span>₱{(selectedTransaction as any).serviceFee.toFixed(2)}</span></div>
+                  )}
+                  {selectedTransaction.discountAmount > 0 && (
+                    <div className="flex justify-between mb-2 text-green-600"><span>Discount:</span><span>-₱{selectedTransaction.discountAmount.toFixed(2)}</span></div>
+                  )}
                   <div className="flex justify-between text-xl font-bold pt-2 border-t border-amber-200"><span>Total:</span><span className="text-amber-600">₱{selectedTransaction.totalAmount.toFixed(2)}</span></div>
+                  {(selectedTransaction as any).cashReceived > 0 && (
+                    <div className="pt-3 border-t border-amber-200 mt-3 space-y-1">
+                      <div className="flex justify-between text-green-700"><span>Cash Received:</span><span>₱{(selectedTransaction as any).cashReceived.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-green-700"><span>Change:</span><span>₱{((selectedTransaction as any).changeAmount || 0).toFixed(2)}</span></div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -9,7 +9,9 @@ import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { printWithIframe } from '../../../shared/utils/printUtils'
 import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
 import { ManagerPinModal } from '../../components/common/ManagerPinModal'
+import { CashCalculatorModal } from '../../components/common/CashCalculatorModal'
 import { generateReceiptHTML, generateMergedReceiptHTML, generateLinkedOrdersReceiptHTML } from '../../../shared/utils/receiptTemplate'
+import { useSettingsStore } from '../../store/settingsStore'
 
 // Helper to format order number - removes date prefix for cleaner display
 // ORD-20251227-00001 -> ORD-00001
@@ -37,6 +39,10 @@ interface Order {
   items: OrderItem[]
   totalAmount: number
   discountAmount: number
+  deliveryFee: number
+  serviceFee: number
+  cashReceived?: number | null
+  changeAmount?: number | null
   status: OrderStatus
   paymentStatus: PaymentStatus
   paymentMethod?: string | null
@@ -57,6 +63,7 @@ interface Order {
 export const OrdersPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { cashChangeEnabled } = useSettingsStore()
   const [orders, setOrders] = useState<Order[]>([])
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [selectedOrderType, setSelectedOrderType] = useState<string>('all')
@@ -104,6 +111,11 @@ export const OrdersPage = () => {
   
   // More actions dropdown state
   const [openMoreActionsId, setOpenMoreActionsId] = useState<string | null>(null)
+  
+  // Cash calculator modal state
+  const [showCashModal, setShowCashModal] = useState(false)
+  const [cashModalOrder, setCashModalOrder] = useState<Order | null>(null)
+  const [cashModalMarkPaid, setCashModalMarkPaid] = useState(false)
 
   // Function to refresh orders list
   const refreshOrders = useCallback(async () => {
@@ -556,6 +568,87 @@ export const OrdersPage = () => {
     navigate('/admin/pos', { state: { reorderFrom: order } })
   }
 
+  // Handler for Mark Paid & Print button - shows cash modal for CASH payments if enabled
+  const handleMarkPaidAndPrint = (order: Order) => {
+    if (order.paymentMethod === 'CASH' && order.paymentStatus !== 'PAID' && cashChangeEnabled) {
+      setCashModalOrder(order)
+      setCashModalMarkPaid(true)
+      setShowCashModal(true)
+    } else {
+      printReceiptWithPayment(order, true)
+    }
+  }
+
+  // Handler for Mark as Paid button - shows cash modal for CASH payments if enabled
+  const handleMarkAsPaidButton = (order: Order) => {
+    if (order.paymentMethod === 'CASH' && cashChangeEnabled) {
+      setCashModalOrder(order)
+      setCashModalMarkPaid(false)
+      setShowCashModal(true)
+    } else {
+      markAsPaid(order.id)
+    }
+  }
+
+  // Handler for cash modal confirmation
+  const handleCashConfirm = async (cashReceived: number, changeAmount: number) => {
+    if (!cashModalOrder) return
+    
+    setShowCashModal(false)
+    
+    try {
+      // Update order with cash received and change
+      await ordersApi.update(cashModalOrder.id, {
+        cashReceived,
+        changeAmount,
+        paymentStatus: 'PAID'
+      })
+      
+      // If print was requested, print the receipt with cash info
+      if (cashModalMarkPaid) {
+        printReceiptWithPayment(cashModalOrder, false, cashReceived, changeAmount)
+      }
+      
+      // Refresh orders
+      await refreshOrders()
+    } catch (error) {
+      console.error('Failed to update order payment:', error)
+      alert('Failed to update payment status')
+    }
+    
+    setCashModalOrder(null)
+    setCashModalMarkPaid(false)
+  }
+
+  const printReceiptWithPayment = async (order: Order, markPaidFirst: boolean = false, cashReceived?: number, changeAmount?: number) => {
+    // Mark as paid first if requested (from "Mark Paid & Print" button)
+    if (markPaidFirst && order.paymentStatus !== 'PAID') {
+      await markAsPaid(order.id)
+    }
+
+    const receiptHTML = generateReceiptHTML({
+      orderNumber: order.orderNumber,
+      createdAt: order.createdAt,
+      customerName: order.customerName || undefined,
+      tableNumber: order.tableNumber || undefined,
+      orderType: order.orderType,
+      paymentMethod: order.paymentMethod || undefined,
+      items: order.items.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price
+      })),
+      totalAmount: order.totalAmount,
+      deliveryFee: (order as any).deliveryFee,
+      serviceFee: (order as any).serviceFee,
+      discountAmount: order.discountAmount,
+      cashReceived: cashReceived || (order as any).cashReceived,
+      changeAmount: changeAmount || (order as any).changeAmount
+    })
+
+    printWithIframe(receiptHTML)
+  }
+
   const printReceipt = async (order: Order, markPaidFirst: boolean = false) => {
     // Mark as paid first if requested (from "Mark Paid & Print" button)
     if (markPaidFirst && order.paymentStatus !== 'PAID') {
@@ -568,13 +661,18 @@ export const OrdersPage = () => {
       customerName: order.customerName || undefined,
       tableNumber: order.tableNumber || undefined,
       orderType: order.orderType,
-      paymentMethod: order.paymentMethod,
+      paymentMethod: order.paymentMethod || undefined,
       items: order.items.map(item => ({
         name: item.name,
         quantity: item.quantity,
         price: item.price
       })),
-      totalAmount: order.totalAmount
+      totalAmount: order.totalAmount,
+      deliveryFee: (order as any).deliveryFee,
+      serviceFee: (order as any).serviceFee,
+      discountAmount: order.discountAmount,
+      cashReceived: (order as any).cashReceived,
+      changeAmount: (order as any).changeAmount
     })
 
     printWithIframe(receiptHTML)
@@ -1852,7 +1950,7 @@ export const OrdersPage = () => {
                           <>
                             <Button
                               size="sm"
-                              onClick={() => printReceipt(order, true)}
+                              onClick={() => handleMarkPaidAndPrint(order)}
                               className="flex items-center gap-1 lg:min-w-[140px]"
                               style={{ backgroundColor: '#F9C900', color: '#000000' }}
                             >
@@ -1862,7 +1960,7 @@ export const OrdersPage = () => {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => markAsPaid(order.id)}
+                              onClick={() => handleMarkAsPaidButton(order)}
                               className="flex items-center gap-1 border-green-300 text-green-600 hover:bg-green-50"
                             >
                               <DollarSign className="h-4 w-4" />
@@ -2136,10 +2234,50 @@ export const OrdersPage = () => {
                 </div>
 
                 <div className="border-t border-gray-200 pt-4 space-y-4">
-                  <div className="flex justify-between items-center text-lg font-bold">
+                  {/* Subtotal breakdown */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-600">Items Total</span>
+                      <span>₱{(selectedOrder.subtotal + selectedOrder.tax).toFixed(2)}</span>
+                    </div>
+                    {selectedOrder.deliveryFee > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-600">Delivery Fee</span>
+                        <span>₱{selectedOrder.deliveryFee.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {selectedOrder.serviceFee > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-600">Service Fee</span>
+                        <span>₱{selectedOrder.serviceFee.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {selectedOrder.discountAmount > 0 && (
+                      <div className="flex justify-between items-center text-sm text-green-600">
+                        <span>Discount</span>
+                        <span>-₱{selectedOrder.discountAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex justify-between items-center text-lg font-bold border-t pt-3">
                     <span>Total Amount</span>
                     <span style={{ color: '#F9C900' }}>₱{selectedOrder.totalAmount.toFixed(2)}</span>
                   </div>
+                  
+                  {/* Cash and Change info for PAID orders */}
+                  {selectedOrder.paymentStatus === 'PAID' && selectedOrder.cashReceived && selectedOrder.cashReceived > 0 && (
+                    <div className="bg-green-50 p-3 rounded-lg space-y-1">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-green-700">Cash Received</span>
+                        <span className="font-semibold text-green-700">₱{selectedOrder.cashReceived.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-green-700">Change</span>
+                        <span className="font-semibold text-green-700">₱{(selectedOrder.changeAmount || 0).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Payment Status and Actions */}
                   <div className="flex flex-col gap-2">
@@ -2425,6 +2563,19 @@ export const OrdersPage = () => {
         description={`Reason: ${actionReason}`}
         variant={pendingAction?.type === 'void' || pendingAction?.type === 'voidAndReorder' ? 'danger' : 'warning'}
         actionLabel="Authorize"
+      />
+
+      {/* Cash Calculator Modal */}
+      <CashCalculatorModal
+        isOpen={showCashModal}
+        onClose={() => {
+          setShowCashModal(false)
+          setCashModalOrder(null)
+          setCashModalMarkPaid(false)
+        }}
+        onConfirm={handleCashConfirm}
+        totalAmount={cashModalOrder?.totalAmount || 0}
+        title={cashModalMarkPaid ? 'Payment - Print Receipt' : 'Payment'}
       />
 
       {/* Click outside handler for More Actions dropdown */}
