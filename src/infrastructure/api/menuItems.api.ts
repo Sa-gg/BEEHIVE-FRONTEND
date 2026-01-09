@@ -1,9 +1,16 @@
 import { api } from './axiosConfig';
 
+export interface CategoryInfo {
+  id: string;
+  name: string;
+  displayName: string;
+}
+
 export interface MenuItemDTO {
   id: string;
   name: string;
-  category: string;
+  categoryId: string;
+  category?: CategoryInfo;
   price: number;
   cost: number | null;
   image: string | null;
@@ -19,7 +26,7 @@ export interface MenuItemDTO {
 
 export interface CreateMenuItemDTO {
   name: string;
-  category: string;
+  categoryId: string;
   price: number;
   cost?: number;
   image?: string;
@@ -33,7 +40,7 @@ export interface CreateMenuItemDTO {
 
 export interface UpdateMenuItemDTO {
   name?: string;
-  category?: string;
+  categoryId?: string;
   price?: number;
   cost?: number;
   image?: string;
@@ -46,7 +53,7 @@ export interface UpdateMenuItemDTO {
 }
 
 export interface MenuItemFilters {
-  category?: string;
+  categoryId?: string;
   available?: boolean;
   featured?: boolean;
   search?: string;
@@ -63,7 +70,7 @@ export const menuItemsApi = {
   // Get all menu items with optional filters
   getAll: async (filters?: MenuItemFilters) => {
     const params = new URLSearchParams();
-    if (filters?.category) params.append('category', filters.category);
+    if (filters?.categoryId) params.append('categoryId', filters.categoryId);
     if (filters?.available !== undefined) params.append('available', String(filters.available));
     if (filters?.featured !== undefined) params.append('featured', String(filters.featured));
     if (filters?.search) params.append('search', filters.search);

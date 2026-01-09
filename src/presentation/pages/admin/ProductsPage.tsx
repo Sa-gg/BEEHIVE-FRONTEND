@@ -24,14 +24,24 @@ import {
   ChevronUp,
   Info,
   Copy,
-  Wand2
+  Wand2,
+  FolderPlus,
+  Settings
 } from 'lucide-react'
 import { menuItemsApi, uploadApi } from '../../../infrastructure/api/menuItems.api'
+import type { MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
+import { categoriesApi } from '../../../infrastructure/api/categories.api'
+import type { CategoryDTO } from '../../../infrastructure/api/categories.api'
 
 interface Product {
   id: string
   name: string
-  category: string
+  categoryId: string
+  category?: {
+    id: string
+    name: string
+    displayName: string
+  }
   price: number
   cost: number | null
   image: string | null
@@ -59,31 +69,11 @@ const MOOD_TYPES = [
   { value: 'angry', emoji: '😠', label: 'Angry' },
 ] as const
 
-const CATEGORIES = [
-  'PIZZA',
-  'APPETIZER',
-  'HOT_DRINKS',
-  'COLD_DRINKS',
-  'SMOOTHIE',
-  'PLATTER',
-  'SAVERS',
-  'VALUE_MEAL'
-]
-
-const CATEGORY_LABELS: Record<string, string> = {
-  'PIZZA': 'Pizza',
-  'APPETIZER': 'Appetizer',
-  'HOT_DRINKS': 'Hot Drinks',
-  'COLD_DRINKS': 'Cold Drinks',
-  'SMOOTHIE': 'Smoothie',
-  'PLATTER': 'Platter',
-  'SAVERS': 'Savers',
-  'VALUE_MEAL': 'Value Meal'
-}
-
 export const ProductsPage = () => {
   const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<CategoryDTO[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingCategories, setLoadingCategories] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -98,7 +88,7 @@ export const ProductsPage = () => {
   // Form state
   const [formData, setFormData] = useState({
     name: '',
-    category: '',
+    categoryId: '',
     price: '',
     cost: '',
     prepTime: '',
@@ -110,8 +100,24 @@ export const ProductsPage = () => {
     moodBenefits: {} as Record<string, string>
   })
   
+  // Category management modal state
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<CategoryDTO | null>(null)
+  const [categoryFormData, setCategoryFormData] = useState({
+    name: '',
+    displayName: '',
+    description: ''
+  })
+  const [submittingCategory, setSubmittingCategory] = useState(false)
+  
   // Mood benefits section expanded state
   const [moodSectionExpanded, setMoodSectionExpanded] = useState(false)
+
+  // Helper function to get category display name
+  const getCategoryDisplayName = (categoryId: string) => {
+    const cat = categories.find(c => c.id === categoryId)
+    return cat?.displayName || cat?.name || categoryId
+  }
 
   // Helper function
   const getProfitMargin = (product: Product) => {
@@ -128,16 +134,35 @@ export const ProductsPage = () => {
     return `${API_BASE_URL}${imagePath}`
   }
 
-  // Fetch products on mount
+  // Fetch products and categories on mount
   useEffect(() => {
     fetchProducts()
+    fetchCategories()
   }, [])
+
+  const fetchCategories = async () => {
+    try {
+      setLoadingCategories(true)
+      const response = await categoriesApi.getAll(true) // Include inactive for management
+      setCategories(response.data)
+    } catch (error) {
+      console.error('Failed to fetch categories:', error)
+    } finally {
+      setLoadingCategories(false)
+    }
+  }
 
   const fetchProducts = async () => {
     try {
       setLoading(true)
       const response = await menuItemsApi.getAll()
-      setProducts(response.data)
+      // Map response to Product interface
+      const mappedProducts: Product[] = response.data.map((item: MenuItemDTO) => ({
+        ...item,
+        categoryId: item.categoryId,
+        category: item.category
+      }))
+      setProducts(mappedProducts)
     } catch (error) {
       console.error('Failed to fetch products:', error)
       alert('Failed to load products. Please try again.')
@@ -149,7 +174,7 @@ export const ProductsPage = () => {
   const resetForm = () => {
     setFormData({
       name: '',
-      category: '',
+      categoryId: '',
       price: '',
       cost: '',
       prepTime: '',
@@ -161,6 +186,70 @@ export const ProductsPage = () => {
       moodBenefits: {}
     })
     setMoodSectionExpanded(false)
+  }
+  
+  const resetCategoryForm = () => {
+    setCategoryFormData({
+      name: '',
+      displayName: '',
+      description: ''
+    })
+    setEditingCategory(null)
+  }
+  
+  const handleCategorySubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!categoryFormData.name || !categoryFormData.displayName) {
+      alert('Please fill in name and display name')
+      return
+    }
+    
+    try {
+      setSubmittingCategory(true)
+      
+      if (editingCategory) {
+        await categoriesApi.update(editingCategory.id, {
+          name: categoryFormData.name,
+          displayName: categoryFormData.displayName,
+          description: categoryFormData.description || undefined
+        })
+        alert('Category updated successfully!')
+      } else {
+        await categoriesApi.create({
+          name: categoryFormData.name,
+          displayName: categoryFormData.displayName,
+          description: categoryFormData.description || undefined
+        })
+        alert('Category created successfully!')
+      }
+      
+      setIsCategoryModalOpen(false)
+      resetCategoryForm()
+      await fetchCategories()
+    } catch (error) {
+      console.error('Failed to save category:', error)
+      const err = error as { response?: { data?: { message?: string } } }
+      alert(err.response?.data?.message || 'Failed to save category. Please try again.')
+    } finally {
+      setSubmittingCategory(false)
+    }
+  }
+  
+  const handleDeleteCategory = async (id: string, displayName: string) => {
+    if (!confirm(`Are you sure you want to delete category "${displayName}"?`)) {
+      return
+    }
+    
+    try {
+      await categoriesApi.delete(id)
+      alert('Category deleted successfully!')
+      await fetchCategories()
+    } catch (error) {
+      console.error('Failed to delete category:', error)
+      const err = error as { response?: { data?: { message?: string } } }
+      alert(err.response?.data?.message || 'Failed to delete category. Please try again.')
+    }
   }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,7 +335,7 @@ export const ProductsPage = () => {
     
     setFormData({
       name: product.name,
-      category: product.category,
+      categoryId: product.categoryId,
       price: product.price.toString(),
       cost: product.cost?.toString() || '',
       prepTime: product.prepTime?.toString() || '',
@@ -266,7 +355,7 @@ export const ProductsPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.name || !formData.category || !formData.price || !formData.prepTime) {
+    if (!formData.name || !formData.categoryId || !formData.price || !formData.prepTime) {
       alert('Please fill in all required fields')
       return
     }
@@ -281,7 +370,7 @@ export const ProductsPage = () => {
       
       const payload = {
         name: formData.name,
-        category: formData.category,
+        categoryId: formData.categoryId,
         price: parseFloat(formData.price),
         cost: formData.cost ? parseFloat(formData.cost) : undefined,
         prepTime: parseInt(formData.prepTime),
@@ -358,7 +447,7 @@ export const ProductsPage = () => {
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          (product.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
-    const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory
+    const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory
     const matchesAvailability = availabilityFilter === 'all' || 
                                 (availabilityFilter === 'available' && product.available) ||
                                 (availabilityFilter === 'out-of-stock' && !product.available)
@@ -480,9 +569,9 @@ export const ProductsPage = () => {
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
               >
                 <option value="all">All Categories</option>
-                {CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>
-                    {CATEGORY_LABELS[cat]}
+                {categories.filter(cat => cat.isActive).map(cat => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.displayName}
                   </option>
                 ))}
               </select>
@@ -575,7 +664,7 @@ export const ProductsPage = () => {
                   <div className="p-4">
                     <div className="mb-2">
                       <h3 className="font-semibold text-sm mb-1 line-clamp-1">{product.name}</h3>
-                      <p className="text-xs text-gray-500">{CATEGORY_LABELS[product.category] || product.category}</p>
+                      <p className="text-xs text-gray-500">{product.category?.displayName || getCategoryDisplayName(product.categoryId)}</p>
                     </div>
                     
                     <div className="flex items-center justify-between mb-3">
@@ -669,7 +758,7 @@ export const ProductsPage = () => {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm capitalize">{product.category}</td>
+                        <td className="px-4 py-3 text-sm capitalize">{product.category?.displayName || getCategoryDisplayName(product.categoryId)}</td>
                         <td className="px-4 py-3 text-right font-semibold">₱{product.price}</td>
                         <td className="px-4 py-3 text-right text-gray-600">₱{product.cost}</td>
                         <td className="px-4 py-3 text-center">
@@ -781,19 +870,34 @@ export const ProductsPage = () => {
 
                   {/* Category */}
                   <div>
-                    <Label htmlFor="category" className="text-sm font-semibold text-gray-700 mb-2 block">
-                      Category <span className="text-red-500">*</span>
-                    </Label>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label htmlFor="category" className="text-sm font-semibold text-gray-700">
+                        Category <span className="text-red-500">*</span>
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          resetCategoryForm()
+                          setIsCategoryModalOpen(true)
+                        }}
+                        className="text-xs text-amber-600 hover:text-amber-700 h-6 px-2"
+                      >
+                        <FolderPlus className="h-3 w-3 mr-1" />
+                        Manage Categories
+                      </Button>
+                    </div>
                     <select
                       id="category"
                       required
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      value={formData.categoryId}
+                      onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Select category...</option>
-                      {CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                      {categories.filter(cat => cat.isActive).map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.displayName}</option>
                       ))}
                     </select>
                   </div>
@@ -1006,7 +1110,7 @@ export const ProductsPage = () => {
 
 **MENU ITEM DETAILS:**
 - Name: ${formData.name || '[Enter product name]'}
-- Category: ${formData.category ? CATEGORY_LABELS[formData.category] || formData.category : '[Select category]'}
+- Category: ${formData.categoryId ? getCategoryDisplayName(formData.categoryId) : '[Select category]'}
 - Description: ${formData.description || '[Enter description with ingredients]'}
 
 **YOUR TASK:**
@@ -1058,7 +1162,7 @@ MOOD BENEFITS:
                           <div className="bg-white/70 rounded p-2 text-xs text-gray-600 max-h-20 overflow-y-auto">
                             <p className="font-semibold text-purple-800">Current Product Info:</p>
                             <p>• Name: <span className="text-gray-800">{formData.name || '(enter name above)'}</span></p>
-                            <p>• Category: <span className="text-gray-800">{formData.category ? CATEGORY_LABELS[formData.category] : '(select category)'}</span></p>
+                            <p>• Category: <span className="text-gray-800">{formData.categoryId ? getCategoryDisplayName(formData.categoryId) : '(select category)'}</span></p>
                             <p>• Description: <span className="text-gray-800">{formData.description ? formData.description.substring(0, 60) + '...' : '(add description with ingredients)'}</span></p>
                           </div>
                         </div>
@@ -1187,6 +1291,187 @@ MOOD BENEFITS:
                   </div>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+        
+        {/* Category Management Modal */}
+        {isCategoryModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between p-4 border-b">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-lg">
+                    <Settings className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">Manage Categories</h2>
+                    <p className="text-sm text-gray-500">Add, edit, or delete product categories</p>
+                  </div>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => {
+                    setIsCategoryModalOpen(false)
+                    resetCategoryForm()
+                  }}
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              
+              <div className="p-6 overflow-y-auto flex-1">
+                {/* Add/Edit Category Form */}
+                <form onSubmit={handleCategorySubmit} className="mb-6 p-4 bg-gray-50 rounded-lg border">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                    {editingCategory ? 'Edit Category' : 'Add New Category'}
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="catName" className="text-xs font-medium text-gray-600">
+                        Name (identifier) <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="catName"
+                        type="text"
+                        value={categoryFormData.name}
+                        onChange={(e) => setCategoryFormData({ ...categoryFormData, name: e.target.value.toUpperCase().replace(/\s+/g, '_') })}
+                        placeholder="e.g., HOT_DRINKS"
+                        className="mt-1"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="catDisplayName" className="text-xs font-medium text-gray-600">
+                        Display Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="catDisplayName"
+                        type="text"
+                        value={categoryFormData.displayName}
+                        onChange={(e) => setCategoryFormData({ ...categoryFormData, displayName: e.target.value })}
+                        placeholder="e.g., Hot Drinks"
+                        className="mt-1"
+                        required
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label htmlFor="catDesc" className="text-xs font-medium text-gray-600">
+                        Description
+                      </Label>
+                      <Input
+                        id="catDesc"
+                        type="text"
+                        value={categoryFormData.description}
+                        onChange={(e) => setCategoryFormData({ ...categoryFormData, description: e.target.value })}
+                        placeholder="Optional description"
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                      disabled={submittingCategory}
+                    >
+                      {submittingCategory ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        editingCategory ? 'Update' : 'Add Category'
+                      )}
+                    </Button>
+                    {editingCategory && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={resetCategoryForm}
+                      >
+                        Cancel Edit
+                      </Button>
+                    )}
+                  </div>
+                </form>
+                
+                {/* Category List */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Existing Categories</h3>
+                  {loadingCategories ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+                    </div>
+                  ) : categories.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      No categories yet. Add your first category above.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {categories.map(cat => (
+                        <div 
+                          key={cat.id} 
+                          className={`flex items-center justify-between p-3 rounded-lg border ${
+                            cat.isActive ? 'bg-white' : 'bg-gray-100 opacity-60'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{cat.displayName}</span>
+                              <span className="text-xs text-gray-400 font-mono">{cat.name}</span>
+                              {!cat.isActive && (
+                                <Badge variant="outline" className="text-xs">Inactive</Badge>
+                              )}
+                            </div>
+                            {cat.description && (
+                              <p className="text-xs text-gray-500 mt-1">{cat.description}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                setEditingCategory(cat)
+                                setCategoryFormData({
+                                  name: cat.name,
+                                  displayName: cat.displayName,
+                                  description: cat.description || ''
+                                })
+                              }}
+                            >
+                              <Pencil className="h-4 w-4 text-gray-500" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-red-50"
+                              onClick={() => handleDeleteCategory(cat.id, cat.displayName)}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="p-4 border-t bg-gray-50">
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setIsCategoryModalOpen(false)
+                    resetCategoryForm()
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           </div>
         )}

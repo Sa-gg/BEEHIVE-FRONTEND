@@ -8,6 +8,7 @@ import { OrderSummary } from '../../components/features/POS/OrderSummary'
 import { Button } from '../../components/common/ui/button'
 import { ShoppingCart, Search, Loader2 } from 'lucide-react'
 import { menuItemsApi, type MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
+import { categoriesApi, type CategoryDTO } from '../../../infrastructure/api/categories.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
 import { useAuthStore } from '../../store/authStore'
 import { recipeApi } from '../../../infrastructure/api/recipe.api'
@@ -24,21 +25,6 @@ const formatOrderNumber = (orderNumber: string): string => {
     return `ORD-${match[1]}`
   }
   return orderNumber
-}
-
-const CATEGORIES = ['all', 'best seller', 'PIZZA', 'APPETIZER', 'HOT_DRINKS', 'COLD_DRINKS', 'SMOOTHIE', 'PLATTER', 'SAVERS', 'VALUE_MEAL'] as const
-
-const CATEGORY_LABELS: Record<string, string> = {
-  'all': 'All',
-  'best seller': 'Best Seller',
-  'PIZZA': 'Pizza',
-  'APPETIZER': 'Appetizer',
-  'HOT_DRINKS': 'Hot Drinks',
-  'COLD_DRINKS': 'Cold Drinks',
-  'SMOOTHIE': 'Smoothie',
-  'PLATTER': 'Platter',
-  'SAVERS': 'Savers',
-  'VALUE_MEAL': 'Value Meal'
 }
 
 export const POSPage = () => {
@@ -63,6 +49,7 @@ export const POSPage = () => {
   }
   
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
+  const [categories, setCategories] = useState<CategoryDTO[]>([])
   const [loading, setLoading] = useState(true)
   // For linkToOrder: start with empty cart; for reorderFrom: pre-fill items
   const [orderItems, setOrderItems] = useState<OrderItem[]>(
@@ -140,21 +127,27 @@ export const POSPage = () => {
     return () => clearTimeout(timeoutId)
   }, [orderItems])
 
-  // Fetch menu items and max servings from API
+  // Fetch menu items, categories and max servings from API
   useEffect(() => {
-    const fetchMenuItems = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true)
-        const [response, servingsData] = await Promise.all([
+        const [menuResponse, categoriesResponse, servingsData] = await Promise.all([
           menuItemsApi.getAll({ available: true }),
+          categoriesApi.getAll(),
           recipeApi.getAllMaxServings()
         ])
         
+        // Set categories
+        setCategories(categoriesResponse.data)
+        
         // Convert API DTOs to MenuItem format
-        const items: MenuItem[] = response.data.map((item: MenuItemDTO) => ({
+        const items: MenuItem[] = menuResponse.data.map((item: MenuItemDTO) => ({
           id: item.id,
           name: item.name,
-          category: item.category.toLowerCase().replace('_', ' ') as MenuItem['category'],
+          // Use categoryId for filtering, but display category name
+          categoryId: item.categoryId,
+          category: (item.category?.displayName || item.category?.name || '').toLowerCase().replace('_', ' ') as MenuItem['category'],
           price: item.price,
           image: getImageUrl(item.image) || undefined,
           available: item.available,
@@ -163,14 +156,14 @@ export const POSPage = () => {
         setMenuItems(items)
         setMaxServings(servingsData)
       } catch (error) {
-        console.error('Failed to fetch menu items:', error)
+        console.error('Failed to fetch data:', error)
         alert('Failed to load menu items. Please try again.')
       } finally {
         setLoading(false)
       }
     }
     
-    fetchMenuItems()
+    fetchData()
   }, [])
 
   // Open cart automatically when editing or reordering
@@ -575,11 +568,12 @@ export const POSPage = () => {
     navigate('/admin/orders')
   }
 
+  // Filter by category - use categoryId for matching
   const filteredItems = selectedCategory === 'all' 
     ? menuItems 
     : selectedCategory === 'best seller'
     ? menuItems.filter(item => item.featured)
-    : menuItems.filter((item) => item.category === selectedCategory.toLowerCase().replace('_', ' '))
+    : menuItems.filter((item) => (item as any).categoryId === selectedCategory || item.category === selectedCategory.toLowerCase())
 
   // Apply search filter
   const searchFilteredItems = searchQuery.trim() 
@@ -683,15 +677,33 @@ export const POSPage = () => {
               </div>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-3 px-3 lg:mx-0 lg:px-0">
-              {CATEGORIES.map((category) => (
+              {/* All & Best Seller fixed buttons */}
+              <Button
+                variant={selectedCategory === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedCategory('all')}
+                className="capitalize whitespace-nowrap text-xs lg:text-sm flex-shrink-0"
+              >
+                All
+              </Button>
+              <Button
+                variant={selectedCategory === 'best seller' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedCategory('best seller')}
+                className="capitalize whitespace-nowrap text-xs lg:text-sm flex-shrink-0"
+              >
+                Best Seller
+              </Button>
+              {/* Dynamic categories from API */}
+              {categories.filter(cat => cat.isActive).map((category) => (
                 <Button
-                  key={category}
-                  variant={selectedCategory === category ? 'default' : 'outline'}
+                  key={category.id}
+                  variant={selectedCategory === category.id ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setSelectedCategory(category)}
+                  onClick={() => setSelectedCategory(category.id)}
                   className="capitalize whitespace-nowrap text-xs lg:text-sm flex-shrink-0"
                 >
-                  {CATEGORY_LABELS[category] || category}
+                  {category.displayName}
                 </Button>
               ))}
             </div>

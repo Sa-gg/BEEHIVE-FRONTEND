@@ -25,29 +25,17 @@ import {
   Activity,
   PieChart,
   Sliders,
-  ToggleLeft,
   ToggleRight,
   X,
   Pencil,
   Trash2,
   AlertTriangle,
   Package,
-  Eye,
-  ShoppingCart
+  Eye
 } from 'lucide-react'
 import { moodSettingsApi } from '../../../infrastructure/api/moodSettings.api'
-import type { MoodSetting, MoodFeedbackConfig, MoodAnalytics, UpdateMoodSettingDTO } from '../../../infrastructure/api/moodSettings.api'
-
-const CATEGORIES = [
-  { value: 'PIZZA', label: 'Pizza' },
-  { value: 'APPETIZER', label: 'Appetizer' },
-  { value: 'HOT_DRINKS', label: 'Hot Drinks' },
-  { value: 'COLD_DRINKS', label: 'Cold Drinks' },
-  { value: 'SMOOTHIE', label: 'Smoothie' },
-  { value: 'PLATTER', label: 'Platter' },
-  { value: 'SAVERS', label: 'Savers' },
-  { value: 'VALUE_MEAL', label: 'Value Meal' }
-]
+import type { MoodSetting, MoodFeedbackConfig, MoodAnalytics, UpdateMoodSettingDTO, UpdateFeedbackConfigDTO } from '../../../infrastructure/api/moodSettings.api'
+import { categoriesApi, type CategoryDTO } from '../../../infrastructure/api/categories.api'
 
 // ==================== SCORE CALCULATION HELPERS ====================
 // These mirror the exact algorithm in MenuPage.tsx for accurate analytics
@@ -152,15 +140,15 @@ const calculateScoreBreakdown = (
     (moodBenefits[moodLower] || moodBenefits[moodUpper])
   const moodBenefitsScore = hasMoodBenefits ? weights.moodBenefits : 0
   
-  // 2. Preferred Category - handle different case/format
-  const itemCategory = item.menuItem?.category?.toUpperCase().replace(' ', '_')
-  const preferredCats = moodConfig?.preferredCategories?.map((c: string) => c.toUpperCase().replace(' ', '_'))
-  const inPreferredCategory = preferredCats?.includes(itemCategory)
+  // 2. Preferred Category - now using categoryId
+  const itemCategoryId = item.menuItem?.categoryId
+  const preferredCats = moodConfig?.preferredCategories || []
+  const inPreferredCategory = preferredCats.includes(itemCategoryId)
   const preferredCategoryScore = inPreferredCategory ? weights.preferredCategory : 0
   
-  // 2b. Excluded Category Penalty
-  const excludedCats = moodConfig?.excludeCategories?.map((c: string) => c.toUpperCase().replace(' ', '_'))
-  const inExcludedCategory = excludedCats?.includes(itemCategory)
+  // 2b. Excluded Category Penalty - now using categoryId
+  const excludedCats = moodConfig?.excludeCategories || []
+  const inExcludedCategory = excludedCats.includes(itemCategoryId)
   // Only apply penalty if excludedCategoryPenalty > 0, otherwise items are filtered out
   const excludedCategoryScore = (inExcludedCategory && weights.excludedCategoryPenalty > 0) 
     ? -weights.excludedCategoryPenalty 
@@ -203,28 +191,28 @@ const calculateScoreBreakdown = (
   else if (hour >= morningEnd && hour < afternoonEnd) timeContext = 'afternoon'
   else timeContext = 'evening'
   
-  // Parse time categories from config
+  // Parse time categories from config - now uses categoryIds
   const parseCategories = (cats: any): string[] => {
     if (!cats) return []
     if (typeof cats === 'string') return JSON.parse(cats)
     return cats
   }
   
-  const morningCats = parseCategories(feedbackConfig?.morningCategories) || ['HOT_DRINKS']
+  const morningCats = parseCategories(feedbackConfig?.morningCategories) || []
   const afternoonCats = parseCategories(feedbackConfig?.afternoonCategories) || []
-  const eveningCats = parseCategories(feedbackConfig?.eveningCategories) || ['HOT_DRINKS', 'PLATTER']
+  const eveningCats = parseCategories(feedbackConfig?.eveningCategories) || []
   
   // FIX W6: Skip time bonus if item is in excluded category for current mood
-  const isExcludedForMood = excludedCats?.includes(itemCategory)
+  const isExcludedForMood = excludedCats?.includes(itemCategoryId)
   
   let timeOfDayScore = 0
   // Only give time bonus if NOT in excluded categories
   if (!isExcludedForMood) {
-    if (timeContext === 'morning' && morningCats.includes(itemCategory)) {
+    if (timeContext === 'morning' && morningCats.includes(itemCategoryId)) {
       timeOfDayScore = weights.timeOfDay
-    } else if (timeContext === 'afternoon' && afternoonCats.includes(itemCategory)) {
+    } else if (timeContext === 'afternoon' && afternoonCats.includes(itemCategoryId)) {
       timeOfDayScore = weights.timeOfDay
-    } else if (timeContext === 'evening' && eveningCats.includes(itemCategory)) {
+    } else if (timeContext === 'evening' && eveningCats.includes(itemCategoryId)) {
       timeOfDayScore = weights.timeOfDay
     }
   }
@@ -285,15 +273,16 @@ export const MoodSettingsPage = () => {
   const [moodSettings, setMoodSettings] = useState<MoodSetting[]>([])
   const [feedbackConfig, setFeedbackConfig] = useState<MoodFeedbackConfig | null>(null)
   const [analytics, setAnalytics] = useState<MoodAnalytics[]>([])
+  const [categories, setCategories] = useState<CategoryDTO[]>([])
   
   // Edit state
   const [editingMood, setEditingMood] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<UpdateMoodSettingDTO>({})
   const [expandedMoods, setExpandedMoods] = useState<Set<string>>(new Set())
   
-  // Feedback config edit
+  // Feedback config edit - use UpdateFeedbackConfigDTO type which has arrays for categories
   const [configDirty, setConfigDirty] = useState(false)
-  const [editConfig, setEditConfig] = useState<Partial<MoodFeedbackConfig>>({})
+  const [editConfig, setEditConfig] = useState<UpdateFeedbackConfigDTO>({})
   const [error, setError] = useState<string | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
   
@@ -312,20 +301,42 @@ export const MoodSettingsPage = () => {
     loadData()
   }, [])
 
+  // Helper to parse JSON string categories to arrays
+  const parseCategoriesToArray = (cats: string | string[] | undefined): string[] => {
+    if (!cats) return []
+    if (Array.isArray(cats)) return cats
+    try {
+      return JSON.parse(cats)
+    } catch {
+      return []
+    }
+  }
+
+  // Convert MoodFeedbackConfig to UpdateFeedbackConfigDTO (parse JSON strings to arrays)
+  const configToEditConfig = (config: MoodFeedbackConfig): UpdateFeedbackConfigDTO => ({
+    ...config,
+    morningCategories: parseCategoriesToArray(config.morningCategories),
+    afternoonCategories: parseCategoriesToArray(config.afternoonCategories),
+    eveningCategories: parseCategoriesToArray(config.eveningCategories),
+  })
+
   const loadData = async () => {
     try {
       setLoading(true)
       setError(null)
-      const [settings, config, stats] = await Promise.all([
+      const [settings, config, stats, categoriesResponse] = await Promise.all([
         moodSettingsApi.getAllMoodSettings(),
         moodSettingsApi.getFeedbackConfig(),
-        moodSettingsApi.getMoodAnalytics()
+        moodSettingsApi.getMoodAnalytics(),
+        categoriesApi.getAll()
       ])
       
       setMoodSettings(settings)
       setFeedbackConfig(config)
-      setEditConfig(config)
+      // Convert config categories from JSON strings to arrays for editing
+      setEditConfig(configToEditConfig(config))
       setAnalytics(stats)
+      setCategories(categoriesResponse.data)
     } catch (error: any) {
       console.error('Error loading mood settings:', error)
       setError(error?.response?.data?.error || error?.message || 'Failed to load mood settings')
@@ -339,7 +350,7 @@ export const MoodSettingsPage = () => {
         ])
         setMoodSettings(settings)
         setFeedbackConfig(config)
-        setEditConfig(config)
+        setEditConfig(configToEditConfig(config))
         setAnalytics(stats)
         setError(null)
       } catch (initError: any) {
@@ -919,9 +930,9 @@ export const MoodSettingsPage = () => {
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="flex gap-1">
-                        {mood.preferredCategories.slice(0, 3).map(cat => (
-                          <Badge key={cat} variant="outline" className="text-xs">
-                            {CATEGORIES.find(c => c.value === cat)?.label || cat}
+                        {mood.preferredCategories.slice(0, 3).map(catId => (
+                          <Badge key={catId} variant="outline" className="text-xs">
+                            {categories.find(c => c.id === catId)?.displayName || catId}
                           </Badge>
                         ))}
                         {mood.preferredCategories.length > 3 && (
@@ -956,9 +967,9 @@ export const MoodSettingsPage = () => {
                           <Label className="text-gray-600 mb-2 block">Preferred Categories</Label>
                           <div className="flex flex-wrap gap-1">
                             {mood.preferredCategories.length > 0 ? (
-                              mood.preferredCategories.map(cat => (
-                                <Badge key={cat} className="bg-green-100 text-green-700 border-green-200">
-                                  {CATEGORIES.find(c => c.value === cat)?.label || cat}
+                              mood.preferredCategories.map(catId => (
+                                <Badge key={catId} className="bg-green-100 text-green-700 border-green-200">
+                                  {categories.find(c => c.id === catId)?.displayName || catId}
                                 </Badge>
                               ))
                             ) : (
@@ -970,9 +981,9 @@ export const MoodSettingsPage = () => {
                           <Label className="text-gray-600 mb-2 block">Excluded Categories</Label>
                           <div className="flex flex-wrap gap-1">
                             {mood.excludeCategories.length > 0 ? (
-                              mood.excludeCategories.map(cat => (
-                                <Badge key={cat} className="bg-red-100 text-red-700 border-red-200">
-                                  {CATEGORIES.find(c => c.value === cat)?.label || cat}
+                              mood.excludeCategories.map(catId => (
+                                <Badge key={catId} className="bg-red-100 text-red-700 border-red-200">
+                                  {categories.find(c => c.id === catId)?.displayName || catId}
                                 </Badge>
                               ))
                             ) : (
@@ -1434,7 +1445,7 @@ export const MoodSettingsPage = () => {
                                   )}
                                   <div>
                                     <p className="font-medium text-gray-900 text-sm">{item.menuItem?.name || 'Unknown Item'}</p>
-                                    <p className="text-xs text-gray-500 capitalize">{item.menuItem?.category?.toLowerCase().replace('_', ' ')}</p>
+                                    <p className="text-xs text-gray-500 capitalize">{item.menuItem?.category?.displayName || item.menuItem?.category?.name || 'No Category'}</p>
                                   </div>
                                 </div>
                               </td>
@@ -1943,28 +1954,24 @@ export const MoodSettingsPage = () => {
                     <div className="bg-amber-50 rounded-lg p-3">
                       <Label className="text-sm font-medium text-amber-900 mb-2 block">🌅 Morning Categories</Label>
                       <div className="space-y-2">
-                        {CATEGORIES.map(cat => {
-                          const morningCats = editConfig.morningCategories 
-                            ? (typeof editConfig.morningCategories === 'string' 
-                                ? JSON.parse(editConfig.morningCategories) 
-                                : editConfig.morningCategories) 
-                            : ['HOT_DRINKS']
-                          const isSelected = morningCats.includes(cat.value)
+                        {categories.map(cat => {
+                          const morningCats = editConfig.morningCategories || []
+                          const isSelected = morningCats.includes(cat.id)
                           return (
-                            <label key={cat.value} className="flex items-center gap-2 cursor-pointer">
+                            <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => {
                                   const newCats = isSelected
-                                    ? morningCats.filter((c: string) => c !== cat.value)
-                                    : [...morningCats, cat.value]
-                                  setEditConfig({ ...editConfig, morningCategories: newCats as any })
+                                    ? morningCats.filter((c: string) => c !== cat.id)
+                                    : [...morningCats, cat.id]
+                                  setEditConfig({ ...editConfig, morningCategories: newCats })
                                   setConfigDirty(true)
                                 }}
                                 className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
                               />
-                              <span className="text-sm text-gray-700">{cat.label}</span>
+                              <span className="text-sm text-gray-700">{cat.displayName}</span>
                             </label>
                           )
                         })}
@@ -1975,28 +1982,24 @@ export const MoodSettingsPage = () => {
                     <div className="bg-blue-50 rounded-lg p-3">
                       <Label className="text-sm font-medium text-blue-900 mb-2 block">☀️ Afternoon Categories</Label>
                       <div className="space-y-2">
-                        {CATEGORIES.map(cat => {
-                          const afternoonCats = editConfig.afternoonCategories 
-                            ? (typeof editConfig.afternoonCategories === 'string' 
-                                ? JSON.parse(editConfig.afternoonCategories) 
-                                : editConfig.afternoonCategories) 
-                            : []
-                          const isSelected = afternoonCats.includes(cat.value)
+                        {categories.map(cat => {
+                          const afternoonCats = editConfig.afternoonCategories || []
+                          const isSelected = afternoonCats.includes(cat.id)
                           return (
-                            <label key={cat.value} className="flex items-center gap-2 cursor-pointer">
+                            <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => {
                                   const newCats = isSelected
-                                    ? afternoonCats.filter((c: string) => c !== cat.value)
-                                    : [...afternoonCats, cat.value]
-                                  setEditConfig({ ...editConfig, afternoonCategories: newCats as any })
+                                    ? afternoonCats.filter((c: string) => c !== cat.id)
+                                    : [...afternoonCats, cat.id]
+                                  setEditConfig({ ...editConfig, afternoonCategories: newCats })
                                   setConfigDirty(true)
                                 }}
                                 className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
                               />
-                              <span className="text-sm text-gray-700">{cat.label}</span>
+                              <span className="text-sm text-gray-700">{cat.displayName}</span>
                             </label>
                           )
                         })}
@@ -2007,28 +2010,24 @@ export const MoodSettingsPage = () => {
                     <div className="bg-indigo-50 rounded-lg p-3">
                       <Label className="text-sm font-medium text-indigo-900 mb-2 block">🌙 Evening Categories</Label>
                       <div className="space-y-2">
-                        {CATEGORIES.map(cat => {
-                          const eveningCats = editConfig.eveningCategories 
-                            ? (typeof editConfig.eveningCategories === 'string' 
-                                ? JSON.parse(editConfig.eveningCategories) 
-                                : editConfig.eveningCategories) 
-                            : ['HOT_DRINKS', 'PLATTER']
-                          const isSelected = eveningCats.includes(cat.value)
+                        {categories.map(cat => {
+                          const eveningCats = editConfig.eveningCategories || []
+                          const isSelected = eveningCats.includes(cat.id)
                           return (
-                            <label key={cat.value} className="flex items-center gap-2 cursor-pointer">
+                            <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => {
                                   const newCats = isSelected
-                                    ? eveningCats.filter((c: string) => c !== cat.value)
-                                    : [...eveningCats, cat.value]
-                                  setEditConfig({ ...editConfig, eveningCategories: newCats as any })
+                                    ? eveningCats.filter((c: string) => c !== cat.id)
+                                    : [...eveningCats, cat.id]
+                                  setEditConfig({ ...editConfig, eveningCategories: newCats })
                                   setConfigDirty(true)
                                 }}
                                 className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
                               />
-                              <span className="text-sm text-gray-700">{cat.label}</span>
+                              <span className="text-sm text-gray-700">{cat.displayName}</span>
                             </label>
                           )
                         })}
@@ -2129,18 +2128,18 @@ export const MoodSettingsPage = () => {
                 <div>
                   <Label className="mb-2 block text-green-700">Preferred Categories (Recommended)</Label>
                   <div className="flex flex-wrap gap-2">
-                    {CATEGORIES.map(cat => (
+                    {categories.map(cat => (
                       <button
-                        key={cat.value}
+                        key={cat.id}
                         type="button"
-                        onClick={() => toggleCategory('preferredCategories', cat.value)}
+                        onClick={() => toggleCategory('preferredCategories', cat.id)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          editForm.preferredCategories?.includes(cat.value)
+                          editForm.preferredCategories?.includes(cat.id)
                             ? 'bg-green-100 text-green-700 border-2 border-green-400'
                             : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
                         }`}
                       >
-                        {cat.label}
+                        {cat.displayName}
                       </button>
                     ))}
                   </div>
@@ -2165,18 +2164,18 @@ export const MoodSettingsPage = () => {
                 <div>
                   <Label className="mb-2 block text-red-700">Excluded Categories (Not Recommended)</Label>
                   <div className="flex flex-wrap gap-2">
-                    {CATEGORIES.map(cat => (
+                    {categories.map(cat => (
                       <button
-                        key={cat.value}
+                        key={cat.id}
                         type="button"
-                        onClick={() => toggleCategory('excludeCategories', cat.value)}
+                        onClick={() => toggleCategory('excludeCategories', cat.id)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          editForm.excludeCategories?.includes(cat.value)
+                          editForm.excludeCategories?.includes(cat.id)
                             ? 'bg-red-100 text-red-700 border-2 border-red-400'
                             : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
                         }`}
                       >
-                        {cat.label}
+                        {cat.displayName}
                       </button>
                     ))}
                   </div>

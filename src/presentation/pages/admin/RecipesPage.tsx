@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Search, ChefHat, AlertTriangle, CheckCircle, Book, Package, Filter, XCircle } from 'lucide-react'
+import { Search, AlertTriangle, CheckCircle, Book, Package, Filter, XCircle } from 'lucide-react'
 import { menuItemsApi, type MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
+import { categoriesApi, type CategoryDTO } from '../../../infrastructure/api/categories.api'
 import { recipeApi } from '../../../infrastructure/api/recipe.api'
 import { RecipeEditorModal } from '../../components/features/Admin/RecipeEditorModal'
 
@@ -12,6 +13,7 @@ type RecipeFilter = 'all' | 'with-recipe' | 'no-recipe'
 export const RecipesPage = () => {
   const [menuItems, setMenuItems] = useState<MenuItemDTO[]>([])
   const [recipeStats, setRecipeStats] = useState<Map<string, number>>(new Map())
+  const [categories, setCategories] = useState<CategoryDTO[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [recipeFilter, setRecipeFilter] = useState<RecipeFilter>('all')
@@ -21,12 +23,25 @@ export const RecipesPage = () => {
   const [showRecipeEditor, setShowRecipeEditor] = useState(false)
 
   useEffect(() => {
+    loadCategories()
+  }, [])
+
+  useEffect(() => {
     loadMenuItems()
   }, [selectedCategory, searchQuery])
 
   useEffect(() => {
     document.title = 'Recipes - BEEHIVE Admin'
   }, [])
+
+  const loadCategories = async () => {
+    try {
+      const response = await categoriesApi.getAll()
+      setCategories(response.data)
+    } catch (err) {
+      console.error('Error loading categories:', err)
+    }
+  }
 
   // Helper function to get full image URL
   const getImageUrl = (imagePath: string | null) => {
@@ -41,7 +56,7 @@ export const RecipesPage = () => {
       setLoading(true)
       setError(null)
       const filters = {
-        category: selectedCategory !== 'all' ? selectedCategory : undefined,
+        categoryId: selectedCategory !== 'all' ? selectedCategory : undefined,
         search: searchQuery || undefined
       }
       const response = await menuItemsApi.getAll(filters)
@@ -78,17 +93,13 @@ export const RecipesPage = () => {
     loadMenuItems()
   }
 
-  const categories = [
-    { value: 'all', label: 'All Items', icon: '📋' },
-    { value: 'PIZZA', label: 'Pizza', icon: '🍕' },
-    { value: 'APPETIZER', label: 'Appetizers', icon: '🍟' },
-    { value: 'SMOOTHIE', label: 'Smoothies', icon: '🥤' },
-    { value: 'HOT_DRINKS', label: 'Hot Drinks', icon: '☕' },
-    { value: 'COLD_DRINKS', label: 'Cold Drinks', icon: '🧃' },
-    { value: 'VALUE_MEAL', label: 'Value Meals', icon: '🍱' },
-    { value: 'PLATTER', label: 'Platters', icon: '🍽️' },
-    { value: 'SAVERS', label: 'Savers', icon: '💰' },
-  ]
+  // Helper to get category display name
+  const getCategoryDisplayName = (item: MenuItemDTO): string => {
+    if (item.category) {
+      return item.category.displayName || item.category.name
+    }
+    return 'Uncategorized'
+  }
 
   return (
     <AdminLayout>
@@ -183,19 +194,31 @@ export const RecipesPage = () => {
 
           {/* Category Filter */}
           <div className="flex flex-wrap gap-2">
+            <button
+              key="all"
+              onClick={() => setSelectedCategory('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                selectedCategory === 'all'
+                  ? 'text-black shadow-lg'
+                  : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+              }`}
+              style={selectedCategory === 'all' ? { backgroundColor: '#F9C900' } : {}}
+            >
+              <span className="mr-2">📋</span>
+              All Items
+            </button>
             {categories.map((cat) => (
               <button
-                key={cat.value}
-                onClick={() => setSelectedCategory(cat.value)}
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                  selectedCategory === cat.value
+                  selectedCategory === cat.id
                     ? 'text-black shadow-lg'
                     : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
                 }`}
-                style={selectedCategory === cat.value ? { backgroundColor: '#F9C900' } : {}}
+                style={selectedCategory === cat.id ? { backgroundColor: '#F9C900' } : {}}
               >
-                <span className="mr-2">{cat.icon}</span>
-                {cat.label}
+                {cat.displayName}
               </button>
             ))}
           </div>
@@ -317,7 +340,7 @@ export const RecipesPage = () => {
                         <div className="flex-1">
                           <h3 className="font-bold text-gray-900 line-clamp-1">{item.name}</h3>
                           <p className="text-sm text-gray-500 capitalize">
-                            {item.category.replace(/_/g, ' ').toLowerCase()}
+                            {getCategoryDisplayName(item).replace(/_/g, ' ').toLowerCase()}
                           </p>
                         </div>
                         <Badge

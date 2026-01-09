@@ -1,7 +1,8 @@
 export interface MenuItem {
   id: string
   name: string
-  category: 'pizza' | 'appetizer' | 'hot drinks' | 'cold drinks' | 'smoothie' | 'platter' | 'savers' | 'value meal'
+  categoryId: string // Required for algorithm matching
+  category: string // Display name (computed from category object)
   price: number
   image?: string
   description?: string

@@ -19,14 +19,13 @@ import { Button } from '../../components/common/ui/button'
 import { ShoppingBag, Sparkles, Loader2, Bell } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
+import { categoriesApi, type CategoryDTO } from '../../../infrastructure/api/categories.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
 import { moodSettingsApi } from '../../../infrastructure/api/moodSettings.api'
 import { useAuthStore } from '../../store/authStore'
 import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
 import { getDeviceId } from '../../../shared/utils/deviceId'
 import { playSuccessSound, vibrate } from '../../../shared/utils/notificationSound'
-
-const CATEGORIES = ['all', 'best seller', 'pizza', 'appetizer', 'hot drinks', 'cold drinks', 'smoothie', 'platter', 'savers', 'value meal'] as const
 
 type ViewState = 'menu' | 'checkout' | 'confirmation'
 
@@ -41,8 +40,9 @@ export const MenuPage = () => {
     return (moodParam && getMoodByValue(moodParam)) ? moodParam : null
   })
   
-  // Fetch menu items from API
+  // Fetch menu items and categories from API
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
+  const [categories, setCategories] = useState<CategoryDTO[]>([])
   const [isLoading, setIsLoading] = useState(true)
   
   const [cartItems, setCartItems] = useState<OrderItem[]>([])
@@ -162,18 +162,23 @@ export const MenuPage = () => {
       try {
         setIsLoading(true)
         
-        // Fetch menu items, mood settings, and feedback config in parallel
-        const [menuResponse, moodSettings, config] = await Promise.all([
+        // Fetch menu items, categories, mood settings, and feedback config in parallel
+        const [menuResponse, categoriesResponse, moodSettings, config] = await Promise.all([
           menuItemsApi.getAll(),
+          categoriesApi.getAll(),
           moodSettingsApi.getActiveMoodSettings().catch(() => null),
           moodSettingsApi.getFeedbackConfig().catch(() => null)
         ])
+        
+        // Set categories
+        setCategories(categoriesResponse.data)
         
         // Process menu items
         const items = Array.isArray(menuResponse) ? menuResponse : menuResponse.data || []
         const transformedItems = items.map((item: any) => ({
           ...item,
-          category: item.category.toLowerCase().replace('_', ' ') as MenuItem['category']
+          categoryId: item.categoryId,
+          category: (item.category?.displayName || item.category?.name || '').toLowerCase().replace('_', ' ')
         }))
         setMenuItems(transformedItems)
         
@@ -574,7 +579,8 @@ export const MenuPage = () => {
     const useExcludedCategoryPenalty = scoringWeights.excludedCategoryPenalty > 0
     const recommended = safeMenuItems.filter(item => {
       // Only filter out excluded categories if penalty is 0 (default behavior)
-      if (!useExcludedCategoryPenalty && moodConfig.excludeCategories?.includes(item.category)) return false
+      // Now uses categoryId for matching
+      if (!useExcludedCategoryPenalty && moodConfig.excludeCategories?.includes(item.categoryId)) return false
       return item.available
     })
 
@@ -619,15 +625,15 @@ export const MenuPage = () => {
       }
       
       // ==================== 2. PREFERRED CATEGORY (+10 pts default) ====================
-      // Items in mood's preferred categories get boost
-      if (moodConfig.preferredCategories?.includes(item.category)) {
+      // Items in mood's preferred categories get boost (using categoryId)
+      if (moodConfig.preferredCategories?.includes(item.categoryId)) {
         score += scoringWeights.preferredCategory
         breakdown.preferredCategory = scoringWeights.preferredCategory
       }
       
       // ==================== 2b. EXCLUDED CATEGORY PENALTY (configurable) ====================
-      // If penalty > 0, apply negative points instead of filtering out
-      if (useExcludedCategoryPenalty && moodConfig.excludeCategories?.includes(item.category)) {
+      // If penalty > 0, apply negative points instead of filtering out (using categoryId)
+      if (useExcludedCategoryPenalty && moodConfig.excludeCategories?.includes(item.categoryId)) {
         score -= scoringWeights.excludedCategoryPenalty
         breakdown.excludedCategory = -scoringWeights.excludedCategoryPenalty
       }
@@ -703,21 +709,18 @@ export const MenuPage = () => {
       
       // ==================== 5. TIME OF DAY (+5 pts default) ====================
       // Uses configurable categories from MoodSettings admin panel
-      // FIX W6: Skip time bonus if item is in excluded category for current mood
-      const itemCategoryUpper = item.category?.toUpperCase().replace(' ', '_')
-      const isExcludedForMood = moodConfig.excludeCategories?.some(
-        (cat: string) => cat.toUpperCase().replace(' ', '_') === itemCategoryUpper
-      )
+      // FIX W6: Skip time bonus if item is in excluded category for current mood (using categoryId)
+      const isExcludedForMood = moodConfig.excludeCategories?.includes(item.categoryId)
       
-      // Only give time bonus if NOT in excluded categories
+      // Only give time bonus if NOT in excluded categories (using categoryId)
       if (!isExcludedForMood) {
-        if (timeContext === 'morning' && timeConfig.morningCategories.includes(itemCategoryUpper)) {
+        if (timeContext === 'morning' && timeConfig.morningCategories.includes(item.categoryId)) {
           score += scoringWeights.timeOfDay
           breakdown.timeOfDay = scoringWeights.timeOfDay
-        } else if (timeContext === 'afternoon' && timeConfig.afternoonCategories.includes(itemCategoryUpper)) {
+        } else if (timeContext === 'afternoon' && timeConfig.afternoonCategories.includes(item.categoryId)) {
           score += scoringWeights.timeOfDay
           breakdown.timeOfDay = scoringWeights.timeOfDay
-        } else if (timeContext === 'evening' && timeConfig.eveningCategories.includes(itemCategoryUpper)) {
+        } else if (timeContext === 'evening' && timeConfig.eveningCategories.includes(item.categoryId)) {
           score += scoringWeights.timeOfDay
           breakdown.timeOfDay = scoringWeights.timeOfDay
         }
@@ -731,8 +734,8 @@ export const MenuPage = () => {
       // Always show if has mood benefits
       if (hasExplanation) return true
       
-      // Show items in preferred categories
-      if (moodConfig.preferredCategories?.includes(item.category)) return true
+      // Show items in preferred categories (using categoryId)
+      if (moodConfig.preferredCategories?.includes(item.categoryId)) return true
       
       // Show featured items
       if (item.featured) return true
@@ -809,7 +812,7 @@ export const MenuPage = () => {
     const timeContext = getTimeContext()
     const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
     const recommended = safeMenuItems.filter(item => {
-      if (moodConfig.excludeCategories?.includes(item.category)) return false
+      if (moodConfig.excludeCategories?.includes(item.categoryId)) return false
       return item.available
     })
     
@@ -817,15 +820,14 @@ export const MenuPage = () => {
       let score = 0
       const hasExplanation = getMoodExplanation(item.name, selectedMood, item.moodBenefits)
       if (hasExplanation) score += scoringWeights.moodBenefits
-      if (moodConfig.preferredCategories?.includes(item.category)) score += scoringWeights.preferredCategory
+      if (moodConfig.preferredCategories?.includes(item.categoryId)) score += scoringWeights.preferredCategory
       if (item.featured) score += scoringWeights.featured
-      // Time of day boost (using configurable categories)
-      const itemCategoryUpper = item.category?.toUpperCase().replace(' ', '_')
-      if (timeContext === 'morning' && timeConfig.morningCategories.includes(itemCategoryUpper)) {
+      // Time of day boost (using configurable categories with categoryId)
+      if (timeContext === 'morning' && timeConfig.morningCategories.includes(item.categoryId)) {
         score += scoringWeights.timeOfDay
-      } else if (timeContext === 'afternoon' && timeConfig.afternoonCategories.includes(itemCategoryUpper)) {
+      } else if (timeContext === 'afternoon' && timeConfig.afternoonCategories.includes(item.categoryId)) {
         score += scoringWeights.timeOfDay
-      } else if (timeContext === 'evening' && timeConfig.eveningCategories.includes(itemCategoryUpper)) {
+      } else if (timeContext === 'evening' && timeConfig.eveningCategories.includes(item.categoryId)) {
         score += scoringWeights.timeOfDay
       }
       return { item, score, hasExplanation }
@@ -833,7 +835,7 @@ export const MenuPage = () => {
     
     const filteredItems = scoredItems.filter(({ score, hasExplanation, item }) => {
       if (hasExplanation) return true
-      if (moodConfig.preferredCategories?.includes(item.category)) return true
+      if (moodConfig.preferredCategories?.includes(item.categoryId)) return true
       if (item.featured) return true
       if (score >= scoringWeights.featured) return true
       return false
@@ -866,11 +868,12 @@ export const MenuPage = () => {
   // Ensure menuItems is always an array
   const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
   
+  // Filter by category - use categoryId for matching with API categories
   const filteredItems = selectedCategory === 'all' 
     ? safeMenuItems 
     : selectedCategory === 'best seller'
     ? safeMenuItems.filter(item => item.featured) // Use featured flag for best sellers
-    : safeMenuItems.filter((item) => item.category === selectedCategory)
+    : safeMenuItems.filter((item) => (item as any).categoryId === selectedCategory || item.category === selectedCategory.toLowerCase())
   const recommendedItems = getRecommendedItems()
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
 
@@ -1040,20 +1043,48 @@ export const MenuPage = () => {
             
             {/* Category Tabs */}
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              {CATEGORIES.map((category) => (
+              {/* Fixed All & Best Seller buttons */}
+              <Button
+                variant={selectedCategory === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedCategory('all')}
+                className="capitalize whitespace-nowrap"
+                style={
+                  selectedCategory === 'all'
+                    ? { backgroundColor: '#F9C900', color: '#000000' }
+                    : {}
+                }
+              >
+                All
+              </Button>
+              <Button
+                variant={selectedCategory === 'best seller' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedCategory('best seller')}
+                className="capitalize whitespace-nowrap"
+                style={
+                  selectedCategory === 'best seller'
+                    ? { backgroundColor: '#F9C900', color: '#000000' }
+                    : {}
+                }
+              >
+                Best Seller
+              </Button>
+              {/* Dynamic categories from API */}
+              {categories.filter(cat => cat.isActive).map((category) => (
                 <Button
-                  key={category}
-                  variant={selectedCategory === category ? 'default' : 'outline'}
+                  key={category.id}
+                  variant={selectedCategory === category.id ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setSelectedCategory(category)}
+                  onClick={() => setSelectedCategory(category.id)}
                   className="capitalize whitespace-nowrap"
                   style={
-                    selectedCategory === category
+                    selectedCategory === category.id
                       ? { backgroundColor: '#F9C900', color: '#000000' }
                       : {}
                   }
                 >
-                  {category}
+                  {category.displayName}
                 </Button>
               ))}
             </div>

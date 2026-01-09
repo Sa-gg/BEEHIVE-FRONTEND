@@ -88,12 +88,14 @@ export interface UpdateFeedbackConfigDTO {
   feedbackRateWeight?: number;
   moodBenefitsWeight?: number;
   preferredCategoryWeight?: number;
+  excludedCategoryPenalty?: number;
   featuredItemWeight?: number;
   priceRangeWeight?: number;
   historicalDataWeight?: number;
   timeOfDayWeight?: number;
   explorationBonusWeight?: number;
   minimumOrdersThreshold?: number;
+  day0PositionShuffle?: boolean;
   // Time of day configuration
   morningStartHour?: number;
   morningEndHour?: number;
@@ -104,6 +106,7 @@ export interface UpdateFeedbackConfigDTO {
   // UI settings
   showMoodReflection?: boolean;
   reflectionDelayMinutes?: number;
+  showRankingNumbers?: boolean;
 }
 
 // API Functions
