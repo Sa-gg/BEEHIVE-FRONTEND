@@ -10,6 +10,7 @@ interface AdminLayoutProps {
   children: ReactNode
   hideHeader?: boolean
   hideHeaderOnDesktop?: boolean
+  noPadding?: boolean
   overviewCounts?: {
     pending: number
     preparing: number
@@ -24,7 +25,7 @@ interface AdminLayoutProps {
  * Includes sidebar navigation and top bar.
  * Used for: Dashboard, POS, Orders, Inventory, etc.
  */
-export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop = false, overviewCounts, showOverviewInHeader = false }: AdminLayoutProps) => {
+export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop = false, noPadding = false, overviewCounts, showOverviewInHeader = false }: AdminLayoutProps) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
   // Initialize sidebar state from localStorage for desktop, default to closed for mobile
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -293,7 +294,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                   title={!sidebarOpen && !isMobile ? item.label : undefined}
                 >
                   <span className="flex-shrink-0 relative">
-                    <IconComponent className={`h-5 w-5 ${isActive ? 'text-gray-900' : item.iconColor}`} strokeWidth={2} fill="currentColor" fillOpacity={0.15} />
+                    <IconComponent className={`h-5 w-5 ${isActive ? 'text-gray-900' : item.iconColor}`} strokeWidth={1.5} fill="currentColor" />
                     {/* Badge for collapsed sidebar */}
                     {!sidebarOpen && !isMobile && item.badge && (
                       <span className={`absolute -top-1 -right-1 w-4 h-4 ${item.badgeColor} text-white text-[10px] font-bold rounded-full flex items-center justify-center`}>
@@ -584,7 +585,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
         )}
 
         {/* Page Content */}
-        <main className={`flex-1 overflow-auto ${!hideHeader && !hideHeaderOnDesktop ? 'p-4 lg:p-6' : ''}`}>
+        <main className={`flex-1 overflow-auto ${!noPadding ? 'p-4 lg:p-6' : ''}`}>
           {/* Floating Hamburger Menu for pages with hideHeader */}
           {(hideHeader || hideHeaderOnDesktop) && isMobile && (
             <button

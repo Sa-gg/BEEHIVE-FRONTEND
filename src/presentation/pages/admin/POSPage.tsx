@@ -647,7 +647,7 @@ export const POSPage = () => {
   const totalItems = orderItems.reduce((sum, item) => sum + item.quantity, 0)
 
   return (
-    <AdminLayout hideHeaderOnDesktop>
+    <AdminLayout hideHeaderOnDesktop noPadding>
       <div className="h-screen w-full max-w-full flex flex-col lg:flex-row gap-0 lg:gap-4 xl:gap-6 lg:p-4 xl:p-6 overflow-hidden">
         {/* Left Side - Menu - Full screen on mobile */}
         <div className="flex-1 flex flex-col bg-gray-50 lg:rounded-lg lg:shadow-lg lg:border lg:border-gray-200 min-h-0 min-w-0 overflow-hidden">
