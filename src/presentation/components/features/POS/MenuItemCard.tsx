@@ -4,13 +4,16 @@ import { Button } from '../../common/ui/button'
 import { Badge } from '../../common/ui/badge'
 import { Plus, Package } from 'lucide-react'
 
+type MobileCardSize = 'small' | 'medium' | 'large'
+
 interface MenuItemCardProps {
   item: MenuItem
   onAddToOrder: (item: MenuItem) => void
   maxServings?: number  // -1 means unlimited (no recipe), undefined means not loaded yet
+  mobileSize?: MobileCardSize // Size for mobile view
 }
 
-export const MenuItemCard = ({ item, onAddToOrder, maxServings }: MenuItemCardProps) => {
+export const MenuItemCard = ({ item, onAddToOrder, maxServings, mobileSize = 'medium' }: MenuItemCardProps) => {
   const [animations, setAnimations] = useState<number[]>([])
 
   // Use maxServings directly (backend already accounts for cart and preparing orders)
@@ -41,6 +44,39 @@ export const MenuItemCard = ({ item, onAddToOrder, maxServings }: MenuItemCardPr
   const isOutOfStock = hasRecipe && availableStock <= 0
   const isLowStock = hasRecipe && availableStock > 0 && availableStock <= 5
 
+  // Mobile size classes
+  const mobileSizeClasses = {
+    small: {
+      card: 'p-1.5',
+      image: 'aspect-square',
+      title: 'text-[10px] mb-1',
+      price: 'text-xs',
+      button: 'h-6 w-6',
+      buttonIcon: 'h-3 w-3',
+      stockBadge: 'text-[9px] px-1 py-0',
+    },
+    medium: {
+      card: 'p-2.5',
+      image: 'aspect-square',
+      title: 'text-xs mb-1.5',
+      price: 'text-sm',
+      button: 'h-14 w-14',
+      buttonIcon: 'h-7 w-7',
+      stockBadge: 'text-xs px-1.5 py-0.5',
+    },
+    large: {
+      card: 'p-3',
+      image: 'aspect-[4/3]',
+      title: 'text-sm mb-2',
+      price: 'text-base',
+      button: 'h-16 w-16',
+      buttonIcon: 'h-8 w-8',
+      stockBadge: 'text-xs px-2 py-1',
+    },
+  }
+
+  const sizeClasses = mobileSizeClasses[mobileSize]
+
   return (
     <div 
       className={`bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer relative ${
@@ -48,7 +84,7 @@ export const MenuItemCard = ({ item, onAddToOrder, maxServings }: MenuItemCardPr
       }`}
       onClick={handleAddToOrder}
     >
-      <div className="aspect-square bg-gray-100 relative overflow-hidden">
+      <div className={`${sizeClasses.image} bg-gray-100 relative overflow-hidden lg:aspect-square`}>
         {item.image ? (
           <img
             src={item.image}
@@ -68,7 +104,7 @@ export const MenuItemCard = ({ item, onAddToOrder, maxServings }: MenuItemCardPr
         )}
         {/* Stock indicator badge */}
         {hasRecipe && !isOutOfStock && (
-          <div className={`absolute top-1 right-1 px-1.5 py-0.5 rounded text-xs font-bold flex items-center gap-0.5 ${
+          <div className={`absolute top-1 right-1 rounded font-bold flex items-center gap-0.5 ${sizeClasses.stockBadge} ${
             isLowStock 
               ? 'bg-red-100 text-red-700 border border-red-300' 
               : 'bg-green-100 text-green-700 border border-green-300'
@@ -78,17 +114,17 @@ export const MenuItemCard = ({ item, onAddToOrder, maxServings }: MenuItemCardPr
           </div>
         )}
       </div>
-      <div className="p-2.5">
-        <h3 className="font-semibold text-xs mb-1.5 line-clamp-1">{item.name}</h3>
+      <div className={sizeClasses.card}>
+        <h3 className={`font-semibold line-clamp-1 ${sizeClasses.title} lg:text-xs lg:mb-1.5`}>{item.name}</h3>
         <div className="flex items-center justify-between gap-1">
-          <span className="text-sm font-bold text-blue-600">₱{item.price.toFixed(2)}</span>
+          <span className={`font-bold text-blue-600 ${sizeClasses.price} lg:text-sm`}>₱{item.price.toFixed(2)}</span>
           <Button
             size="sm"
             onClick={handleAddToOrder}
             disabled={!item.available || isOutOfStock}
-            className="h-14 w-14 lg:h-7 lg:w-auto lg:px-3 text-sm lg:text-xs rounded-full lg:rounded-md flex items-center justify-center p-0 lg:gap-1"
+            className={`${sizeClasses.button} lg:h-7 lg:w-auto lg:px-3 text-sm lg:text-xs rounded-full lg:rounded-md flex items-center justify-center p-0 lg:gap-1`}
           >
-            <Plus className="h-7 w-7 lg:h-3 lg:w-3" />
+            <Plus className={`${sizeClasses.buttonIcon} lg:h-3 lg:w-3`} />
             <span className="hidden lg:inline">Add</span>
           </Button>
         </div>

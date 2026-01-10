@@ -21,5 +21,14 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+
+    // //optional
+    // cors: true,
+    // // Fix for dynamic imports over network
+    // origin: 'http://192.168.1.10:5173',
+    // hmr: {
+    //   host: '192.168.1.10',
+    //   port: 5173,
+    // },
   },
 })

@@ -1,6 +1,6 @@
 import { type ReactNode, useState, useEffect, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, X, LogOut, Bell } from 'lucide-react'
+import { Menu, X, LogOut, Bell, LayoutDashboard, CreditCard, Package, ClipboardList, ChefHat, TrendingUp, FileText, Wallet, Tag, Users, Brain, Settings } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
 import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
@@ -10,6 +10,12 @@ interface AdminLayoutProps {
   children: ReactNode
   hideHeader?: boolean
   hideHeaderOnDesktop?: boolean
+  overviewCounts?: {
+    pending: number
+    preparing: number
+    completed: number
+  }
+  showOverviewInHeader?: boolean
 }
 
 /**
@@ -18,9 +24,15 @@ interface AdminLayoutProps {
  * Includes sidebar navigation and top bar.
  * Used for: Dashboard, POS, Orders, Inventory, etc.
  */
-export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop = false }: AdminLayoutProps) => {
+export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop = false, overviewCounts, showOverviewInHeader = false }: AdminLayoutProps) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
-  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024)
+  // Initialize sidebar state from localStorage for desktop, default to closed for mobile
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (window.innerWidth < 1024) return false
+    const saved = localStorage.getItem('sidebarCollapsed')
+    // If saved is 'true' (collapsed), return false (not open), otherwise return true (open)
+    return saved !== 'true'
+  })
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
@@ -28,6 +40,13 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
   const { pendingOrderCount, stockAlertCount, fetchNotifications, newOrderAlert, dismissNewOrderAlert, handleNewOrder, handleOrderUpdate } = useNotificationStore()
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false)
   const { pendingOrders, lowStockItems, outOfStockItems } = useNotificationStore()
+
+  // Persist sidebar collapsed state to localStorage for desktop
+  useEffect(() => {
+    if (!isMobile) {
+      localStorage.setItem('sidebarCollapsed', (!sidebarOpen).toString())
+    }
+  }, [sidebarOpen, isMobile])
 
   // Real-time SSE event handlers for cashier
   const onNewOrder = useCallback((order: unknown) => {
@@ -78,7 +97,14 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
       
       // Only auto-adjust sidebar on initial threshold crossing
       if (mobile !== isMobile) {
-        setSidebarOpen(!mobile)
+        if (mobile) {
+          // Switching to mobile: close sidebar
+          setSidebarOpen(false)
+        } else {
+          // Switching to desktop: restore from localStorage
+          const saved = localStorage.getItem('sidebarCollapsed')
+          setSidebarOpen(saved !== 'true')
+        }
       }
     }
     
@@ -144,20 +170,20 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
   // Get user's permissions based on role
   const userPermissions = user?.role ? DEFAULT_PERMISSIONS[user.role as UserRole] || {} : {}
 
-  // Permission-based menu items - each item has a required permission
+  // Permission-based menu items - each item has a required permission and icon color
   const allMenuItems = [
-    { icon: '📊', label: 'Dashboard', path: '/admin', badge: null, permission: 'viewDashboard' },
-    { icon: '💳', label: 'POS', path: '/admin/pos', badge: null, permission: 'accessPOS' },
-    { icon: '📦', label: 'Orders', path: '/admin/orders', badge: pendingOrderCount > 0 ? pendingOrderCount : null, badgeColor: 'bg-red-500', permission: 'viewOrders' },
-    { icon: '📋', label: 'Inventory', path: '/admin/inventory', badge: stockAlertCount > 0 ? stockAlertCount : null, badgeColor: 'bg-orange-500', permission: 'viewInventory' },
-    { icon: '👨‍🍳', label: 'Recipes', path: '/admin/recipes', badge: null, permission: 'viewRecipes' },
-    { icon: '📈', label: 'Sales', path: '/admin/sales', badge: null, permission: 'viewSales' },
-    { icon: '📑', label: 'Reports', path: '/admin/reports', badge: null, permission: 'viewReports' },
-    { icon: '💵', label: 'Expenses', path: '/admin/expenses', badge: null, permission: 'viewExpenses' },
-    { icon: '🏷️', label: 'Products', path: '/admin/products', badge: null, permission: 'viewProducts' },
-    { icon: '👥', label: 'Accounts', path: '/admin/accounts', badge: null, permission: 'viewAccounts' },
-    { icon: '🧠', label: 'Mood System', path: '/admin/mood-settings', badge: null, permission: 'manageMoodSettings' },
-    { icon: '⚙️', label: 'Settings', path: '/admin/settings', badge: null, permission: 'viewSettings' },
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/admin', badge: null, permission: 'viewDashboard', iconColor: 'text-blue-400' },
+    { icon: CreditCard, label: 'POS', path: '/admin/pos', badge: null, permission: 'accessPOS', iconColor: 'text-emerald-400' },
+    { icon: ClipboardList, label: 'Orders', path: '/admin/orders', badge: pendingOrderCount > 0 ? pendingOrderCount : null, badgeColor: 'bg-red-500', permission: 'viewOrders', iconColor: 'text-amber-400' },
+    { icon: Package, label: 'Inventory', path: '/admin/inventory', badge: stockAlertCount > 0 ? stockAlertCount : null, badgeColor: 'bg-orange-500', permission: 'viewInventory', iconColor: 'text-cyan-400' },
+    { icon: ChefHat, label: 'Recipes', path: '/admin/recipes', badge: null, permission: 'viewRecipes', iconColor: 'text-orange-400' },
+    { icon: TrendingUp, label: 'Sales', path: '/admin/sales', badge: null, permission: 'viewSales', iconColor: 'text-green-400' },
+    { icon: FileText, label: 'Reports', path: '/admin/reports', badge: null, permission: 'viewReports', iconColor: 'text-indigo-400' },
+    { icon: Wallet, label: 'Expenses', path: '/admin/expenses', badge: null, permission: 'viewExpenses', iconColor: 'text-red-400' },
+    { icon: Tag, label: 'Products', path: '/admin/products', badge: null, permission: 'viewProducts', iconColor: 'text-purple-400' },
+    { icon: Users, label: 'Accounts', path: '/admin/accounts', badge: null, permission: 'viewAccounts', iconColor: 'text-teal-400' },
+    { icon: Brain, label: 'Mood System', path: '/admin/mood-settings', badge: null, permission: 'manageMoodSettings', iconColor: 'text-pink-400' },
+    { icon: Settings, label: 'Settings', path: '/admin/settings', badge: null, permission: 'viewSettings', iconColor: 'text-gray-400' },
   ]
 
   // Filter menu items based on user's permissions
@@ -170,20 +196,23 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
 
   return (
     <div className="min-h-screen flex overflow-hidden" style={{ background: 'linear-gradient(135deg, #FFFBF0 0%, #FFF8E1 100%)' }}>
-      {/* Global New Order Alert Banner */}
+      {/* Global New Order Alert Banner - Modern Yellow Theme */}
       {newOrderAlert && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] animate-bounce">
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100]">
           <div 
-            className="bg-green-500 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 cursor-pointer hover:bg-green-600 transition-colors"
+            className="bg-gray-900 text-white pl-3 pr-4 py-2.5 rounded-full shadow-2xl flex items-center gap-3 cursor-pointer hover:bg-gray-800 transition-all animate-pulse"
             onClick={() => {
               dismissNewOrderAlert()
               navigate('/admin/orders')
             }}
+            style={{ boxShadow: '0 10px 40px rgba(249, 201, 0, 0.3)' }}
           >
-            <span className="text-2xl">🔔</span>
+            <div className="p-2 rounded-full" style={{ backgroundColor: '#F9C900' }}>
+              <Bell className="h-4 w-4 text-gray-900" fill="currentColor" />
+            </div>
             <div className="flex flex-col">
-              <span className="font-bold text-sm">New Order!</span>
-              <span className="text-xs opacity-90">
+              <span className="font-bold text-sm" style={{ color: '#F9C900' }}>New Order!</span>
+              <span className="text-xs text-gray-300">
                 {newOrderAlert.orderNumber} • {newOrderAlert.customerName} • ₱{newOrderAlert.totalAmount.toFixed(2)}
               </span>
             </div>
@@ -192,9 +221,9 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                 e.stopPropagation()
                 dismissNewOrderAlert()
               }}
-              className="ml-2 hover:bg-green-700 rounded-full p-1"
+              className="ml-1 hover:bg-white/10 rounded-full p-1 transition-colors"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4 text-gray-400 hover:text-white" />
             </button>
           </div>
         </div>
@@ -250,6 +279,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
           <nav className="space-y-1 flex-1">
             {menuItems.map((item) => {
               const isActive = location.pathname === item.path
+              const IconComponent = item.icon
               return (
                 <Link
                   key={item.path}
@@ -262,8 +292,8 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                   style={isActive ? { backgroundColor: '#F9C900' } : {}}
                   title={!sidebarOpen && !isMobile ? item.label : undefined}
                 >
-                  <span className="text-xl flex-shrink-0 relative">
-                    {item.icon}
+                  <span className="flex-shrink-0 relative">
+                    <IconComponent className={`h-5 w-5 ${isActive ? 'text-gray-900' : item.iconColor}`} strokeWidth={2} fill="currentColor" fillOpacity={0.15} />
                     {/* Badge for collapsed sidebar */}
                     {!sidebarOpen && !isMobile && item.badge && (
                       <span className={`absolute -top-1 -right-1 w-4 h-4 ${item.badgeColor} text-white text-[10px] font-bold rounded-full flex items-center justify-center`}>
@@ -356,6 +386,24 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                 <p className="text-xs lg:text-sm text-gray-500 mt-1 hidden sm:block">Manage your BEEHIVE operations</p>
               </div>
               
+              {/* Overview Counts in Header */}
+              {showOverviewInHeader && overviewCounts && (
+                <div className="hidden md:flex items-center gap-3 mr-4">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-100 rounded-full">
+                    <div className="w-2 h-2 bg-yellow-500 rounded-full" />
+                    <span className="text-xs font-semibold text-yellow-700">{overviewCounts.pending} Pending</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 rounded-full">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                    <span className="text-xs font-semibold text-blue-700">{overviewCounts.preparing} Preparing</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 rounded-full">
+                    <div className="w-2 h-2 bg-green-500 rounded-full" />
+                    <span className="text-xs font-semibold text-green-700">{overviewCounts.completed} Completed</span>
+                  </div>
+                </div>
+              )}
+              
               <div className="flex items-center gap-2 lg:gap-4">
                 {/* Notifications Bell with Dropdown */}
                 <div className="relative">
@@ -378,37 +426,42 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                         className="fixed inset-0 z-40"
                         onClick={() => setNotificationDropdownOpen(false)}
                       />
-                      <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden">
-                        <div className="px-4 py-3 bg-gradient-to-r from-amber-50 to-white border-b border-gray-100">
-                          <h3 className="font-bold text-gray-900">Notifications</h3>
-                          <p className="text-xs text-gray-500">{totalNotifications} alerts require attention</p>
+                      <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
+                        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
+                            {totalNotifications > 0 && (
+                              <span className="text-xs text-gray-500">{totalNotifications} pending</span>
+                            )}
+                          </div>
                         </div>
                         
-                        <div className="max-h-80 overflow-y-auto">
+                        <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
                           {/* Pending Orders */}
                           {pendingOrders.length > 0 && (
-                            <div className="px-4 py-2 border-b border-gray-100">
-                              <p className="text-xs font-semibold text-red-600 uppercase mb-2">📦 Pending Orders</p>
+                            <div className="py-2">
+                              <p className="px-4 py-1 text-xs font-medium text-gray-500 uppercase tracking-wide">Orders</p>
                               {pendingOrders.slice(0, 3).map(order => (
                                 <Link
                                   key={order.id}
                                   to="/admin/orders"
                                   onClick={() => setNotificationDropdownOpen(false)}
-                                  className="block px-3 py-2 rounded-lg hover:bg-red-50 transition-colors mb-1"
+                                  className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors"
                                 >
-                                  <p className="text-sm font-medium text-gray-900">{order.orderNumber}</p>
-                                  <p className="text-xs text-gray-500">
-                                    {order.orderType} • ₱{order.totalAmount.toFixed(2)}
-                                  </p>
+                                  <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-900 truncate">{order.orderNumber}</p>
+                                    <p className="text-xs text-gray-500">₱{order.totalAmount.toFixed(2)}</p>
+                                  </div>
                                 </Link>
                               ))}
                               {pendingOrders.length > 3 && (
                                 <Link
                                   to="/admin/orders"
                                   onClick={() => setNotificationDropdownOpen(false)}
-                                  className="text-xs text-amber-600 font-medium hover:underline"
+                                  className="block px-4 py-1 text-xs text-amber-600 font-medium hover:underline"
                                 >
-                                  +{pendingOrders.length - 3} more orders
+                                  +{pendingOrders.length - 3} more
                                 </Link>
                               )}
                             </div>
@@ -416,17 +469,20 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
 
                           {/* Stock Alerts */}
                           {(lowStockItems.length > 0 || outOfStockItems.length > 0) && (
-                            <div className="px-4 py-2">
-                              <p className="text-xs font-semibold text-orange-600 uppercase mb-2">📋 Stock Alerts</p>
+                            <div className="py-2">
+                              <p className="px-4 py-1 text-xs font-medium text-gray-500 uppercase tracking-wide">Stock Alerts</p>
                               {outOfStockItems.slice(0, 2).map(item => (
                                 <Link
                                   key={item.id}
                                   to="/admin/inventory"
                                   onClick={() => setNotificationDropdownOpen(false)}
-                                  className="block px-3 py-2 rounded-lg hover:bg-red-50 transition-colors mb-1 bg-red-50/50"
+                                  className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors"
                                 >
-                                  <p className="text-sm font-medium text-red-700">{item.name}</p>
-                                  <p className="text-xs text-red-600">Out of Stock!</p>
+                                  <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                                    <p className="text-xs text-red-600">Out of stock</p>
+                                  </div>
                                 </Link>
                               ))}
                               {lowStockItems.slice(0, 2).map(item => (
@@ -434,41 +490,43 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                                   key={item.id}
                                   to="/admin/inventory"
                                   onClick={() => setNotificationDropdownOpen(false)}
-                                  className="block px-3 py-2 rounded-lg hover:bg-orange-50 transition-colors mb-1"
+                                  className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors"
                                 >
-                                  <p className="text-sm font-medium text-gray-900">{item.name}</p>
-                                  <p className="text-xs text-orange-600">
-                                    Low Stock: {item.currentStock.toFixed(2)}/{item.minStock.toFixed(2)}
-                                  </p>
+                                  <div className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                                    <p className="text-xs text-orange-600">
+                                      Stock: {item.currentStock.toFixed(1)}/{item.minStock.toFixed(1)}
+                                    </p>
+                                  </div>
                                 </Link>
                               ))}
                               {(lowStockItems.length + outOfStockItems.length) > 4 && (
                                 <Link
                                   to="/admin/inventory"
                                   onClick={() => setNotificationDropdownOpen(false)}
-                                  className="text-xs text-amber-600 font-medium hover:underline"
+                                  className="block px-4 py-1 text-xs text-amber-600 font-medium hover:underline"
                                 >
-                                  +{(lowStockItems.length + outOfStockItems.length) - 4} more alerts
+                                  +{(lowStockItems.length + outOfStockItems.length) - 4} more
                                 </Link>
                               )}
                             </div>
                           )}
 
                           {totalNotifications === 0 && (
-                            <div className="px-4 py-8 text-center">
-                              <span className="text-4xl">✅</span>
-                              <p className="text-sm text-gray-500 mt-2">All caught up!</p>
+                            <div className="px-4 py-6 text-center">
+                              <p className="text-sm text-gray-500">No pending alerts</p>
                             </div>
                           )}
                         </div>
 
-                        <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                        <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100">
                           <Link
                             to="/admin/orders"
                             onClick={() => setNotificationDropdownOpen(false)}
-                            className="block text-center text-sm font-medium text-amber-600 hover:text-amber-700"
+                            className="block text-center text-xs font-medium text-gray-600 hover:text-gray-900"
                           >
-                            View All Activity
+                            View All Orders
                           </Link>
                         </div>
                       </div>
@@ -500,11 +558,11 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                       />
                       
                       {/* Dropdown Menu */}
-                      <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                        <div className="px-4 py-3 border-b border-gray-200">
-                          <p className="text-sm font-semibold text-gray-900">{user?.name}</p>
-                          <p className="text-xs text-gray-500">{user?.email}</p>
-                          <p className="text-xs text-gray-600 mt-1 capitalize">Role: {user?.role?.toLowerCase()}</p>
+                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
+                        <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{user?.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                          <p className="text-xs text-gray-400 mt-0.5 capitalize">{user?.role?.toLowerCase()}</p>
                         </div>
 
                         <div className="py-1">
@@ -526,9 +584,9 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
         )}
 
         {/* Page Content */}
-        <main className={`flex-1 overflow-auto ${!hideHeader && !(hideHeaderOnDesktop && !isMobile) ? 'p-4 lg:p-6' : ''}`}>
+        <main className={`flex-1 overflow-auto ${!hideHeader && !hideHeaderOnDesktop ? 'p-4 lg:p-6' : ''}`}>
           {/* Floating Hamburger Menu for pages with hideHeader */}
-          {hideHeader && isMobile && (
+          {(hideHeader || hideHeaderOnDesktop) && isMobile && (
             <button
               onClick={() => setSidebarOpen(true)}
               className="fixed top-4 left-4 z-[60] p-3 rounded-lg shadow-lg transition-colors"

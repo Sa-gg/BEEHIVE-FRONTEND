@@ -26,6 +26,7 @@ interface OrderSummaryProps {
   onClearOrder: () => void
   onConfirmOrder: () => void
   onPrintReceipt?: () => void
+  confirmButtonText?: string
 }
 
 export const OrderSummary = ({
@@ -49,6 +50,7 @@ export const OrderSummary = ({
   onClearOrder,
   onConfirmOrder,
   onPrintReceipt,
+  confirmButtonText = 'Confirm Order',
 }: OrderSummaryProps) => {
   // Subtotal is the sum of item prices (which already include VAT)
   const itemsTotal = items.reduce((sum, item) => sum + item.subtotal, 0)
@@ -78,44 +80,40 @@ export const OrderSummary = ({
   // }
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-2xl shadow-sm border border-gray-200">
-      {/* Clean Header */}
-      <div className="px-4 py-3 border-b border-gray-100 shrink-0">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-900">Current Order</h2>
-          <span className="text-xs text-gray-500">{items.length} {items.length === 1 ? 'item' : 'items'}</span>
+    <div className="flex flex-col h-full max-h-full bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* Compact Header with Order Type Pills */}
+      <div className="px-3 py-2 border-b border-gray-100 shrink-0">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-gray-900">Current Order</h2>
+          <span className="text-xs text-gray-500">{items.length} items</span>
         </div>
-      </div>
-
-      {/* Order Type Pills */}
-      <div className="px-4 py-3 border-b border-gray-100 shrink-0">
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           <button
             onClick={() => onOrderTypeChange('DINE_IN')}
-            className={`flex-1 py-2 px-3 rounded-full text-xs font-medium transition-all ${
+            className={`flex-1 py-1.5 px-2 rounded-full text-[11px] font-medium transition-all ${
               orderType === 'DINE_IN'
-                ? 'bg-gray-900 text-white shadow-sm'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-600'
             }`}
           >
             Dine In
           </button>
           <button
             onClick={() => onOrderTypeChange('TAKEOUT')}
-            className={`flex-1 py-2 px-3 rounded-full text-xs font-medium transition-all ${
+            className={`flex-1 py-1.5 px-2 rounded-full text-[11px] font-medium transition-all ${
               orderType === 'TAKEOUT'
-                ? 'bg-gray-900 text-white shadow-sm'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-600'
             }`}
           >
-            Take Away
+            Takeout
           </button>
           <button
             onClick={() => onOrderTypeChange('DELIVERY')}
-            className={`flex-1 py-2 px-3 rounded-full text-xs font-medium transition-all ${
+            className={`flex-1 py-1.5 px-2 rounded-full text-[11px] font-medium transition-all ${
               orderType === 'DELIVERY'
-                ? 'bg-gray-900 text-white shadow-sm'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-600'
             }`}
           >
             Delivery
@@ -123,60 +121,46 @@ export const OrderSummary = ({
         </div>
       </div>
 
-      {/* Form Fields */}
-      <div className="px-4 py-2 border-b border-gray-100 shrink-0 space-y-2">
-        {/* Customer Name & Table in one row */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="col-span-2">
-            <Input
-              placeholder="Customer name"
-              value={customerName}
-              onChange={(e) => onCustomerNameChange(e.target.value)}
-              className="h-9 rounded-full border-gray-200 bg-gray-50 text-xs focus-visible:ring-1 focus-visible:ring-gray-900"
-            />
-          </div>
-
-          {/* Table Number - only for Dine In */}
+      {/* Compact Form Fields - Single row */}
+      <div className="px-3 py-2 border-b border-gray-100 shrink-0">
+        <div className="flex gap-2">
+          <Input
+            placeholder="Customer"
+            value={customerName}
+            onChange={(e) => onCustomerNameChange(e.target.value)}
+            className="h-8 flex-1 rounded-full border-gray-200 bg-gray-50 text-xs px-3"
+          />
           {orderType === 'DINE_IN' && (
-            <div className="col-span-1">
-              <Input
-                placeholder="Table"
-                value={tableNumber}
-                onChange={(e) => onTableNumberChange(e.target.value)}
-                className="h-9 rounded-full border-gray-200 bg-gray-50 text-xs focus-visible:ring-1 focus-visible:ring-gray-900"
-              />
-            </div>
+            <Input
+              placeholder="Table"
+              value={tableNumber}
+              onChange={(e) => onTableNumberChange(e.target.value)}
+              className="h-8 w-16 rounded-full border-gray-200 bg-gray-50 text-xs px-3"
+            />
           )}
-
-          {/* Payment Method */}
-          <div className={orderType === 'DINE_IN' ? 'col-span-1' : 'col-span-2'}>
-            <Select value={paymentMethod} onValueChange={onPaymentMethodChange}>
-              <SelectTrigger className="h-9 rounded-full border-gray-200 bg-gray-50 text-xs">
-                <SelectValue placeholder="Payment method" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CASH">Cash</SelectItem>
-                <SelectItem value="CARD">Card</SelectItem>
-                <SelectItem value="GCASH">GCash</SelectItem>
-                <SelectItem value="PAYMAYA">PayMaya</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <Select value={paymentMethod} onValueChange={onPaymentMethodChange}>
+            <SelectTrigger className="h-8 w-24 rounded-full border-gray-200 bg-gray-50 text-xs">
+              <SelectValue placeholder="Pay" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="CASH">Cash</SelectItem>
+              <SelectItem value="CARD">Card</SelectItem>
+              <SelectItem value="GCASH">GCash</SelectItem>
+              <SelectItem value="PAYMAYA">PayMaya</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       {/* Items List */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
+      <div className="flex-1 overflow-y-auto px-3 py-2 min-h-0">
         {items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="h-16 w-16 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-              <ShoppingCart className="h-7 w-7 text-gray-400" />
-            </div>
-            <p className="text-sm font-medium text-gray-900">No items yet</p>
-            <p className="text-xs text-gray-500 mt-1">Add items from menu</p>
+          <div className="flex flex-col items-center justify-center h-full py-4">
+            <ShoppingCart className="h-8 w-8 text-gray-300 mb-2" />
+            <p className="text-xs text-gray-500">No items yet</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1">
             {items.map((item) => (
               <OrderItemRow
                 key={item.menuItemId}
@@ -189,95 +173,67 @@ export const OrderSummary = ({
         )}
       </div>
 
-      {/* Summary Section */}
+      {/* Compact Summary Section */}
       {items.length > 0 && (
-        <div className="border-t border-gray-100 px-4 py-4 shrink-0 space-y-4">
-          {/* Totals */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-gray-600">Subtotal</span>
-              <span className="font-medium text-gray-900">₱{subtotal.toFixed(2)}</span>
+        <div className="border-t border-gray-100 px-3 py-3 shrink-0 space-y-2">
+          {/* Compact Totals - Two columns */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Subtotal</span>
+              <span className="text-gray-700">₱{subtotal.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-gray-600">VAT (12%)</span>
-              <span className="font-medium text-gray-900">₱{vat.toFixed(2)}</span>
+            <div className="flex justify-between">
+              <span className="text-gray-500">VAT</span>
+              <span className="text-gray-700">₱{vat.toFixed(2)}</span>
             </div>
-            
-            {/* Delivery Fee - Clickable */}
             {orderType === 'DELIVERY' && (
-              <div className="flex justify-between items-center text-sm">
-                <button
-                  onClick={onDeliveryFeeClick}
-                  className="text-blue-600 underline underline-offset-2 hover:text-blue-800 transition-colors cursor-pointer"
-                >
-                  Delivery Fee
-                </button>
-                <span className="font-medium text-gray-900">
-                  {deliveryFee > 0 ? `₱${deliveryFee.toFixed(2)}` : '₱0.00'}
-                </span>
+              <div className="flex justify-between">
+                <button onClick={onDeliveryFeeClick} className="text-blue-600 underline text-xs">Delivery</button>
+                <span className="text-gray-700">{deliveryFee > 0 ? `₱${deliveryFee.toFixed(2)}` : '₱0'}</span>
               </div>
             )}
-            
-            {/* Service Fee - Clickable */}
-            <div className="flex justify-between items-center text-sm">
-              <button
-                onClick={onServiceFeeClick}
-                className="text-purple-600 underline underline-offset-2 hover:text-purple-800 transition-colors cursor-pointer"
-              >
-                Service Fee
-              </button>
-              <span className="font-medium text-gray-900">
-                {serviceFee > 0 ? `₱${serviceFee.toFixed(2)}` : '₱0.00'}
-              </span>
+            <div className="flex justify-between">
+              <button onClick={onServiceFeeClick} className="text-purple-600 underline text-xs">Service</button>
+              <span className="text-gray-700">{serviceFee > 0 ? `₱${serviceFee.toFixed(2)}` : '₱0'}</span>
             </div>
-            
-            {/* Discount - Clickable */}
-            <div className="flex justify-between items-center text-sm">
-              <button
-                onClick={onDiscountClick}
-                className="text-green-600 underline underline-offset-2 hover:text-green-800 transition-colors cursor-pointer"
-              >
-                Discount
-              </button>
-              <span className="font-medium text-green-600">
-                {discountAmount > 0 ? `-₱${discountAmount.toFixed(2)}` : '₱0.00'}
-              </span>
+            <div className="flex justify-between">
+              <button onClick={onDiscountClick} className="text-green-600 underline text-xs">Discount</button>
+              <span className="text-green-600">{discountAmount > 0 ? `-₱${discountAmount.toFixed(2)}` : '₱0'}</span>
             </div>
-            
-            <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-              <span className="text-base font-semibold text-gray-900">Total</span>
-              <span className="text-xl font-bold text-gray-900">₱{total.toFixed(2)}</span>
-            </div>
+          </div>
+          
+          {/* Total */}
+          <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+            <span className="text-sm font-semibold text-gray-900">Total</span>
+            <span className="text-lg font-bold text-gray-900">₱{total.toFixed(2)}</span>
           </div>
 
-          {/* Action Buttons */}
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={onClearOrder}
-                className="flex-1 h-11 rounded-full border-gray-300 hover:bg-gray-100 text-sm font-medium"
-              >
-                Clear
-              </Button>
-              <Button
-                onClick={onConfirmOrder}
-                className="flex-[2] h-11 rounded-full bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium shadow-sm"
-              >
-                Confirm Order
-              </Button>
-            </div>
-            {onPrintReceipt && (
-              <Button
-                variant="outline"
-                onClick={onPrintReceipt}
-                className="w-full h-11 rounded-full border-gray-300 hover:bg-gray-100 text-sm font-medium flex items-center justify-center gap-2"
-              >
-                <Printer className="h-4 w-4" />
-                Mark as Paid & Print Receipt
-              </Button>
-            )}
+          {/* Compact Action Buttons */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={onClearOrder}
+              className="h-9 px-4 rounded-full border-gray-300 text-xs font-medium"
+            >
+              Clear
+            </Button>
+            <Button
+              onClick={onConfirmOrder}
+              className="flex-1 h-9 rounded-full bg-gray-900 hover:bg-gray-800 text-white text-xs font-medium"
+            >
+              {confirmButtonText}
+            </Button>
           </div>
+          {onPrintReceipt && (
+            <Button
+              variant="outline"
+              onClick={onPrintReceipt}
+              className="w-full h-9 rounded-full border-gray-300 text-xs font-medium flex items-center justify-center gap-1"
+            >
+              <Printer className="h-3 w-3" />
+              Pay & Print
+            </Button>
+          )}
         </div>
       )}
     </div>

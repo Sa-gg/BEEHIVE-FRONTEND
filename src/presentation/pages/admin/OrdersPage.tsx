@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Clock, CheckCircle, XCircle, Package, Search, Filter, Eye, Loader2, Printer, Merge, X, Grid3X3, LayoutGrid, MoreVertical, AlertTriangle, Ban, DollarSign, Gift, FileX, Link2, RotateCcw } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Package, Search, Filter, Eye, Loader2, Printer, Merge, X, Grid3X3, LayoutGrid, MoreVertical, AlertTriangle, Ban, DollarSign, Gift, FileX, Link2, RotateCcw, ChefHat, Plus, Trash2, Columns3, Rows3 } from 'lucide-react'
 import { ordersApi, type PaymentStatus, type OrderStatus } from '../../../infrastructure/api/orders.api'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
 import { printWithIframe } from '../../../shared/utils/printUtils'
@@ -12,6 +12,7 @@ import { ManagerPinModal } from '../../components/common/ManagerPinModal'
 import { CashCalculatorModal } from '../../components/common/CashCalculatorModal'
 import { generateReceiptHTML, generateMergedReceiptHTML, generateLinkedOrdersReceiptHTML } from '../../../shared/utils/receiptTemplate'
 import { useSettingsStore } from '../../store/settingsStore'
+import { toast } from '../../components/common/ToastNotification'
 
 // Helper to format order number - removes date prefix for cleaner display
 // ORD-20251227-00001 -> ORD-00001
@@ -30,6 +31,7 @@ interface OrderItem {
   price: number
   subtotal: number
   menuItemId: string
+  status?: 'PREPARING' | 'COMPLETED' | 'VOIDED'
 }
 
 interface Order {
@@ -63,7 +65,14 @@ interface Order {
 export const OrdersPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const { cashChangeEnabled } = useSettingsStore()
+  const { 
+    cashChangeEnabled, 
+    showHeaderInOrdersPage,
+    showOverviewCardsInOrdersPage, 
+    showOverviewInHeaderOrdersPage,
+    statusSeparatorDirection, 
+    setStatusSeparatorDirection 
+  } = useSettingsStore()
   const [orders, setOrders] = useState<Order[]>([])
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [selectedOrderType, setSelectedOrderType] = useState<string>('all')
@@ -102,9 +111,11 @@ export const OrdersPage = () => {
   // Manager PIN modal state
   const [showManagerPinModal, setShowManagerPinModal] = useState(false)
   const [pendingAction, setPendingAction] = useState<{
-    type: 'void' | 'refund' | 'complimentary' | 'writeOff' | 'voidAndReorder'
+    type: 'void' | 'refund' | 'complimentary' | 'writeOff' | 'voidAndReorder' | 'voidItem'
     orderId: string
     order?: Order
+    itemId?: string
+    itemName?: string
   } | null>(null)
   const [actionReason, setActionReason] = useState('')
   const [showReasonModal, setShowReasonModal] = useState(false)
@@ -130,7 +141,8 @@ export const OrdersPage = () => {
           name: menuItems.get(item.menuItemId) || `Unknown Item`,
           quantity: item.quantity,
           price: item.price,
-          subtotal: item.subtotal
+          subtotal: item.subtotal,
+          status: item.status
         }))
       }))
       const activeOrders = ordersWithNames.filter(
@@ -214,7 +226,8 @@ export const OrdersPage = () => {
               name: itemName || `Unknown Item (${item.menuItemId})`,
               quantity: item.quantity,
               price: item.price,
-              subtotal: item.subtotal
+              subtotal: item.subtotal,
+              status: item.status // Include item status (PREPARING, COMPLETED, VOIDED)
             }
           })
         }))
@@ -278,13 +291,27 @@ export const OrdersPage = () => {
     try {
       // Get the updated order from API response (includes processedBy when completed)
       const updatedOrder = await ordersApi.updateStatus(orderId, newStatus)
+      
+      // When marking as COMPLETED, also mark all order items as COMPLETED
+      if (newStatus === 'COMPLETED') {
+        try {
+          await ordersApi.markAllItemsCompleted(orderId)
+        } catch (itemError) {
+          console.error('Failed to mark items as completed:', itemError)
+        }
+      }
+      
       setOrders(prev => prev.map(order => 
         order.id === orderId 
           ? { 
               ...order, 
               status: newStatus, 
               completedAt: newStatus === 'COMPLETED' ? new Date().toISOString() : order.completedAt,
-              processedBy: updatedOrder.processedBy || order.processedBy
+              processedBy: updatedOrder.processedBy || order.processedBy,
+              // Update all items to COMPLETED if order is completed
+              items: newStatus === 'COMPLETED' 
+                ? order.items.map(item => ({ ...item, status: item.status !== 'VOIDED' ? 'COMPLETED' as const : item.status }))
+                : order.items
             }
           : order
       ))
@@ -337,8 +364,8 @@ export const OrdersPage = () => {
   // ============ Manager Authorization Actions ============
   
   // Start action that requires manager authorization
-  const startAuthorizedAction = (type: 'void' | 'refund' | 'complimentary' | 'writeOff' | 'voidAndReorder', orderId: string, order?: Order) => {
-    setPendingAction({ type, orderId, order })
+  const startAuthorizedAction = (type: 'void' | 'refund' | 'complimentary' | 'writeOff' | 'voidAndReorder' | 'voidItem', orderId: string, order?: Order, itemId?: string, itemName?: string) => {
+    setPendingAction({ type, orderId, order, itemId, itemName })
     setActionReason('')
     setShowReasonModal(true)
     setOpenMoreActionsId(null)
@@ -367,7 +394,7 @@ export const OrdersPage = () => {
     if (!pendingAction) return
 
     try {
-      const { type, orderId, order } = pendingAction
+      const { type, orderId, order, itemId, itemName } = pendingAction
 
       switch (type) {
         case 'void':
@@ -396,6 +423,27 @@ export const OrdersPage = () => {
           // Written off orders (non-payment) become COMPLETED status
           setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'COMPLETED', paymentStatus: 'WRITTEN_OFF', notes: actionReason, authorizedBy: managerId } : o))
           alert(`Order written off. Authorized by: ${managerName}`)
+          break
+
+        case 'voidItem':
+          if (itemId) {
+            await ordersApi.voidOrderItem(orderId, itemId, actionReason, managerId)
+            // Update local state - mark item as voided and update total
+            setOrders(prev => prev.map(o => {
+              if (o.id === orderId) {
+                const updatedItems = o.items.map(item => 
+                  item.id === itemId ? { ...item, status: 'VOIDED' as const } : item
+                )
+                // Recalculate total excluding voided items
+                const newTotal = updatedItems
+                  .filter(item => item.status !== 'VOIDED')
+                  .reduce((sum, item) => sum + item.subtotal, 0)
+                return { ...o, items: updatedItems, totalAmount: newTotal }
+              }
+              return o
+            }))
+            alert(`Item "${itemName}" voided successfully. Authorized by: ${managerName}`)
+          }
           break
 
         case 'voidAndReorder':
@@ -558,6 +606,23 @@ export const OrdersPage = () => {
           customerName: order.customerName,
           tableNumber: order.tableNumber,
           orderType: order.orderType
+        }
+      } 
+    })
+  }
+
+  // Navigate to POS to add more items to an existing TAB ORDER (UNPAID)
+  // Items will be added directly to this order, not creating a new linked order
+  const handleAddToTab = (order: Order) => {
+    navigate('/admin/pos', { 
+      state: { 
+        addToTab: {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          tableNumber: order.tableNumber,
+          orderType: order.orderType,
+          existingItems: order.items
         }
       } 
     })
@@ -817,8 +882,11 @@ export const OrdersPage = () => {
     const combinedTotal = getLinkedOrdersTotal(parentOrderId)
 
     const receiptHTML = generateLinkedOrdersReceiptHTML({
-      customerName: parentOrder.customerName || undefined,
-      tableNumber: parentOrder.tableNumber || undefined,
+      parentOrder: {
+        orderNumber: parentOrder.orderNumber,
+        customerName: parentOrder.customerName || undefined,
+        tableNumber: parentOrder.tableNumber || undefined
+      },
       orders: group.map(order => ({
         orderNumber: order.orderNumber,
         items: order.items.map(item => ({
@@ -828,6 +896,8 @@ export const OrdersPage = () => {
         })),
         totalAmount: order.totalAmount
       })),
+      combinedSubtotal: combinedTotal,
+      combinedTax: 0,
       combinedTotal
     })
 
@@ -883,13 +953,9 @@ export const OrdersPage = () => {
           return order.status === 'CANCELLED' && orderDate === today
         }
           
-        case 'unpaid':
-          // Show all unpaid orders that aren't cancelled
-          return order.paymentStatus === 'UNPAID' && order.status !== 'CANCELLED'
-          
-        case 'paid':
-          // Show all paid orders (including completed)
-          return order.paymentStatus === 'PAID'
+        case 'tab':
+          // Tab orders: unpaid orders that are PENDING or PREPARING (can still accumulate items)
+          return order.paymentStatus === 'UNPAID' && order.status !== 'CANCELLED' && order.status !== 'COMPLETED'
           
         case 'linked': {
           // Show orders that are part of a linked group (exclude VOIDED orders):
@@ -924,10 +990,456 @@ export const OrdersPage = () => {
     completed: orders.filter(o => o.status === 'COMPLETED').length,
   }
 
+  // Helper to render a full order card for vertical layout (same as horizontal layout)
+  const renderOrderCard = (order: Order, linkedOrders: Order[]) => {
+    const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.PREPARING
+    const StatusIcon = statusInfo.icon
+    const statusBorderColor = statusBorderColors[order.status as keyof typeof statusBorderColors] || 'border-l-gray-300'
+    const hasLinks = linkedOrders.length > 0
+    const isSelectedForLink = selectedOrdersForLink.has(order.id)
+    const canLink = order.paymentStatus !== 'PAID' && order.status !== 'CANCELLED'
+    
+    return (
+      <div 
+        key={order.id}
+        className={`bg-white rounded-xl shadow-sm border border-gray-200 border-l-4 ${statusBorderColor} p-4 hover:shadow-md transition-all ${
+          isSelectedForLink ? 'ring-2 ring-blue-400 bg-blue-50' : ''
+        }`}
+        onClick={linkMode && canLink ? () => toggleOrderForLink(order.id) : undefined}
+        style={{ cursor: linkMode && canLink ? 'pointer' : 'default' }}
+      >
+        <div className="flex flex-col gap-3">
+          {/* Link Checkbox */}
+          {linkMode && (
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                checked={isSelectedForLink}
+                onChange={() => canLink && toggleOrderForLink(order.id)}
+                disabled={!canLink}
+                className="h-5 w-5 rounded border-gray-300 text-blue-500 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+          )}
+          
+          {/* Order Info */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-bold text-gray-900">{formatOrderNumber(order.orderNumber)}</h3>
+              <Badge className={`${statusInfo.color} border text-xs`}>
+                <StatusIcon className="h-3 w-3 mr-1" />
+                {statusInfo.label}
+              </Badge>
+              {hasLinks && (
+                <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
+                  <Link2 className="h-3 w-3 mr-0.5" />+{linkedOrders.length}
+                </Badge>
+              )}
+              {order.tableNumber && (
+                <Badge variant="outline" className="text-xs">
+                  Table {order.tableNumber}
+                </Badge>
+              )}
+              {order.orderType && (
+                <Badge variant="outline" className="text-xs">
+                  {order.orderType === 'DINE_IN' ? 'Dine-In' : 
+                   order.orderType === 'TAKEOUT' ? 'Takeout' : 'Delivery'}
+                </Badge>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-sm text-gray-600">
+                <span className="font-medium">Customer:</span> {order.customerName}
+              </p>
+              {/* Items with status icons */}
+              <div className="text-sm text-gray-600">
+                <span className="font-medium">Items:</span>
+                <div className="mt-1 space-y-0.5">
+                  {order.items.slice(0, 5).map((item, idx) => (
+                    <div key={idx} className={`flex items-center gap-2 ${item.status === 'VOIDED' ? 'opacity-50 line-through' : ''}`}>
+                      {item.status === 'VOIDED' ? (
+                        <XCircle className="h-3 w-3 text-red-500 shrink-0" />
+                      ) : item.status === 'COMPLETED' ? (
+                        <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+                      ) : (
+                        <ChefHat className="h-3 w-3 text-blue-500 shrink-0" />
+                      )}
+                      <span className="flex-1 truncate">{item.name} (x{item.quantity})</span>
+                      {item.status !== 'VOIDED' && order.status !== 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            startAuthorizedAction('voidItem', order.id, order, item.id, item.name)
+                          }}
+                          className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                          title="Void this item"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {order.items.length > 5 && (
+                    <div className="text-xs text-gray-400">+{order.items.length - 5} more items</div>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                <span>{getTimeAgo(order.createdAt)}</span>
+                <span>•</span>
+                <span className="font-semibold" style={{ color: '#F9C900' }}>
+                  ₱{order.totalAmount.toFixed(2)}
+                </span>
+                <Badge className={`text-xs ${paymentStatusConfig[order.paymentStatus]?.color || 'bg-gray-100 text-gray-800'}`}>
+                  {paymentStatusConfig[order.paymentStatus]?.label || order.paymentStatus}
+                </Badge>
+                {order.paymentStatus === 'UNPAID' && !order.linkedOrderId && (
+                  <Badge className="text-xs bg-amber-100 text-amber-800 border-amber-200 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Tab
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+            {/* PENDING Orders */}
+            {order.status === 'PENDING' && (
+              <>
+                <Button
+                  size="sm"
+                  onClick={() => handleEditOrder(order)}
+                  variant="outline"
+                  className="text-xs border-blue-300 text-blue-600 hover:bg-blue-50"
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => updateOrderStatus(order.id, 'PREPARING')}
+                  className="text-xs"
+                  style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                >
+                  Start Preparing
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(order)} className="text-xs px-2">
+                  <Eye className="h-3 w-3" />
+                </Button>
+                <div className="relative">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOpenMoreActionsId(openMoreActionsId === order.id ? null : order.id)
+                    }}
+                    className="text-xs px-2"
+                  >
+                    <MoreVertical className="h-3 w-3" />
+                  </Button>
+                  {openMoreActionsId === order.id && (
+                    <div className="absolute right-0 bottom-full mb-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-[100]">
+                      <button
+                        onClick={() => updateOrderStatus(order.id, 'CANCELLED')}
+                        className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-lg"
+                      >
+                        <XCircle className="h-3 w-3" />
+                        Cancel Order
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* PREPARING Orders - Unpaid */}
+            {order.status === 'PREPARING' && order.paymentStatus === 'UNPAID' && (
+              <>
+                <Button
+                  size="sm"
+                  onClick={() => updateOrderStatus(order.id, 'COMPLETED')}
+                  className="text-xs"
+                  style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                >
+                  Complete
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleAddToTab(order)}
+                  variant="outline"
+                  className="text-xs border-green-300 text-green-600 hover:bg-green-50"
+                >
+                  <Plus className="h-3 w-3 mr-1" />Add
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(order)} className="text-xs px-2">
+                  <Eye className="h-3 w-3" />
+                </Button>
+                <div className="relative">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOpenMoreActionsId(openMoreActionsId === order.id ? null : order.id)
+                    }}
+                    className="text-xs px-2"
+                  >
+                    <MoreVertical className="h-3 w-3" />
+                  </Button>
+                  {openMoreActionsId === order.id && (
+                    <div className="absolute right-0 bottom-full mb-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-[100]">
+                      <button
+                        onClick={() => startAuthorizedAction('void', order.id, order)}
+                        className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 first:rounded-t-lg"
+                      >
+                        <Ban className="h-3 w-3" />
+                        Void Order
+                      </button>
+                      <button
+                        onClick={() => handleAddLinkedOrder(order)}
+                        className="w-full px-3 py-2 text-left text-xs text-green-600 hover:bg-green-50 flex items-center gap-2"
+                      >
+                        <Link2 className="h-3 w-3" />
+                        Add Linked Order
+                      </button>
+                      <button
+                        onClick={() => startAuthorizedAction('voidAndReorder', order.id, order)}
+                        className="w-full px-3 py-2 text-left text-xs text-orange-600 hover:bg-orange-50 flex items-center gap-2 last:rounded-b-lg"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Void & Re-order
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* PREPARING Orders - Already Paid */}
+            {order.status === 'PREPARING' && order.paymentStatus === 'PAID' && (
+              <>
+                <Button
+                  size="sm"
+                  onClick={() => updateOrderStatus(order.id, 'COMPLETED')}
+                  className="text-xs"
+                  style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                >
+                  Complete
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(order)} className="text-xs px-2">
+                  <Eye className="h-3 w-3" />
+                </Button>
+                <div className="relative">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOpenMoreActionsId(openMoreActionsId === order.id ? null : order.id)
+                    }}
+                    className="text-xs px-2"
+                  >
+                    <MoreVertical className="h-3 w-3" />
+                  </Button>
+                  {openMoreActionsId === order.id && (
+                    <div className="absolute right-0 bottom-full mb-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-[100]">
+                      <button
+                        onClick={() => startAuthorizedAction('refund', order.id, order)}
+                        className="w-full px-3 py-2 text-left text-xs text-purple-600 hover:bg-purple-50 flex items-center gap-2 rounded-lg"
+                      >
+                        <DollarSign className="h-3 w-3" />
+                        Void & Refund
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* COMPLETED Orders - Unpaid */}
+            {order.status === 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
+              <>
+                <Button
+                  size="sm"
+                  onClick={() => handleMarkPaidAndPrint(order)}
+                  className="text-xs flex items-center gap-1"
+                  style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                >
+                  <Printer className="h-3 w-3" />
+                  Paid & Print
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleMarkAsPaidButton(order)}
+                  className="text-xs border-green-300 text-green-600 hover:bg-green-50"
+                >
+                  <DollarSign className="h-3 w-3" />
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleAddToTab(order)}
+                  variant="outline"
+                  className="text-xs border-amber-300 text-amber-600 hover:bg-amber-50"
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(order)} className="text-xs px-2">
+                  <Eye className="h-3 w-3" />
+                </Button>
+                <div className="relative">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOpenMoreActionsId(openMoreActionsId === order.id ? null : order.id)
+                    }}
+                    className="text-xs px-2"
+                  >
+                    <MoreVertical className="h-3 w-3" />
+                  </Button>
+                  {openMoreActionsId === order.id && (
+                    <div className="absolute right-0 bottom-full mb-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-[100]">
+                      <button
+                        onClick={() => startAuthorizedAction('complimentary', order.id, order)}
+                        className="w-full px-3 py-2 text-left text-xs text-pink-600 hover:bg-pink-50 flex items-center gap-2 first:rounded-t-lg"
+                      >
+                        <Gift className="h-3 w-3" />
+                        Complimentary
+                      </button>
+                      <button
+                        onClick={() => startAuthorizedAction('writeOff', order.id, order)}
+                        className="w-full px-3 py-2 text-left text-xs text-gray-600 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <FileX className="h-3 w-3" />
+                        Non-Payment
+                      </button>
+                      <button
+                        onClick={() => startAuthorizedAction('void', order.id, order)}
+                        className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      >
+                        <Ban className="h-3 w-3" />
+                        Void Order
+                      </button>
+                      <button
+                        onClick={() => printReceipt(order)}
+                        className="w-full px-3 py-2 text-left text-xs text-blue-600 hover:bg-blue-50 flex items-center gap-2"
+                      >
+                        <Printer className="h-3 w-3" />
+                        Print Bill
+                      </button>
+                      <button
+                        onClick={() => handleAddLinkedOrder(order)}
+                        className="w-full px-3 py-2 text-left text-xs text-green-600 hover:bg-green-50 flex items-center gap-2 last:rounded-b-lg"
+                      >
+                        <Link2 className="h-3 w-3" />
+                        Add Linked Order
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* COMPLETED Orders - Paid */}
+            {order.status === 'COMPLETED' && order.paymentStatus === 'PAID' && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => printReceipt(order)}
+                  className="text-xs flex items-center gap-1"
+                >
+                  <Printer className="h-3 w-3" />
+                  Print
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(order)} className="text-xs px-2">
+                  <Eye className="h-3 w-3" />
+                </Button>
+                <div className="relative">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOpenMoreActionsId(openMoreActionsId === order.id ? null : order.id)
+                    }}
+                    className="text-xs px-2"
+                  >
+                    <MoreVertical className="h-3 w-3" />
+                  </Button>
+                  {openMoreActionsId === order.id && (
+                    <div className="absolute right-0 bottom-full mb-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-[100]">
+                      <button
+                        onClick={() => startAuthorizedAction('refund', order.id, order)}
+                        className="w-full px-3 py-2 text-left text-xs text-purple-600 hover:bg-purple-50 flex items-center gap-2 rounded-lg"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Void & Refund
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* CANCELLED Orders */}
+            {order.status === 'CANCELLED' && (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(order)} className="text-xs px-2">
+                  <Eye className="h-3 w-3" />
+                  View Details
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <AdminLayout>
+    <AdminLayout 
+      hideHeaderOnDesktop={!showHeaderInOrdersPage}
+      showOverviewInHeader={showOverviewInHeaderOrdersPage}
+      overviewCounts={stats}
+    >
       <div className="space-y-4">
-        {/* Stats Cards - Compact style */}
+        {/* Overview in Header - shown when header is hidden but overview in header is enabled */}
+        {!showHeaderInOrdersPage && showOverviewInHeaderOrdersPage && (
+          <div className="flex items-center gap-4 p-3 bg-white rounded-xl shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-yellow-100 rounded-lg">
+                <Clock className="h-4 w-4 text-yellow-600" />
+              </div>
+              <span className="text-sm font-semibold text-yellow-600">{stats.pending}</span>
+              <span className="text-xs text-gray-500">Pending</span>
+            </div>
+            <div className="w-px h-6 bg-gray-200" />
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-blue-100 rounded-lg">
+                <Package className="h-4 w-4 text-blue-600" />
+              </div>
+              <span className="text-sm font-semibold text-blue-600">{stats.preparing}</span>
+              <span className="text-xs text-gray-500">Preparing</span>
+            </div>
+            <div className="w-px h-6 bg-gray-200" />
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-green-100 rounded-lg">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              </div>
+              <span className="text-sm font-semibold text-green-600">{stats.completed}</span>
+              <span className="text-xs text-gray-500">Completed</span>
+            </div>
+          </div>
+        )}
+        
+        {/* Stats Cards - Conditionally visible */}
+        {showOverviewCardsInOrdersPage && (
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
             <div className="flex items-center justify-between">
@@ -963,6 +1475,7 @@ export const OrdersPage = () => {
             </div>
           </div>
         </div>
+        )}
 
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -1060,6 +1573,22 @@ export const OrdersPage = () => {
                   >
                     <span className="text-xs font-bold">4</span>
                   </button>
+                  <div className="w-px h-4 bg-gray-300 mx-1" />
+                  {/* Separator Direction Buttons */}
+                  <button
+                    onClick={() => setStatusSeparatorDirection(statusSeparatorDirection === 'horizontal' ? 'off' : 'horizontal')}
+                    className={`p-1.5 rounded ${statusSeparatorDirection === 'horizontal' ? 'bg-blue-100 text-blue-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="Horizontal separator (grouped rows)"
+                  >
+                    <Rows3 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setStatusSeparatorDirection(statusSeparatorDirection === 'vertical' ? 'off' : 'vertical')}
+                    className={`p-1.5 rounded ${statusSeparatorDirection === 'vertical' ? 'bg-blue-100 text-blue-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="Vertical separator (3 columns by status)"
+                  >
+                    <Columns3 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -1106,22 +1635,17 @@ export const OrdersPage = () => {
               {/* Divider */}
               <div className="w-px h-6 bg-gray-300 mx-1" />
               
-              {/* Payment status filters */}
+              {/* Tab Orders filter - shows orders that are unpaid and can accumulate items */}
               <Button
-                variant={selectedStatus === 'unpaid' ? 'default' : 'outline'}
+                variant={selectedStatus === 'tab' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setSelectedStatus('unpaid')}
-                className="whitespace-nowrap text-orange-600"
+                onClick={() => setSelectedStatus('tab')}
+                className="whitespace-nowrap text-orange-600 relative"
               >
-                💰 Unpaid
-              </Button>
-              <Button
-                variant={selectedStatus === 'paid' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedStatus('paid')}
-                className="whitespace-nowrap text-green-600"
-              >
-                ✓ Paid
+                📋 Tab Orders
+                {orders.filter(o => o.paymentStatus === 'UNPAID' && o.status !== 'CANCELLED' && o.status !== 'COMPLETED').length > 0 && selectedStatus !== 'tab' && (
+                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-orange-500 rounded-full animate-pulse" />
+                )}
               </Button>
               <Button
                 variant={selectedStatus === 'linked' ? 'default' : 'outline'}
@@ -1183,7 +1707,7 @@ export const OrdersPage = () => {
           </div>
         </div>
 
-        {/* Orders List */}
+        {/* Orders List - with optional status separators */}
         <div className={`grid gap-3 ${
           gridColumns === 1 ? 'grid-cols-1' :
           gridColumns === 2 ? 'grid-cols-1 md:grid-cols-2' :
@@ -1248,7 +1772,84 @@ export const OrdersPage = () => {
                 processedIds.add(order.id)
               })
 
-              return orderGroups.map(({ parent: order, children: linkedOrders }) => {
+              // Sort by status when status separator is enabled: PENDING -> PREPARING -> READY -> COMPLETED -> CANCELLED
+              const statusOrder = ['PENDING', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED']
+              const sortedGroups = statusSeparatorDirection !== 'off' 
+                ? [...orderGroups].sort((a, b) => {
+                    const aIndex = statusOrder.indexOf(a.parent.status)
+                    const bIndex = statusOrder.indexOf(b.parent.status)
+                    if (aIndex !== bIndex) return aIndex - bIndex
+                    // Within same status, sort by creation time (most recent first)
+                    return new Date(b.parent.createdAt).getTime() - new Date(a.parent.createdAt).getTime()
+                  })
+                : orderGroups
+
+              // Track current status for separator rendering
+              let currentStatus = ''
+              
+              // Status separator config
+              const statusSeparatorConfig: Record<string, { label: string; bgColor: string; textColor: string; icon: typeof Clock }> = {
+                PENDING: { label: 'Pending Orders', bgColor: 'bg-yellow-100', textColor: 'text-yellow-800', icon: Clock },
+                PREPARING: { label: 'Preparing', bgColor: 'bg-blue-100', textColor: 'text-blue-800', icon: Package },
+                READY: { label: 'Ready for Pickup', bgColor: 'bg-purple-100', textColor: 'text-purple-800', icon: CheckCircle },
+                COMPLETED: { label: 'Completed', bgColor: 'bg-green-100', textColor: 'text-green-800', icon: CheckCircle },
+                CANCELLED: { label: 'Cancelled', bgColor: 'bg-red-100', textColor: 'text-red-800', icon: XCircle },
+              }
+
+              // Vertical layout: 3 columns by status (Pending | Preparing | Completed)
+              if (statusSeparatorDirection === 'vertical') {
+                const pendingGroups = sortedGroups.filter(g => g.parent.status === 'PENDING')
+                const preparingGroups = sortedGroups.filter(g => g.parent.status === 'PREPARING')
+                const completedGroups = sortedGroups.filter(g => g.parent.status === 'COMPLETED' || g.parent.status === 'READY' || g.parent.status === 'CANCELLED')
+                
+                return (
+                  <div className="col-span-full grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {/* Pending Column */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-100 sticky top-0 z-10">
+                        <Clock className="h-4 w-4 text-yellow-700" />
+                        <span className="font-semibold text-sm text-yellow-800">Pending</span>
+                        <Badge className="bg-yellow-200 text-yellow-800 border-0">{pendingGroups.length}</Badge>
+                      </div>
+                      {pendingGroups.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400 text-sm">No pending orders</div>
+                      ) : pendingGroups.map(({ parent: order, children: linkedOrders }) => 
+                        renderOrderCard(order, linkedOrders)
+                      )}
+                    </div>
+                    
+                    {/* Preparing Column */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-100 sticky top-0 z-10">
+                        <Package className="h-4 w-4 text-blue-700" />
+                        <span className="font-semibold text-sm text-blue-800">Preparing</span>
+                        <Badge className="bg-blue-200 text-blue-800 border-0">{preparingGroups.length}</Badge>
+                      </div>
+                      {preparingGroups.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400 text-sm">No orders preparing</div>
+                      ) : preparingGroups.map(({ parent: order, children: linkedOrders }) => 
+                        renderOrderCard(order, linkedOrders)
+                      )}
+                    </div>
+                    
+                    {/* Completed Column */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-100 sticky top-0 z-10">
+                        <CheckCircle className="h-4 w-4 text-green-700" />
+                        <span className="font-semibold text-sm text-green-800">Completed</span>
+                        <Badge className="bg-green-200 text-green-800 border-0">{completedGroups.length}</Badge>
+                      </div>
+                      {completedGroups.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400 text-sm">No completed orders</div>
+                      ) : completedGroups.map(({ parent: order, children: linkedOrders }) => 
+                        renderOrderCard(order, linkedOrders)
+                      )}
+                    </div>
+                  </div>
+                )
+              }
+
+              return sortedGroups.map(({ parent: order, children: linkedOrders }) => {
                 const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.PREPARING
                 const StatusIcon = statusInfo.icon
                 const isSelectedForLink = selectedOrdersForLink.has(order.id)
@@ -1258,32 +1859,52 @@ export const OrdersPage = () => {
                 const combinedTotal = hasLinks ? order.totalAmount + linkedOrders.reduce((sum, o) => sum + o.totalAmount, 0) : order.totalAmount
                 const allPaid = hasLinks ? order.paymentStatus === 'PAID' && linkedOrders.every(o => o.paymentStatus === 'PAID') : order.paymentStatus === 'PAID'
                 
+                // Check if we need to render a status separator (horizontal mode)
+                const showSeparator = statusSeparatorDirection === 'horizontal' && order.status !== currentStatus
+                if (statusSeparatorDirection === 'horizontal') {
+                  currentStatus = order.status
+                }
+                const separatorConfig = statusSeparatorConfig[order.status] || statusSeparatorConfig.PENDING
+                const SeparatorIcon = separatorConfig.icon
+                const ordersInStatus = sortedGroups.filter(g => g.parent.status === order.status).length
+                
                 // Render linked order group with special UI
                 if (hasLinks) {
                   return (
-                    <div key={order.id} className="col-span-full">
-                      {/* Linked Orders Container */}
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 p-4">
-                        {/* Group Header */}
-                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-blue-200">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-100 rounded-lg">
-                              <Link2 className="h-5 w-5 text-blue-600" />
-                            </div>
-                            <div>
-                              <h3 className="font-bold text-blue-900">Linked Orders • {order.customerName}</h3>
-                              <p className="text-sm text-blue-600">
-                                {linkedOrders.length + 1} orders combined • Table {order.tableNumber || 'N/A'}
-                              </p>
-                            </div>
+                    <React.Fragment key={order.id}>
+                      {showSeparator && (
+                        <div className="col-span-full flex items-center gap-3 py-2">
+                          <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${separatorConfig.bgColor}`}>
+                            <SeparatorIcon className={`h-4 w-4 ${separatorConfig.textColor}`} />
+                            <span className={`font-semibold text-sm ${separatorConfig.textColor}`}>{separatorConfig.label}</span>
+                            <Badge className={`${separatorConfig.bgColor} ${separatorConfig.textColor} border-0`}>{ordersInStatus}</Badge>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <p className="text-sm text-gray-500">Combined Total</p>
-                              <p className="text-2xl font-bold text-blue-700">₱{combinedTotal.toFixed(2)}</p>
+                          <div className="flex-1 h-px bg-gray-200" />
+                        </div>
+                      )}
+                      <div className="col-span-full">
+                        {/* Linked Orders Container */}
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 p-4">
+                          {/* Group Header */}
+                          <div className="flex items-center justify-between mb-4 pb-3 border-b border-blue-200">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-blue-100 rounded-lg">
+                                <Link2 className="h-5 w-5 text-blue-600" />
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-blue-900">Linked Orders • {order.customerName}</h3>
+                                <p className="text-sm text-blue-600">
+                                  {linkedOrders.length + 1} orders combined • Table {order.tableNumber || 'N/A'}
+                                </p>
+                              </div>
                             </div>
-                            {allPaid ? (
-                              <Badge className="bg-green-100 text-green-800 border border-green-200">
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <p className="text-sm text-gray-500">Combined Total</p>
+                                <p className="text-2xl font-bold text-blue-700">₱{combinedTotal.toFixed(2)}</p>
+                              </div>
+                              {allPaid ? (
+                                <Badge className="bg-green-100 text-green-800 border border-green-200">
                                 <CheckCircle className="h-3 w-3 mr-1" />
                                 All Paid
                               </Badge>
@@ -1322,10 +1943,25 @@ export const OrdersPage = () => {
                                   </Badge>
                                 </div>
                                 
-                                {/* Items */}
-                                <p className="text-xs text-gray-500 mb-2 line-clamp-1">
-                                  {o.items.map(item => `${item.name} (x${item.quantity})`).join(', ')}
-                                </p>
+                                {/* Items with status icons */}
+                                <div className="space-y-1 mb-2">
+                                  {o.items.slice(0, 3).map((item, itemIdx) => (
+                                    <div key={itemIdx} className={`flex items-center gap-1.5 text-xs ${item.status === 'VOIDED' ? 'opacity-50 line-through' : ''}`}>
+                                      {item.status === 'VOIDED' ? (
+                                        <XCircle className="h-3 w-3 text-red-500 shrink-0" />
+                                      ) : item.status === 'COMPLETED' ? (
+                                        <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+                                      ) : (
+                                        <ChefHat className="h-3 w-3 text-blue-500 shrink-0" />
+                                      )}
+                                      <span className="text-gray-600 truncate">{item.name}</span>
+                                      <span className="text-gray-400">x{item.quantity}</span>
+                                    </div>
+                                  ))}
+                                  {o.items.length > 3 && (
+                                    <div className="text-xs text-gray-400">+{o.items.length - 3} more</div>
+                                  )}
+                                </div>
                                 
                                 {/* Price and Status */}
                                 <div className="flex items-center justify-between mb-3">
@@ -1655,11 +2291,23 @@ export const OrdersPage = () => {
                         </div>
                       </div>
                     </div>
-                  )
+                  </React.Fragment>
+                )
                 }
               
                 // Regular single order card
                 return (
+                  <React.Fragment key={order.id}>
+                    {showSeparator && (
+                      <div className="col-span-full flex items-center gap-3 py-2">
+                        <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${separatorConfig.bgColor}`}>
+                          <SeparatorIcon className={`h-4 w-4 ${separatorConfig.textColor}`} />
+                          <span className={`font-semibold text-sm ${separatorConfig.textColor}`}>{separatorConfig.label}</span>
+                          <Badge className={`${separatorConfig.bgColor} ${separatorConfig.textColor} border-0`}>{ordersInStatus}</Badge>
+                        </div>
+                        <div className="flex-1 h-px bg-gray-200" />
+                      </div>
+                    )}
                   <div 
                     key={order.id} 
                     className={`bg-white rounded-xl shadow-sm border border-gray-200 border-l-4 ${statusBorderColor} p-4 hover:shadow-md transition-all ${
@@ -1713,9 +2361,36 @@ export const OrdersPage = () => {
                           <p className="text-sm text-gray-600">
                             <span className="font-medium">Customer:</span> {order.customerName}
                           </p>
-                          <p className="text-sm text-gray-600">
-                            <span className="font-medium">Items:</span> {order.items.map(item => `${item.name} (x${item.quantity})`).join(', ')}
-                          </p>
+                          {/* Items with status icons */}
+                          <div className="text-sm text-gray-600">
+                            <span className="font-medium">Items:</span>
+                            <div className="mt-1 space-y-0.5">
+                              {order.items.map((item, idx) => (
+                                <div key={idx} className={`flex items-center gap-2 ${item.status === 'VOIDED' ? 'opacity-50 line-through' : ''}`}>
+                                  {item.status === 'VOIDED' ? (
+                                    <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />
+                                  ) : item.status === 'COMPLETED' ? (
+                                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                                  ) : (
+                                    <ChefHat className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                                  )}
+                                  <span className="flex-1">{item.name} (x{item.quantity})</span>
+                                  {item.status !== 'VOIDED' && order.status !== 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        startAuthorizedAction('voidItem', order.id, order, item.id, item.name)
+                                      }}
+                                      className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                                      title="Void this item"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                           <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
                             <span>{getTimeAgo(order.createdAt)}</span>
                             <span>•</span>
@@ -1725,6 +2400,13 @@ export const OrdersPage = () => {
                             <Badge className={`text-xs ${paymentStatusConfig[order.paymentStatus]?.color || 'bg-gray-100 text-gray-800'}`}>
                               {paymentStatusConfig[order.paymentStatus]?.label || order.paymentStatus}
                             </Badge>
+                            {/* Tab Order Badge for UNPAID orders without linked orders */}
+                            {order.paymentStatus === 'UNPAID' && !order.linkedOrderId && (
+                              <Badge className="text-xs bg-amber-100 text-amber-800 border-amber-200 flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                Tab Order
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1800,6 +2482,17 @@ export const OrdersPage = () => {
                               style={{ backgroundColor: '#F9C900', color: '#000000' }}
                             >
                               ✅ Mark Complete
+                            </Button>
+                            
+                            {/* Add Another Order button for Tab Orders */}
+                            <Button
+                              size="sm"
+                              onClick={() => handleAddToTab(order)}
+                              variant="outline"
+                              className="flex items-center gap-1 border-green-300 text-green-600 hover:bg-green-50"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add Another Order
                             </Button>
                             
                             {/* View Details + More side by side */}
@@ -1967,6 +2660,17 @@ export const OrdersPage = () => {
                               Mark as Paid
                             </Button>
                             
+                            {/* Add Another Order button for Tab Orders */}
+                            <Button
+                              size="sm"
+                              onClick={() => handleAddToTab(order)}
+                              variant="outline"
+                              className="flex items-center gap-1 border-amber-300 text-amber-600 hover:bg-amber-50"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add Another Order
+                            </Button>
+                            
                             {/* View Details + More side by side */}
                             <div className="flex gap-1">
                               <Button
@@ -2123,7 +2827,8 @@ export const OrdersPage = () => {
                       </div>
                     </div>
                   </div>
-                )
+                </React.Fragment>
+              )
               })
             })()
           )}
@@ -2222,12 +2927,35 @@ export const OrdersPage = () => {
                   <h3 className="font-semibold mb-3">Order Items</h3>
                   <div className="space-y-2">
                     {selectedOrder.items.map(item => (
-                      <div key={item.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="font-medium">{item.name}</p>
-                          <p className="text-sm text-gray-500">Quantity: {item.quantity} × ₱{item.price.toFixed(2)}</p>
+                      <div key={item.id} className={`flex justify-between items-center p-3 bg-gray-50 rounded-lg ${item.status === 'VOIDED' ? 'opacity-50' : ''}`}>
+                        <div className="flex items-center gap-3">
+                          {/* Item status icon */}
+                          {item.status === 'VOIDED' ? (
+                            <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+                          ) : item.status === 'COMPLETED' ? (
+                            <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+                          ) : (
+                            <ChefHat className="h-4 w-4 text-blue-500 shrink-0" />
+                          )}
+                          <div>
+                            <p className={`font-medium ${item.status === 'VOIDED' ? 'line-through' : ''}`}>{item.name}</p>
+                            <p className="text-sm text-gray-500">Quantity: {item.quantity} × ₱{item.price.toFixed(2)}</p>
+                          </div>
                         </div>
-                        <p className="font-semibold">₱{item.subtotal.toFixed(2)}</p>
+                        <div className="text-right">
+                          <p className={`font-semibold ${item.status === 'VOIDED' ? 'line-through text-gray-400' : ''}`}>₱{item.subtotal.toFixed(2)}</p>
+                          {item.status && (
+                            <span className={`text-xs ${
+                              item.status === 'COMPLETED' ? 'text-green-600' : 
+                              item.status === 'VOIDED' ? 'text-red-600' : 
+                              'text-blue-600'
+                            }`}>
+                              {item.status === 'COMPLETED' ? '✓ Done' : 
+                               item.status === 'VOIDED' ? '✗ Voided' : 
+                               '🍳 Preparing'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2510,12 +3238,81 @@ export const OrdersPage = () => {
                       {pendingAction.type === 'complimentary' && 'Mark as Complimentary'}
                       {pendingAction.type === 'writeOff' && 'Report Non-Payment'}
                       {pendingAction.type === 'voidAndReorder' && 'Void & Re-order'}
+                      {pendingAction.type === 'voidItem' && `Void Item: ${pendingAction.itemName}`}
                     </h2>
                     <p className="text-sm text-gray-600">Please provide a reason for this action</p>
                   </div>
                 </div>
               </div>
               <div className="p-6 space-y-4">
+                {/* Preset Reasons Dropdown */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Quick Select Reason
+                  </label>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setActionReason(e.target.value)
+                      }
+                    }}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 text-gray-700"
+                  >
+                    <option value="">-- Select a preset reason --</option>
+                    {pendingAction.type === 'void' && (
+                      <>
+                        <option value="Customer cancelled order">Customer cancelled order</option>
+                        <option value="Wrong order placed">Wrong order placed</option>
+                        <option value="Duplicate order">Duplicate order</option>
+                        <option value="System error / test order">System error / test order</option>
+                        <option value="Item unavailable">Item unavailable</option>
+                      </>
+                    )}
+                    {pendingAction.type === 'voidItem' && (
+                      <>
+                        <option value="Customer changed mind">Customer changed mind</option>
+                        <option value="Out of stock">Out of stock</option>
+                        <option value="Wrong item ordered">Wrong item ordered</option>
+                        <option value="Quality issue">Quality issue</option>
+                        <option value="Kitchen error">Kitchen error</option>
+                      </>
+                    )}
+                    {pendingAction.type === 'refund' && (
+                      <>
+                        <option value="Customer request">Customer request</option>
+                        <option value="Order not prepared correctly">Order not prepared correctly</option>
+                        <option value="Long wait time">Long wait time</option>
+                        <option value="Food quality issue">Food quality issue</option>
+                        <option value="Service issue">Service issue</option>
+                      </>
+                    )}
+                    {pendingAction.type === 'complimentary' && (
+                      <>
+                        <option value="VIP customer">VIP customer</option>
+                        <option value="Apology for service delay">Apology for service delay</option>
+                        <option value="Staff meal">Staff meal</option>
+                        <option value="Promotion / marketing">Promotion / marketing</option>
+                        <option value="Customer complaint resolution">Customer complaint resolution</option>
+                      </>
+                    )}
+                    {pendingAction.type === 'writeOff' && (
+                      <>
+                        <option value="Customer left without paying">Customer left without paying</option>
+                        <option value="Payment declined">Payment declined</option>
+                        <option value="Customer dispute">Customer dispute</option>
+                        <option value="Food spoilage">Food spoilage</option>
+                      </>
+                    )}
+                    {pendingAction.type === 'voidAndReorder' && (
+                      <>
+                        <option value="Incorrect item entered">Incorrect item entered</option>
+                        <option value="Customer changed order">Customer changed order</option>
+                        <option value="Need to modify items">Need to modify items</option>
+                      </>
+                    )}
+                  </select>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Reason <span className="text-red-500">*</span>
@@ -2558,10 +3355,11 @@ export const OrdersPage = () => {
           pendingAction?.type === 'complimentary' ? 'Authorize Complimentary' :
           pendingAction?.type === 'writeOff' ? 'Authorize Write-Off' :
           pendingAction?.type === 'voidAndReorder' ? 'Authorize Void & Re-order' :
+          pendingAction?.type === 'voidItem' ? `Authorize Void Item: ${pendingAction.itemName}` :
           'Manager Authorization Required'
         }
         description={`Reason: ${actionReason}`}
-        variant={pendingAction?.type === 'void' || pendingAction?.type === 'voidAndReorder' ? 'danger' : 'warning'}
+        variant={pendingAction?.type === 'void' || pendingAction?.type === 'voidAndReorder' || pendingAction?.type === 'voidItem' ? 'danger' : 'warning'}
         actionLabel="Authorize"
       />
 

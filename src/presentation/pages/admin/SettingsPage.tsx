@@ -12,7 +12,9 @@ import {
   Info,
   AlertTriangle,
   Shield,
-  Key
+  Key,
+  LayoutDashboard,
+  Smartphone
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 
@@ -110,25 +112,39 @@ export const SettingsPage = () => {
   const isManager = user?.role === 'MANAGER' || user?.role === 'ADMIN'
   
   const {
-    markPaidOnConfirmOrder,
     markPaidOnPrintReceipt,
-    printReceiptOnConfirmOrder,
     printKitchenCopy,
+    printKitchenCopyForOpenTab,
     cashChangeEnabled,
+    toastDurationSeconds,
+    maxToastNotifications,
     autoOutOfStockWhenIngredientsRunOut,
     showCurrentStockInPOS,
+    showHeaderInOrdersPage,
+    showOverviewCardsInOrdersPage,
+    showOverviewInHeaderOrdersPage,
+    statusSeparatorDirection,
+    posMobileColumnsPerRow,
+    posMobileCardSize,
     cashierCanVoidWithoutPin,
     cashierCanRefundWithoutPin,
     cashierCanComplimentaryWithoutPin,
     cashierCanWriteOffWithoutPin,
     cashierCanVoidAndReorderWithoutPin,
-    setMarkPaidOnConfirmOrder,
     setMarkPaidOnPrintReceipt,
-    setPrintReceiptOnConfirmOrder,
     setPrintKitchenCopy,
+    setPrintKitchenCopyForOpenTab,
     setCashChangeEnabled,
+    setToastDurationSeconds,
+    setMaxToastNotifications,
     setAutoOutOfStockWhenIngredientsRunOut,
     setShowCurrentStockInPOS,
+    setShowHeaderInOrdersPage,
+    setShowOverviewCardsInOrdersPage,
+    setShowOverviewInHeaderOrdersPage,
+    setStatusSeparatorDirection,
+    setPosMobileColumnsPerRow,
+    setPosMobileCardSize,
     setCashierCanVoidWithoutPin,
     setCashierCanRefundWithoutPin,
     setCashierCanComplimentaryWithoutPin,
@@ -239,16 +255,10 @@ export const SettingsPage = () => {
             <SectionHeader 
               icon={CreditCard} 
               title="Payment Settings" 
-              description="Control when orders are automatically marked as paid"
+              description="Control payment behavior in the POS system"
               color="green"
             />
             <div className="divide-y divide-gray-100">
-              <SettingItem
-                title="Mark Paid When Confirming Order"
-                description="Automatically mark orders as paid when they are confirmed in the POS system"
-                enabled={markPaidOnConfirmOrder}
-                onChange={() => setMarkPaidOnConfirmOrder(!markPaidOnConfirmOrder)}
-              />
               <SettingItem
                 title="Cash & Change Calculator"
                 description="Show calculator modal to enter cash received and calculate change when marking CASH orders as paid"
@@ -268,17 +278,60 @@ export const SettingsPage = () => {
             />
             <div className="divide-y divide-gray-100">
               <SettingItem
-                title="Print Receipt When Confirming Order"
-                description="Automatically print receipt after confirming orders in POS"
-                enabled={printReceiptOnConfirmOrder}
-                onChange={() => setPrintReceiptOnConfirmOrder(!printReceiptOnConfirmOrder)}
-              />
-              <SettingItem
                 title="Print Kitchen Copy (2 Receipts)"
                 description="Print an extra receipt for the kitchen when using the print button"
                 enabled={printKitchenCopy}
                 onChange={() => setPrintKitchenCopy(!printKitchenCopy)}
               />
+              <SettingItem
+                title="Print Kitchen Copy for Open Tab"
+                description="Print a kitchen receipt when clicking Open Tab button in POS"
+                enabled={printKitchenCopyForOpenTab}
+                onChange={() => setPrintKitchenCopyForOpenTab(!printKitchenCopyForOpenTab)}
+              />
+            </div>
+          </div>
+
+          {/* Toast Notification Settings */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <SectionHeader 
+              icon={Info} 
+              title="Toast Notifications" 
+              description="Configure notification display in POS"
+              color="amber"
+            />
+            <div className="divide-y divide-gray-100">
+              {/* Toast Duration */}
+              <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                <div className="flex-1 pr-4">
+                  <h3 className="text-sm font-medium text-gray-900">Toast Duration (seconds)</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">How long toast notifications stay visible</p>
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={toastDurationSeconds}
+                  onChange={(e) => setToastDurationSeconds(Math.max(1, Math.min(30, parseInt(e.target.value) || 5)))}
+                  className="w-20 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 bg-white text-center"
+                />
+              </div>
+
+              {/* Max Toast Notifications */}
+              <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                <div className="flex-1 pr-4">
+                  <h3 className="text-sm font-medium text-gray-900">Max Visible Toasts</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Maximum number of toast notifications shown at once</p>
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={maxToastNotifications}
+                  onChange={(e) => setMaxToastNotifications(Math.max(1, Math.min(10, parseInt(e.target.value) || 3)))}
+                  className="w-20 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 bg-white text-center"
+                />
+              </div>
             </div>
           </div>
 
@@ -304,6 +357,151 @@ export const SettingsPage = () => {
                 enabled={showCurrentStockInPOS}
                 onChange={() => setShowCurrentStockInPOS(!showCurrentStockInPOS)}
               />
+            </div>
+          </div>
+
+          {/* UI Display Settings */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <SectionHeader 
+              icon={LayoutDashboard} 
+              title="Orders Page Display" 
+              description="Configure the Orders page layout and appearance"
+              color="blue"
+            />
+            <div className="divide-y divide-gray-100">
+              <SettingItem
+                title="Show Header"
+                description="Display the page header with title and notification bell (like POS page hides the header)"
+                enabled={showHeaderInOrdersPage}
+                onChange={() => setShowHeaderInOrdersPage(!showHeaderInOrdersPage)}
+              />
+              <SettingItem
+                title="Show Overview Cards"
+                description="Display the status summary cards (Pending, Preparing, Completed) at the top of the Orders page"
+                enabled={showOverviewCardsInOrdersPage}
+                onChange={() => setShowOverviewCardsInOrdersPage(!showOverviewCardsInOrdersPage)}
+              />
+              <SettingItem
+                title="Show Overview in Header"
+                description="Display pending/preparing/completed counts in the page header (requires header to be visible)"
+                enabled={showOverviewInHeaderOrdersPage}
+                onChange={() => setShowOverviewInHeaderOrdersPage(!showOverviewInHeaderOrdersPage)}
+                disabled={!showHeaderInOrdersPage}
+              />
+              
+              {/* Separator Direction Selection */}
+              <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                <div className="flex-1 pr-4">
+                  <h3 className="text-sm font-medium text-gray-900">Status Separator Layout</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Choose how orders are separated by status</p>
+                </div>
+                <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-1 bg-gray-50">
+                  <button
+                    onClick={() => setStatusSeparatorDirection('off')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      statusSeparatorDirection === 'off' 
+                        ? 'bg-amber-100 text-amber-700' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Off
+                  </button>
+                  <button
+                    onClick={() => setStatusSeparatorDirection('horizontal')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      statusSeparatorDirection === 'horizontal' 
+                        ? 'bg-amber-100 text-amber-700' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Horizontal
+                  </button>
+                  <button
+                    onClick={() => setStatusSeparatorDirection('vertical')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      statusSeparatorDirection === 'vertical' 
+                        ? 'bg-amber-100 text-amber-700' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Vertical
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* POS Mobile Settings */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <SectionHeader 
+              icon={Smartphone} 
+              title="POS Page Mobile View" 
+              description="Configure how the POS page appears on mobile devices"
+              color="purple"
+            />
+            <div className="divide-y divide-gray-100">
+              {/* Columns Per Row Selection */}
+              <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                <div className="flex-1 pr-4">
+                  <h3 className="text-sm font-medium text-gray-900">Columns Per Row</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Number of menu item cards per row on mobile</p>
+                </div>
+                <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-1 bg-gray-50">
+                  {[1, 2, 3, 4].map((cols) => (
+                    <button
+                      key={cols}
+                      onClick={() => setPosMobileColumnsPerRow(cols)}
+                      className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                        posMobileColumnsPerRow === cols 
+                          ? 'bg-purple-100 text-purple-700' 
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {cols}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Card Size Selection */}
+              <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                <div className="flex-1 pr-4">
+                  <h3 className="text-sm font-medium text-gray-900">Card Size</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Size of menu item cards on mobile view</p>
+                </div>
+                <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-1 bg-gray-50">
+                  <button
+                    onClick={() => setPosMobileCardSize('small')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      posMobileCardSize === 'small' 
+                        ? 'bg-purple-100 text-purple-700' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Small
+                  </button>
+                  <button
+                    onClick={() => setPosMobileCardSize('medium')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      posMobileCardSize === 'medium' 
+                        ? 'bg-purple-100 text-purple-700' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Medium
+                  </button>
+                  <button
+                    onClick={() => setPosMobileCardSize('large')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      posMobileCardSize === 'large' 
+                        ? 'bg-purple-100 text-purple-700' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Large
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 

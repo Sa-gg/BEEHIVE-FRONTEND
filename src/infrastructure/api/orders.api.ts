@@ -4,6 +4,7 @@ import { getDeviceId } from '../../shared/utils/deviceId';
 // Payment status enum matching backend
 export type PaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED' | 'COMPLIMENTARY' | 'WRITTEN_OFF' | 'VOIDED';
 export type OrderStatus = 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
+export type OrderItemStatus = 'PREPARING' | 'COMPLETED' | 'VOIDED';
 
 export interface OrderItem {
   menuItemId: string;
@@ -83,6 +84,7 @@ export interface OrderResponse {
     quantity: number;
     price: number;
     subtotal: number;
+    status: OrderItemStatus;
     createdAt: string;
     updatedAt: string;
   }>;
@@ -215,6 +217,34 @@ export const ordersApi = {
       paymentMethod: paymentMethod || 'CASH',
       paidAt: new Date().toISOString()
     });
+    return response.data;
+  },
+
+  // ============================================
+  // TAB ORDER METHODS (Item-level management)
+  // ============================================
+
+  // Add items to an existing tab order (unpaid order)
+  addItemsToTab: async (orderId: string, items: OrderItem[]): Promise<OrderResponse> => {
+    const response = await api.post(`/api/orders/${orderId}/items`, { items });
+    return response.data;
+  },
+
+  // Update individual order item status
+  updateOrderItemStatus: async (orderId: string, itemId: string, status: 'PREPARING' | 'COMPLETED' | 'VOIDED'): Promise<any> => {
+    const response = await api.patch(`/api/orders/${orderId}/items/${itemId}/status`, { status });
+    return response.data;
+  },
+
+  // Mark all items in a tab order as completed
+  markAllItemsCompleted: async (orderId: string): Promise<OrderResponse> => {
+    const response = await api.patch(`/api/orders/${orderId}/items/complete-all`);
+    return response.data;
+  },
+
+  // Void a single order item (requires manager authorization)
+  voidOrderItem: async (orderId: string, itemId: string, reason: string, authorizedBy: string): Promise<OrderResponse> => {
+    const response = await api.patch(`/api/orders/${orderId}/items/${itemId}/void`, { reason, authorizedBy });
     return response.data;
   },
 };

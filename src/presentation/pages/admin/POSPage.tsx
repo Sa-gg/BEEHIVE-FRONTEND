@@ -17,6 +17,7 @@ import { printWithIframe } from '../../../shared/utils/printUtils'
 import { generateReceiptHTML, generateKitchenReceiptHTML } from '../../../shared/utils/receiptTemplate'
 import { CashCalculatorModal } from '../../components/common/CashCalculatorModal'
 import { FeeInputModal, type FeeType } from '../../components/common/FeeInputModal'
+import { toast } from '../../components/common/ToastNotification'
 
 // Helper to format order number - removes date prefix for cleaner display
 const formatOrderNumber = (orderNumber: string): string => {
@@ -34,7 +35,8 @@ export const POSPage = () => {
   const editingOrder = location.state?.editingOrder
   const reorderFrom = location.state?.reorderFrom
   const linkToOrder = location.state?.linkToOrder // New: Link to existing order (empty cart)
-  const { markPaidOnConfirmOrder, markPaidOnPrintReceipt, printReceiptOnConfirmOrder, printKitchenCopy, cashChangeEnabled } = useSettingsStore()
+  const addToTab = location.state?.addToTab // New: Add items to existing tab order
+  const { markPaidOnPrintReceipt, printKitchenCopy, printKitchenCopyForOpenTab, cashChangeEnabled, posMobileColumnsPerRow, posMobileCardSize } = useSettingsStore()
   
   // Transform order items from backend format to POS format
   const transformOrderItems = (items: any[]): OrderItem[] => {
@@ -51,9 +53,9 @@ export const POSPage = () => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [categories, setCategories] = useState<CategoryDTO[]>([])
   const [loading, setLoading] = useState(true)
-  // For linkToOrder: start with empty cart; for reorderFrom: pre-fill items
+  // For linkToOrder/addToTab: start with empty cart; for reorderFrom: pre-fill items
   const [orderItems, setOrderItems] = useState<OrderItem[]>(
-    linkToOrder ? [] : transformOrderItems((editingOrder?.items || reorderFrom?.items) || [])
+    linkToOrder || addToTab ? [] : transformOrderItems((editingOrder?.items || reorderFrom?.items) || [])
   )
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [isCartOpen, setIsCartOpen] = useState(false)
@@ -61,22 +63,24 @@ export const POSPage = () => {
   const [isEditMode] = useState(!!editingOrder)
   const [isReordering] = useState(!!reorderFrom)
   const [isLinkingOrder] = useState(!!linkToOrder) // New: Adding linked order
+  const [isAddingToTab] = useState(!!addToTab) // New: Adding items to existing tab order
   // For linkToOrder: use the parent order's id; for reorderFrom: use its id
   const [linkedOrderId] = useState(linkToOrder?.id || reorderFrom?.id || null)
+  const [tabOrderId] = useState(addToTab?.id || null) // Tab order ID for adding items
   const [maxServings, setMaxServings] = useState<Record<string, number>>({})
   
-  // Order details state - pre-fill from linkToOrder, reorder or edit
+  // Order details state - pre-fill from addToTab, linkToOrder, reorder or edit
   const [customerName, setCustomerName] = useState(
-    editingOrder?.customerName || linkToOrder?.customerName || reorderFrom?.customerName || ''
+    editingOrder?.customerName || addToTab?.customerName || linkToOrder?.customerName || reorderFrom?.customerName || ''
   )
   const [tableNumber, setTableNumber] = useState(
-    editingOrder?.tableNumber || linkToOrder?.tableNumber || reorderFrom?.tableNumber || ''
+    editingOrder?.tableNumber || addToTab?.tableNumber || linkToOrder?.tableNumber || reorderFrom?.tableNumber || ''
   )
   const [paymentMethod, setPaymentMethod] = useState(
     editingOrder?.paymentMethod || reorderFrom?.paymentMethod || 'CASH'
   )
   const [orderType, setOrderType] = useState(
-    editingOrder?.orderType || linkToOrder?.orderType || reorderFrom?.orderType || 'DINE_IN'
+    editingOrder?.orderType || addToTab?.orderType || linkToOrder?.orderType || reorderFrom?.orderType || 'DINE_IN'
   )
 
   // Fees and discount state
@@ -157,7 +161,7 @@ export const POSPage = () => {
         setMaxServings(servingsData)
       } catch (error) {
         console.error('Failed to fetch data:', error)
-        alert('Failed to load menu items. Please try again.')
+        toast.error('Failed to load menu items', 'Please try again.')
       } finally {
         setLoading(false)
       }
@@ -284,7 +288,7 @@ export const POSPage = () => {
   // Trigger cash modal for Mark Paid & Print Receipt (only if cashChangeEnabled and CASH payment)
   const handleMarkPaidAndPrint = () => {
     if (orderItems.length === 0) {
-      alert('No items to print')
+      toast.warning('No items to print', 'Please add items to the order first.')
       return
     }
     if (paymentMethod === 'CASH' && cashChangeEnabled) {
@@ -297,6 +301,10 @@ export const POSPage = () => {
 
   // Confirm Order - NEVER shows cash modal, just creates order (unpaid or paid based on setting)
   const handleConfirmOrder = () => {
+    if (orderItems.length === 0) {
+      toast.warning('No items', 'Please add items to the order first.')
+      return
+    }
     executeConfirmOrder(0, 0)
   }
 
@@ -328,7 +336,7 @@ export const POSPage = () => {
 
   const executePrintReceipt = async (cashReceived: number, changeAmount: number) => {
     if (orderItems.length === 0) {
-      alert('No items to print')
+      toast.warning('No items to print', 'Please add items to the order first.')
       return
     }
 
@@ -355,14 +363,14 @@ export const POSPage = () => {
         // Print the receipt with existing order data
         printReceiptForOrder(editingOrder, cashReceived, changeAmount)
         
-        alert(`Order Confirmed, Paid & Preparing!\nOrder Number: ${editingOrder.orderNumber}`)
+        toast.orderUpdated(formatOrderNumber(editingOrder.orderNumber), true)
         
         // Clear order state and navigate back
         clearOrder()
         navigate('/admin/orders', { replace: true })
       } catch (error: any) {
         console.error('Failed to update order:', error)
-        alert(`Failed to update order: ${error.response?.data?.error || error.message}`)
+        toast.error('Failed to update order', error.response?.data?.error || error.message)
       }
       return
     }
@@ -457,12 +465,44 @@ export const POSPage = () => {
       }
     } catch (error: any) {
       console.error('Failed to create order:', error)
-      alert(`Failed to create order: ${error.response?.data?.error || error.message}`)
+      toast.error('Failed to create order', error.response?.data?.error || error.message)
       return
     }
   }
 
   const executeConfirmOrder = async (cashReceived: number, changeAmount: number) => {
+    // Handle adding items to an existing tab order
+    if (isAddingToTab && tabOrderId) {
+      try {
+        if (orderItems.length === 0) {
+          toast.warning('No items', 'Please add items to the order')
+          return
+        }
+        
+        const items = orderItems.map(item => ({
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+          price: item.price
+        }))
+        
+        const updatedOrder = await ordersApi.addItemsToTab(tabOrderId, items)
+        
+        // Refresh max servings to account for new items
+        await refreshMaxServings()
+        
+        // Show success toast
+        toast.itemsAddedToTab(formatOrderNumber(addToTab?.orderNumber || ''), updatedOrder.totalAmount.toFixed(2))
+        
+        // Clear order state and navigate back
+        clearOrder()
+        navigate('/admin/orders', { replace: true })
+      } catch (error: any) {
+        console.error('Failed to add items to tab:', error)
+        toast.error('Failed to add items to tab', error.response?.data?.error || error.message)
+      }
+      return
+    }
+    
     if (isEditMode && editingOrder) {
       // Update existing order and set status to PREPARING
       try {
@@ -480,19 +520,25 @@ export const POSPage = () => {
           status: 'PREPARING' // Auto-set to PREPARING when cashier confirms edited order
         }
         
-        if (markPaidOnConfirmOrder) {
-          updateData.paymentStatus = 'PAID'
-        }
-        
         await ordersApi.update(editingOrder.id, updateData)
         
-        // Auto-print receipt if setting is enabled
-        if (printReceiptOnConfirmOrder) {
-          printReceiptForOrder(editingOrder, cashReceived, changeAmount)
+        // Print kitchen copy if setting is enabled for Open Tab (edit mode)
+        if (printKitchenCopyForOpenTab) {
+          const kitchenReceiptHTML = generateKitchenReceiptHTML({
+            orderNumber: editingOrder.orderNumber,
+            tableNumber: tableNumber || undefined,
+            items: orderItems.map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price
+            })),
+            totalAmount: calculateGrandTotal()
+          })
+          printWithIframe(kitchenReceiptHTML)
         }
         
-        // Show success message
-        alert(`Order Confirmed & Now Preparing!\nOrder Number: ${editingOrder.orderNumber}`)
+        // Show success toast
+        toast.orderUpdated(formatOrderNumber(editingOrder.orderNumber), false)
         
         // Clear order state
         clearOrder()
@@ -501,7 +547,7 @@ export const POSPage = () => {
         navigate('/admin/orders', { replace: true })
       } catch (error: any) {
         console.error('Failed to update order:', error)
-        alert(`Failed to update order: ${error.response?.data?.error || error.message}`)
+        toast.error('Failed to update order', error.response?.data?.error || error.message)
       }
     } else {
       // Create order via API
@@ -535,21 +581,27 @@ export const POSPage = () => {
         // Refresh max servings to account for new PREPARING order
         await refreshMaxServings()
         
-        // Mark as paid if setting is enabled (cash already included in create)
-        if (markPaidOnConfirmOrder) {
-          await ordersApi.update(createdOrder.id, { paymentStatus: 'PAID' })
+        // Print kitchen copy if setting is enabled for Open Tab
+        if (printKitchenCopyForOpenTab && !isLinkingOrder && !isReordering) {
+          const kitchenReceiptHTML = generateKitchenReceiptHTML({
+            orderNumber: createdOrder.orderNumber,
+            tableNumber: tableNumber || undefined,
+            items: orderItems.map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price
+            })),
+            totalAmount: calculateGrandTotal()
+          })
+          printWithIframe(kitchenReceiptHTML)
         }
         
-        // Auto-print receipt if setting is enabled
-        if (printReceiptOnConfirmOrder) {
-          printReceiptForOrder(createdOrder, cashReceived, changeAmount)
+        // Show success toast with order number
+        if (isLinkingOrder) {
+          toast.linkedOrderCreated(formatOrderNumber(createdOrder.orderNumber), formatOrderNumber(linkToOrder?.orderNumber || ''))
+        } else {
+          toast.orderCreated(formatOrderNumber(createdOrder.orderNumber), createdOrder.totalAmount.toFixed(2), false)
         }
-        
-        // Show success message with order number
-        const successMsg = isLinkingOrder 
-          ? `Linked Order Created!\nOrder Number: ${createdOrder.orderNumber}\nLinked to: ${linkToOrder?.orderNumber}\nTotal: ₱${createdOrder.totalAmount.toFixed(2)}`
-          : `Order Created Successfully!\nOrder Number: ${createdOrder.orderNumber}\nTotal: ₱${createdOrder.totalAmount.toFixed(2)}`
-        alert(successMsg)
         clearOrder()
         
         // Navigate to orders page if reordering or linking
@@ -559,7 +611,7 @@ export const POSPage = () => {
       } catch (error: any) {
         console.error('Failed to create order:', error)
         console.error('Error response:', error.response?.data)
-        alert(`Failed to create order: ${error.response?.data?.error || error.message}`)
+        toast.error('Failed to create order', error.response?.data?.error || error.message)
       }
     }
   }
@@ -596,7 +648,7 @@ export const POSPage = () => {
 
   return (
     <AdminLayout hideHeaderOnDesktop>
-      <div className="h-[calc(100vh-5rem)] lg:h-screen w-full max-w-full flex flex-col lg:flex-row gap-0 lg:gap-4 xl:gap-6 lg:p-4 xl:p-6 overflow-hidden">
+      <div className="h-screen w-full max-w-full flex flex-col lg:flex-row gap-0 lg:gap-4 xl:gap-6 lg:p-4 xl:p-6 overflow-hidden">
         {/* Left Side - Menu - Full screen on mobile */}
         <div className="flex-1 flex flex-col bg-gray-50 lg:rounded-lg lg:shadow-lg lg:border lg:border-gray-200 min-h-0 min-w-0 overflow-hidden">
           {/* Edit Mode Banner */}
@@ -650,11 +702,28 @@ export const POSPage = () => {
               </Button>
             </div>
           )}
+          {/* Add to Tab Mode Banner */}
+          {isAddingToTab && (
+            <div className="bg-emerald-600 text-white px-4 py-2 flex items-center justify-between flex-shrink-0">
+              <div>
+                <p className="text-sm font-medium">📋 Adding to Tab: {addToTab?.orderNumber}</p>
+                <p className="text-xs opacity-90">Items will be added to existing order for {customerName || 'Guest'} (Table {tableNumber || 'N/A'})</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate('/admin/orders')}
+                className="bg-white text-emerald-600 border-white hover:bg-emerald-50 font-medium"
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
           {/* Category Tabs */}
           <div className="bg-white border-b border-gray-200 p-3 lg:p-4 flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg lg:text-xl font-bold">
-                {isEditMode ? 'Edit Order - Menu' : isReordering ? 'Reorder - Menu' : isLinkingOrder ? 'Add Items - Menu' : 'Menu'}
+                {isEditMode ? 'Edit Order - Menu' : isReordering ? 'Reorder - Menu' : isLinkingOrder ? 'Add Items - Menu' : isAddingToTab ? 'Add Items to Tab - Menu' : 'Menu'}
               </h2>
               {/* Search Bar */}
               <div className="relative flex-1 max-w-xs ml-4">
@@ -720,13 +789,19 @@ export const POSPage = () => {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 lg:gap-3">
+                <div className={`grid gap-2 lg:gap-3 ${
+                  posMobileColumnsPerRow === 1 ? 'grid-cols-1' : 
+                  posMobileColumnsPerRow === 2 ? 'grid-cols-2' : 
+                  posMobileColumnsPerRow === 3 ? 'grid-cols-3' : 
+                  'grid-cols-4'
+                } sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5`}>
                   {sortedItems.map((item) => (
                     <MenuItemCard
                       key={item.id}
                       item={item}
                       onAddToOrder={addToOrder}
                       maxServings={maxServings[item.id]}
+                      mobileSize={posMobileCardSize}
                     />
                   ))}
                 </div>
@@ -766,6 +841,7 @@ export const POSPage = () => {
             onClearOrder={clearOrder}
             onConfirmOrder={handleConfirmOrder}
             onPrintReceipt={handleMarkPaidAndPrint}
+            confirmButtonText={isAddingToTab ? 'Add to Tab' : isLinkingOrder ? 'Create Linked Order' : 'Open Tab'}
           />
         </div>
 
@@ -793,7 +869,7 @@ export const POSPage = () => {
               className="lg:hidden fixed inset-0 bg-black/50 z-50"
               onClick={() => setIsCartOpen(false)}
             />
-            <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[80vh] flex flex-col animate-slide-up">
+            <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-up overflow-hidden">
               <OrderSummary
                 items={orderItems}
                 customerName={customerName}
@@ -818,6 +894,7 @@ export const POSPage = () => {
                   setIsCartOpen(false)
                 }}
                 onPrintReceipt={handleMarkPaidAndPrint}
+                confirmButtonText={isAddingToTab ? 'Add to Tab' : isLinkingOrder ? 'Create Linked Order' : 'Open Tab'}
               />
             </div>
           </>

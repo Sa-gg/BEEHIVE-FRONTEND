@@ -59,6 +59,10 @@ export const SalesPage = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(10)
   
+  // Sorting state
+  const [sortField, setSortField] = useState<'date' | 'customer' | 'total' | 'orderNumber'>('date')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  
   // Manager PIN modal state for changing payment status
   const [showManagerPinModal, setShowManagerPinModal] = useState(false)
   const [pendingStatusChange, setPendingStatusChange] = useState<{
@@ -114,13 +118,15 @@ export const SalesPage = () => {
   }
 
   const printReceipt = (t: OrderResponse) => {
+    // Filter out voided items from print
+    const validItems = t.order_items.filter(i => i.status !== 'VOIDED')
     const receiptHTML = generateReceiptHTML({
       orderNumber: t.orderNumber,
       createdAt: t.completedAt || t.createdAt,
       customerName: getCustomerDisplayName(t),
       orderType: t.orderType,
       paymentMethod: t.paymentMethod || 'N/A',
-      items: t.order_items.map(i => ({
+      items: validItems.map(i => ({
         name: menuItems.get(i.menuItemId) || i.menuItemId,
         quantity: i.quantity,
         price: i.price
@@ -331,6 +337,16 @@ export const SalesPage = () => {
     }
   }
 
+  // Handle column sorting
+  const handleSort = (field: 'date' | 'customer' | 'total' | 'orderNumber') => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('desc')
+    }
+  }
+
   const filteredTransactions = transactions
     .filter(t => {
       // Date filter logic
@@ -356,6 +372,21 @@ export const SalesPage = () => {
         && (filterPaymentMethod === 'all' || t.paymentMethod === filterPaymentMethod)
         && (filterPaymentStatus === 'all' || t.paymentStatus === filterPaymentStatus)
         && (filterOrderStatus === 'all' || t.status === filterOrderStatus)
+    })
+    .sort((a, b) => {
+      const multiplier = sortDirection === 'asc' ? 1 : -1
+      switch (sortField) {
+        case 'date':
+          return multiplier * (new Date(a.completedAt || a.createdAt).getTime() - new Date(b.completedAt || b.createdAt).getTime())
+        case 'customer':
+          return multiplier * ((a.customerName || '').localeCompare(b.customerName || ''))
+        case 'total':
+          return multiplier * (a.totalAmount - b.totalAmount)
+        case 'orderNumber':
+          return multiplier * a.orderNumber.localeCompare(b.orderNumber)
+        default:
+          return 0
+      }
     })
 
   const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredTransactions.length / (itemsPerPage as number))
@@ -384,72 +415,68 @@ export const SalesPage = () => {
           </div>
         </div>
 
-        {/* Key Metrics - Compact style */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Revenue</p>
-                <p className="text-xl font-bold text-gray-900 mt-1">₱{metrics.totalRevenue.toLocaleString()}</p>
-              </div>
-              <div className="p-2.5 bg-yellow-100 rounded-lg">
+        {/* Key Metrics - Gradient style like Inventory page */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+          <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-2xl shadow-sm p-5 border border-yellow-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-yellow-100 rounded-xl group-hover:scale-110 transition-transform">
                 <DollarSign className="h-5 w-5 text-yellow-600" />
               </div>
             </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">Total Revenue</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">₱{metrics.totalRevenue.toLocaleString()}</p>
+            <p className="text-xs text-gray-400 mt-2">all completed sales</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Orders</p>
-                <p className="text-xl font-bold text-gray-900 mt-1">{metrics.totalOrders}</p>
-              </div>
-              <div className="p-2.5 bg-blue-100 rounded-lg">
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-5 border border-blue-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-blue-100 rounded-xl group-hover:scale-110 transition-transform">
                 <ShoppingCart className="h-5 w-5 text-blue-600" />
               </div>
             </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">Total Orders</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">{metrics.totalOrders}</p>
+            <p className="text-xs text-gray-400 mt-2">orders processed</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Avg Order Value</p>
-                <p className="text-xl font-bold text-gray-900 mt-1">₱{metrics.averageOrderValue.toFixed(0)}</p>
-              </div>
-              <div className="p-2.5 bg-green-100 rounded-lg">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-sm p-5 border border-green-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-green-100 rounded-xl group-hover:scale-110 transition-transform">
                 <TrendingUp className="h-5 w-5 text-green-600" />
               </div>
             </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">Avg Order Value</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">₱{metrics.averageOrderValue.toFixed(0)}</p>
+            <p className="text-xs text-gray-400 mt-2">per transaction</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Daily Average</p>
-                <p className="text-xl font-bold text-gray-900 mt-1">₱{metrics.dailyAverage.toFixed(0)}</p>
-              </div>
-              <div className="p-2.5 bg-purple-100 rounded-lg">
+          <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl shadow-sm p-5 border border-purple-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-purple-100 rounded-xl group-hover:scale-110 transition-transform">
                 <Calendar className="h-5 w-5 text-purple-600" />
               </div>
             </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">Daily Average</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">₱{metrics.dailyAverage.toFixed(0)}</p>
+            <p className="text-xs text-gray-400 mt-2">revenue per day</p>
           </div>
         </div>
 
         {/* Transactions Table */}
-        <div className="bg-white rounded-xl shadow-lg border-2 border-amber-100 overflow-hidden">
-          <div className="p-6 border-b border-amber-100 bg-gradient-to-r from-amber-50/50 to-white">
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50/50 to-white">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
                 <h3 className="text-xl font-bold flex items-center gap-2 text-gray-800">
-                  <div className="p-2 bg-amber-100 rounded-lg">
-                    <Receipt className="h-5 w-5 text-amber-600" />
+                  <div className="p-2 bg-gray-100 rounded-lg">
+                    <Receipt className="h-5 w-5 text-gray-600" />
                   </div>
                   Sales Transactions
                 </h3>
                 <p className="text-sm text-gray-500 mt-1">All orders (excluding pending) - preparing, ready, completed, cancelled</p>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={exportCSV} className="border-amber-200 hover:bg-amber-50 hover:border-amber-300">
+                <Button size="sm" variant="outline" onClick={exportCSV} className="border-gray-200 hover:bg-gray-50 hover:border-gray-300">
                   <Download className="h-4 w-4 mr-1" />Export CSV
                 </Button>
-                <Badge className="bg-gradient-to-r from-amber-100 to-amber-50 text-amber-700 border border-amber-200 px-3 py-1">
+                <Badge className="bg-gradient-to-r from-gray-100 to-gray-50 text-gray-700 border border-gray-200 px-3 py-1">
                   {filteredTransactions.length} transactions
                 </Badge>
               </div>
@@ -457,22 +484,22 @@ export const SalesPage = () => {
             <div className="mt-4 flex flex-wrap gap-3">
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input placeholder="Search order or customer..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10 border-gray-200 focus:border-amber-400 focus:ring-amber-400" />
+                <Input placeholder="Search order or customer..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10 border-gray-200 focus:border-gray-400 focus:ring-gray-400" />
               </div>
               <DateFilter value={transactionDateFilter} onChange={setTransactionDateFilter} showAllOption />
-              <select value={filterOrderType} onChange={e => setFilterOrderType(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100">
+              <select value={filterOrderType} onChange={e => setFilterOrderType(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-100">
                 <option value="all">All Types</option>
                 <option value="DINE_IN">Dine In</option>
                 <option value="TAKEOUT">Takeout</option>
                 <option value="DELIVERY">Delivery</option>
               </select>
-              <select value={filterPaymentMethod} onChange={e => setFilterPaymentMethod(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100">
+              <select value={filterPaymentMethod} onChange={e => setFilterPaymentMethod(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-100">
                 <option value="all">All Payments</option>
                 <option value="CASH">Cash</option>
                 <option value="GCASH">GCash</option>
                 <option value="CARD">Card</option>
               </select>
-              <select value={filterPaymentStatus} onChange={e => setFilterPaymentStatus(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100">
+              <select value={filterPaymentStatus} onChange={e => setFilterPaymentStatus(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-100">
                 <option value="all">All Payment Statuses</option>
                 <option value="PAID">✓ Paid</option>
                 <option value="UNPAID">💰 Unpaid</option>
@@ -481,7 +508,7 @@ export const SalesPage = () => {
                 <option value="WRITTEN_OFF">📝 Written Off</option>
                 <option value="VOIDED">🚫 Voided</option>
               </select>
-              <select value={filterOrderStatus} onChange={e => setFilterOrderStatus(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100">
+              <select value={filterOrderStatus} onChange={e => setFilterOrderStatus(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-100">
                 <option value="all">All Order Statuses</option>
                 <option value="PREPARING">🍳 Preparing</option>
                 <option value="READY">✅ Ready</option>
@@ -492,19 +519,27 @@ export const SalesPage = () => {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-amber-50 border-b-2 border-amber-200">
+              <thead className="bg-gray-50/80">
                 <tr>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Order #</th>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Date & Time</th>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Customer</th>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Created By</th>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Processed By</th>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Type</th>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Payment</th>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Payment Status</th>
-                  <th className="px-4 py-4 text-left text-xs font-bold text-amber-800 uppercase tracking-wider">Order Status</th>
-                  <th className="px-4 py-4 text-right text-xs font-bold text-amber-800 uppercase tracking-wider">Total</th>
-                  <th className="px-4 py-4 text-center text-xs font-bold text-amber-800 uppercase tracking-wider">Actions</th>
+                  <th onClick={() => handleSort('orderNumber')} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors">
+                    Order # {sortField === 'orderNumber' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th onClick={() => handleSort('date')} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors">
+                    Date & Time {sortField === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th onClick={() => handleSort('customer')} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors">
+                    Customer {sortField === 'customer' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Created By</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Processed By</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payment</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payment Status</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Order Status</th>
+                  <th onClick={() => handleSort('total')} className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors">
+                    Total {sortField === 'total' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -645,7 +680,7 @@ export const SalesPage = () => {
               <select 
                 value={itemsPerPage} 
                 onChange={e => { setItemsPerPage(e.target.value === 'all' ? 'all' : Number(e.target.value)); setCurrentPage(1) }} 
-                className="border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100"
+                className="border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-100"
               >
                 {[5, 10, 25, 50, 'all'].map(o => <option key={o} value={o}>{o === 'all' ? 'All' : o}</option>)}
               </select>
@@ -658,7 +693,7 @@ export const SalesPage = () => {
                   size="sm" 
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
                   disabled={currentPage === 1}
-                  className="border-amber-200 hover:bg-amber-50 disabled:opacity-50"
+                  className="border-gray-200 hover:bg-gray-50 disabled:opacity-50"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -680,7 +715,7 @@ export const SalesPage = () => {
                         variant={currentPage === page ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setCurrentPage(page)}
-                        className={currentPage === page ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'border-amber-200 hover:bg-amber-50'}
+                        className={currentPage === page ? 'bg-gray-800 hover:bg-gray-900 text-white' : 'border-gray-200 hover:bg-gray-50'}
                       >
                         {page}
                       </Button>
@@ -692,7 +727,7 @@ export const SalesPage = () => {
                   size="sm" 
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
                   disabled={currentPage === totalPages}
-                  className="border-amber-200 hover:bg-amber-50 disabled:opacity-50"
+                  className="border-gray-200 hover:bg-gray-50 disabled:opacity-50"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -724,14 +759,20 @@ export const SalesPage = () => {
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h3 className="font-semibold mb-3">Items</h3>
-                  {selectedTransaction.order_items.map(i => (
-                    <div key={i.id} className="flex justify-between py-2 border-b last:border-0">
-                      <span>{menuItems.get(i.menuItemId) || i.menuItemId} × {i.quantity}</span>
-                      <span className="font-medium">₱{i.subtotal.toFixed(2)}</span>
-                    </div>
-                  ))}
+                  {selectedTransaction.order_items.map(i => {
+                    const isVoided = i.status === 'VOIDED'
+                    return (
+                      <div key={i.id} className={`flex justify-between py-2 border-b last:border-0 ${isVoided ? 'opacity-60' : ''}`}>
+                        <span className={isVoided ? 'line-through text-red-500' : ''}>
+                          {menuItems.get(i.menuItemId) || i.menuItemId} × {i.quantity}
+                          {isVoided && <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">VOIDED</span>}
+                        </span>
+                        <span className={`font-medium ${isVoided ? 'line-through text-red-400' : ''}`}>₱{i.subtotal.toFixed(2)}</span>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div className="bg-amber-50 rounded-xl p-4">
+                <div className="bg-gray-50 rounded-xl p-4">
                   <div className="flex justify-between mb-2"><span>Items Subtotal:</span><span>₱{(selectedTransaction.totalAmount - (selectedTransaction.totalAmount * (12 / 112)) - ((selectedTransaction as any).deliveryFee || 0) - ((selectedTransaction as any).serviceFee || 0) + (selectedTransaction.discountAmount || 0)).toFixed(2)}</span></div>
                   <div className="flex justify-between mb-2"><span>VAT (12% incl):</span><span>₱{(selectedTransaction.totalAmount * (12 / 112)).toFixed(2)}</span></div>
                   {(selectedTransaction as any).deliveryFee > 0 && (
@@ -743,9 +784,9 @@ export const SalesPage = () => {
                   {selectedTransaction.discountAmount > 0 && (
                     <div className="flex justify-between mb-2 text-green-600"><span>Discount:</span><span>-₱{selectedTransaction.discountAmount.toFixed(2)}</span></div>
                   )}
-                  <div className="flex justify-between text-xl font-bold pt-2 border-t border-amber-200"><span>Total:</span><span className="text-amber-600">₱{selectedTransaction.totalAmount.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-xl font-bold pt-2 border-t border-gray-200"><span>Total:</span><span className="text-gray-800">₱{selectedTransaction.totalAmount.toFixed(2)}</span></div>
                   {(selectedTransaction as any).cashReceived > 0 && (
-                    <div className="pt-3 border-t border-amber-200 mt-3 space-y-1">
+                    <div className="pt-3 border-t border-gray-200 mt-3 space-y-1">
                       <div className="flex justify-between text-green-700"><span>Cash Received:</span><span>₱{(selectedTransaction as any).cashReceived.toFixed(2)}</span></div>
                       <div className="flex justify-between text-green-700"><span>Change:</span><span>₱{((selectedTransaction as any).changeAmount || 0).toFixed(2)}</span></div>
                     </div>

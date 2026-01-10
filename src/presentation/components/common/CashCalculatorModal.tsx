@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { X, Calculator, Check, Delete } from 'lucide-react'
 import { Button } from './ui/button'
 
@@ -19,12 +19,18 @@ export const CashCalculatorModal = ({
 }: CashCalculatorModalProps) => {
   const [cashInput, setCashInput] = useState('')
   const [changeAmount, setChangeAmount] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  // Reset state when modal opens
+  // Reset state when modal opens and auto-focus
   useEffect(() => {
     if (isOpen) {
       setCashInput('')
       setChangeAmount(0)
+      // Auto-focus the input after a small delay to ensure modal is rendered
+      setTimeout(() => {
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }, 100)
     }
   }, [isOpen])
 
@@ -65,13 +71,43 @@ export const CashCalculatorModal = ({
     setCashInput(totalAmount.toFixed(2))
   }
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     const cash = parseFloat(cashInput) || 0
     if (cash < totalAmount) {
       alert('Cash received is less than the total amount')
       return
     }
     onConfirm(cash, changeAmount)
+  }, [cashInput, totalAmount, changeAmount, onConfirm])
+
+  // Handle keyboard events - Enter to confirm, Escape to close
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const cash = parseFloat(cashInput) || 0
+        if (cash >= totalAmount) {
+          handleConfirm()
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, cashInput, totalAmount, handleConfirm, onClose])
+
+  // Handle direct keyboard input
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    // Only allow numbers and one decimal point
+    if (/^[0-9]*\.?[0-9]{0,2}$/.test(value) || value === '') {
+      setCashInput(value)
+    }
   }
 
   const cashReceived = parseFloat(cashInput) || 0
@@ -126,11 +162,22 @@ export const CashCalculatorModal = ({
             <span className="text-2xl font-bold text-gray-900">₱{totalAmount.toFixed(2)}</span>
           </div>
           
-          {/* Cash Input Display */}
-          <div className="bg-white rounded-xl border-2 border-amber-200 p-4">
-            <label className="text-sm text-gray-500 block mb-1">Cash Received</label>
-            <div className="text-3xl font-bold text-amber-600 min-h-[40px]">
-              ₱{cashInput || '0.00'}
+          {/* Cash Input Display - Now an actual input field */}
+          <div className="bg-white rounded-xl border-2 border-amber-200 p-4 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100 transition-all">
+            <label htmlFor="cashInput" className="text-sm text-gray-500 block mb-1">Cash Received</label>
+            <div className="flex items-center">
+              <span className="text-3xl font-bold text-amber-600 mr-1">₱</span>
+              <input
+                ref={inputRef}
+                id="cashInput"
+                type="text"
+                inputMode="decimal"
+                value={cashInput}
+                onChange={handleInputChange}
+                placeholder="0.00"
+                className="text-3xl font-bold text-amber-600 bg-transparent border-none outline-none w-full min-h-[40px] placeholder:text-amber-300"
+                autoComplete="off"
+              />
             </div>
           </div>
 

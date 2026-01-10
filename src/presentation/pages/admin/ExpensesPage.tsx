@@ -499,20 +499,20 @@ export const ExpensesPage = () => {
           </div>
         </div>
 
-        {/* Expense Table - Like Sales Page */}
-        <div className="bg-white rounded-xl shadow-lg border-2 border-amber-100 overflow-hidden">
-          <div className="p-6 border-b border-amber-100 bg-gradient-to-r from-amber-50/50 to-white">
+        {/* Expense Table - Consistent with other tables */}
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50/50 to-white">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
                 <h3 className="text-xl font-bold flex items-center gap-2 text-gray-800">
-                  <div className="p-2 bg-amber-100 rounded-lg">
-                    <Receipt className="h-5 w-5 text-amber-600" />
+                  <div className="p-2 bg-gray-100 rounded-lg">
+                    <Receipt className="h-5 w-5 text-gray-600" />
                   </div>
                   Expense Records
                 </h3>
                 <p className="text-sm text-gray-500 mt-1">All operational expenses and overhead</p>
               </div>
-              <Badge className="bg-gradient-to-r from-amber-100 to-amber-50 text-amber-700 border border-amber-200 px-3 py-1">
+              <Badge className="bg-gradient-to-r from-gray-100 to-gray-50 text-gray-700 border border-gray-200 px-3 py-1">
                 {filteredExpenses.length} records
               </Badge>
             </div>
@@ -524,7 +524,7 @@ export const ExpensesPage = () => {
                   placeholder="Search expenses..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 border-gray-200 focus:border-amber-400 focus:ring-amber-400"
+                  className="pl-10 border-gray-200 focus:border-gray-400 focus:ring-gray-400"
                 />
               </div>
               <DateFilter
@@ -535,7 +535,7 @@ export const ExpensesPage = () => {
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100"
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-100"
               >
                 <option value="all">All Categories</option>
                 {EXPENSE_CATEGORIES.map(cat => (
@@ -545,7 +545,7 @@ export const ExpensesPage = () => {
               <select
                 value={filterFrequency}
                 onChange={(e) => setFilterFrequency(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100"
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-100"
               >
                 <option value="all">All Frequencies</option>
                 {FREQUENCIES.map(freq => (
@@ -606,7 +606,7 @@ export const ExpensesPage = () => {
                   </tr>
                 ) : (
                   paginatedExpenses.map((expense) => (
-                    <tr key={expense.id} className="hover:bg-amber-50/30 transition-colors group">
+                    <tr key={expense.id} className="hover:bg-gray-50 transition-colors group">
                       <td className="px-5 py-4 text-sm">
                         <div className="flex flex-col">
                           <span className="font-medium text-gray-900">

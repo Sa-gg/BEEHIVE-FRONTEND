@@ -1,6 +1,6 @@
 /**
  * Unified Receipt Template for 58mm Thermal Paper
- * Used across POS, OrdersPage, and SalesPage for consistent receipt printing
+ * Compact design with Arial font to save paper
  */
 
 export interface ReceiptItem {
@@ -8,6 +8,7 @@ export interface ReceiptItem {
   quantity: number
   price: number
   subtotal?: number
+  status?: 'PREPARING' | 'COMPLETED' | 'VOIDED'
 }
 
 export interface ReceiptData {
@@ -60,12 +61,11 @@ export interface LinkedOrdersReceiptData {
   combinedTotal: number
 }
 
-// 48mm printable width for POS58 thermal printer = ~32 characters at 12px font
+// 48mm printable width for POS58 thermal printer
 const PAPER_WIDTH = '48mm'
 
 /**
- * Base CSS styles for 58mm thermal receipt
- * Optimized for thermal printers with bold, readable fonts
+ * Compact CSS styles for 58mm thermal receipt - Arial font, minimal line height
  */
 const getBaseStyles = () => `
   @media print {
@@ -78,8 +78,6 @@ const getBaseStyles = () => `
       margin: 0 !important;
       padding: 0 1mm !important;
       background: white !important;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
     }
   }
   * {
@@ -89,14 +87,13 @@ const getBaseStyles = () => `
     background: transparent !important;
   }
   html, body {
-    font-family: 'Courier New', 'Lucida Console', monospace;
+    font-family: Arial, Helvetica, sans-serif;
     width: ${PAPER_WIDTH};
     max-width: ${PAPER_WIDTH};
     margin: 0;
     padding: 1mm;
-    font-size: 12px;
-    font-weight: bold;
-    line-height: 1.4;
+    font-size: 10px;
+    line-height: 1.1;
     background: white !important;
     color: #000;
   }
@@ -302,12 +299,21 @@ const getOrderTypeDisplay = (orderType?: string): string => {
 }
 
 /**
+ * Filter out voided items from the list
+ */
+const filterNonVoidedItems = (items: ReceiptItem[]): ReceiptItem[] => {
+  return items.filter(item => item.status !== 'VOIDED')
+}
+
+/**
  * Generate standard receipt HTML for single order
  */
 export const generateReceiptHTML = (data: ReceiptData): string => {
   const createdDate = data.createdAt ? new Date(data.createdAt) : new Date()
+  // Filter out voided items
+  const activeItems = filterNonVoidedItems(data.items)
   // Calculate items total first (before fees/discount)
-  const itemsTotal = data.items.reduce((sum, item) => sum + (item.subtotal || item.price * item.quantity), 0)
+  const itemsTotal = activeItems.reduce((sum, item) => sum + (item.subtotal || item.price * item.quantity), 0)
   // Auto-calculate VAT (12% inclusive) from items total
   const tax = data.tax ?? (itemsTotal * (12 / 112))
   const subtotal = data.subtotal ?? (itemsTotal - tax)
@@ -379,7 +385,7 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
           <span class="item-qty">Qty</span>
           <span class="item-price">Amount</span>
         </div>
-        ${data.items.map(item => `
+        ${activeItems.map(item => `
           <div class="item-row">
             <span class="item-name">${item.name}</span>
             <span class="item-qty">${item.quantity}</span>
@@ -441,6 +447,8 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
  * Generate merged receipt HTML for multiple orders
  */
 export const generateMergedReceiptHTML = (data: MergedReceiptData): string => {
+  // Filter out voided items
+  const activeItems = filterNonVoidedItems(data.items)
   // Auto-calculate VAT (12% inclusive) if not provided
   const tax = data.tax ?? (data.totalAmount * (12 / 112))
   const subtotal = data.subtotal ?? (data.totalAmount - tax)
@@ -496,7 +504,7 @@ export const generateMergedReceiptHTML = (data: MergedReceiptData): string => {
           <span class="item-qty">Qty</span>
           <span class="item-price">Amount</span>
         </div>
-        ${data.items.map(item => `
+        ${activeItems.map(item => `
           <div class="item-row">
             <span class="item-name">${item.name}</span>
             <span class="item-qty">${item.quantity}</span>
@@ -565,10 +573,12 @@ export const generateLinkedOrdersReceiptHTML = (data: LinkedOrdersReceiptData): 
         </div>
       </div>
 
-      ${data.orders.map((order, idx) => `
+      ${data.orders.map((order, idx) => {
+        const activeOrderItems = filterNonVoidedItems(order.items)
+        return `
         <div class="order-section">
           <div class="order-title">Order ${idx + 1}: ${formatOrderNumber(order.orderNumber)}</div>
-          ${order.items.map(item => `
+          ${activeOrderItems.map(item => `
             <div class="item-row">
               <span class="item-name">${item.name} x${item.quantity}</span>
               <span class="item-price">${formatCurrency(item.subtotal || (item.price * item.quantity))}</span>
@@ -579,7 +589,7 @@ export const generateLinkedOrdersReceiptHTML = (data: LinkedOrdersReceiptData): 
             <span>${formatCurrency(order.totalAmount)}</span>
           </div>
         </div>
-      `).join('')}
+      `}).join('')}
 
       <div class="totals-section">
         <div class="total-row subtotal">
@@ -611,6 +621,8 @@ export const generateLinkedOrdersReceiptHTML = (data: LinkedOrdersReceiptData): 
  */
 export const generateKitchenReceiptHTML = (data: ReceiptData): string => {
   const createdDate = data.createdAt ? new Date(data.createdAt) : new Date()
+  // Filter out voided items
+  const activeItems = filterNonVoidedItems(data.items)
   
   return `
     <!DOCTYPE html>
@@ -668,7 +680,7 @@ export const generateKitchenReceiptHTML = (data: ReceiptData): string => {
       <div class="divider"></div>
 
       <div style="margin: 10px 0;">
-        ${data.items.map(item => `
+        ${activeItems.map(item => `
           <div class="kitchen-item">
             <span style="font-size: 16px;">${item.quantity}x</span> ${item.name}
           </div>
