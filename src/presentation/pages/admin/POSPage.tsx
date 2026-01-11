@@ -36,7 +36,7 @@ export const POSPage = () => {
   const reorderFrom = location.state?.reorderFrom
   const linkToOrder = location.state?.linkToOrder // New: Link to existing order (empty cart)
   const addToTab = location.state?.addToTab // New: Add items to existing tab order
-  const { markPaidOnPrintReceipt, printKitchenCopy, printKitchenCopyForOpenTab, cashChangeEnabled, posMobileColumnsPerRow, posMobileCardSize } = useSettingsStore()
+  const { markPaidOnPrintReceipt, printKitchenCopy, printKitchenCopyForOpenTab, cashChangeEnabled, posMobileColumnsPerRow, posMobileCardSize, autoOutOfStockWhenIngredientsRunOut } = useSettingsStore()
   
   // Transform order items from backend format to POS format
   const transformOrderItems = (items: any[]): OrderItem[] => {
@@ -635,10 +635,11 @@ export const POSPage = () => {
       )
     : filteredItems
 
-  // Sort items: available items first, out-of-stock at the bottom
+  // Sort items: available items first, out-of-stock at the bottom (only if autoOutOfStock is enabled)
   const sortedItems = [...searchFilteredItems].sort((a, b) => {
-    const aOutOfStock = maxServings[a.id] === 0
-    const bOutOfStock = maxServings[b.id] === 0
+    // Only consider ingredient-based out-of-stock if auto setting is enabled
+    const aOutOfStock = autoOutOfStockWhenIngredientsRunOut && maxServings[a.id] === 0
+    const bOutOfStock = autoOutOfStockWhenIngredientsRunOut && maxServings[b.id] === 0
     if (aOutOfStock && !bOutOfStock) return 1  // a goes to bottom
     if (!aOutOfStock && bOutOfStock) return -1 // b goes to bottom
     return 0 // maintain original order
@@ -802,6 +803,7 @@ export const POSPage = () => {
                       onAddToOrder={addToOrder}
                       maxServings={maxServings[item.id]}
                       mobileSize={posMobileCardSize}
+                      autoOutOfStock={autoOutOfStockWhenIngredientsRunOut}
                     />
                   ))}
                 </div>

@@ -101,7 +101,7 @@ export function parseSmartStock(stockString: string): { value: number; unit: str
   // Try to match compound format: "10kg & 216g"
   const compoundMatch = stockString.match(/(\d+)\s*(\w+)\s*&\s*(\d+)\s*(\w+)/)
   if (compoundMatch) {
-    const [, mainValue, mainUnit, subValue, subUnit] = compoundMatch
+    const [, mainValue, mainUnit, subValue] = compoundMatch
     const conversion = UNIT_CONVERSIONS[mainUnit.toLowerCase()]
     if (conversion) {
       const total = parseFloat(mainValue) + (parseFloat(subValue) / conversion.conversionFactor)

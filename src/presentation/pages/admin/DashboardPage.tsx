@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, AlertCircle, Package, Clock, ArrowUpRight, ArrowDownRight, Activity, BarChart3 } from 'lucide-react'
+import { TrendingUp, DollarSign, ShoppingCart, Users, AlertCircle, Package, Clock, ArrowUpRight, ArrowDownRight, Activity, BarChart3 } from 'lucide-react'
 import { dashboardApi, type DashboardStats } from '../../../infrastructure/api/dashboard.api'
 import { salesApi, type SalesReport } from '../../../infrastructure/api/sales.api'
 import { inventoryApi, type InventoryItemDTO } from '../../../infrastructure/api/inventory.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
-import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar } from 'recharts'
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { formatSmartStock } from '../../../shared/utils/stockFormat'
+import { AnimatedNumber } from '../../components/common/AnimatedNumber'
 
-const COLORS = ['#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899']
-const GRADIENT_IDS = ['gradientYellow', 'gradientGreen', 'gradientBlue', 'gradientPurple']
+const COLORS = ['#F9C900', '#10B981', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899']
 
 export const DashboardPage = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -120,7 +120,9 @@ export const DashboardPage = () => {
               </div>
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Total Sales</p>
-            <p className="text-3xl font-bold text-gray-900">₱{(stats.totalSales || 0).toLocaleString()}</p>
+            <p className="text-3xl font-bold text-gray-900">
+              <AnimatedNumber value={stats.totalSales || 0} isCurrency duration={1200} />
+            </p>
             <p className="text-xs text-gray-400 mt-2">vs yesterday</p>
           </div>
 
@@ -136,7 +138,9 @@ export const DashboardPage = () => {
               </div>
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Orders Today</p>
-            <p className="text-3xl font-bold text-gray-900">{stats.ordersToday}</p>
+            <p className="text-3xl font-bold text-gray-900">
+              <AnimatedNumber value={stats.ordersToday} duration={1000} delay={100} />
+            </p>
             <p className="text-xs text-gray-400 mt-2">vs yesterday</p>
           </div>
 
@@ -152,7 +156,9 @@ export const DashboardPage = () => {
               </div>
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Active Customers</p>
-            <p className="text-3xl font-bold text-gray-900">{stats.activeCustomers.toLocaleString()}</p>
+            <p className="text-3xl font-bold text-gray-900">
+              <AnimatedNumber value={stats.activeCustomers} duration={1000} delay={200} />
+            </p>
             <p className="text-xs text-gray-400 mt-2">vs last month</p>
           </div>
 
@@ -169,7 +175,9 @@ export const DashboardPage = () => {
               )}
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Pending Orders</p>
-            <p className="text-3xl font-bold text-gray-900">{stats.pendingOrders}</p>
+            <p className="text-3xl font-bold text-gray-900">
+              <AnimatedNumber value={stats.pendingOrders} duration={800} delay={300} />
+            </p>
             <p className="text-xs text-gray-400 mt-2">{stats.pendingOrders > 0 ? 'Needs attention' : 'All clear'}</p>
           </div>
         </div>
@@ -196,8 +204,8 @@ export const DashboardPage = () => {
                 }))}>
                   <defs>
                     <linearGradient id="dashSalesGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#F59E0B" stopOpacity={0.4}/>
-                      <stop offset="100%" stopColor="#F59E0B" stopOpacity={0}/>
+                      <stop offset="0%" stopColor="#F9C900" stopOpacity={0.4}/>
+                      <stop offset="100%" stopColor="#F9C900" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
@@ -210,7 +218,7 @@ export const DashboardPage = () => {
                     ]}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                   />
-                  <Area type="monotone" dataKey="sales" stroke="#F59E0B" strokeWidth={3} fill="url(#dashSalesGradient)" />
+                  <Area type="monotone" dataKey="sales" stroke="#F9C900" strokeWidth={3} fill="url(#dashSalesGradient)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

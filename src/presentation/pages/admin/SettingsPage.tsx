@@ -17,6 +17,7 @@ import {
   Smartphone
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
+import { toast } from '../../components/common/ToastNotification'
 
 // Toggle Switch Component
 const ToggleSwitch = ({ 
@@ -31,9 +32,10 @@ const ToggleSwitch = ({
   <button
     onClick={onChange}
     disabled={disabled}
-    className={`relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-      enabled ? 'bg-amber-500' : 'bg-gray-200'
+    className={`relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+      enabled ? '' : 'bg-gray-200'
     }`}
+    style={enabled ? { backgroundColor: '#F9C900' } : {}}
     role="switch"
     aria-checked={enabled}
   >
@@ -112,7 +114,6 @@ export const SettingsPage = () => {
   const isManager = user?.role === 'MANAGER' || user?.role === 'ADMIN'
   
   const {
-    markPaidOnPrintReceipt,
     printKitchenCopy,
     printKitchenCopyForOpenTab,
     cashChangeEnabled,
@@ -126,12 +127,16 @@ export const SettingsPage = () => {
     statusSeparatorDirection,
     posMobileColumnsPerRow,
     posMobileCardSize,
+    navbarIconStyle,
+    navbarBackgroundStyle,
     cashierCanVoidWithoutPin,
     cashierCanRefundWithoutPin,
     cashierCanComplimentaryWithoutPin,
     cashierCanWriteOffWithoutPin,
     cashierCanVoidAndReorderWithoutPin,
-    setMarkPaidOnPrintReceipt,
+    cashierCanApplyServiceAmount,
+    cashierCanApplyDiscount,
+    cashierCanApplyDeliveryAmount,
     setPrintKitchenCopy,
     setPrintKitchenCopyForOpenTab,
     setCashChangeEnabled,
@@ -145,11 +150,16 @@ export const SettingsPage = () => {
     setStatusSeparatorDirection,
     setPosMobileColumnsPerRow,
     setPosMobileCardSize,
+    setNavbarIconStyle,
+    setNavbarBackgroundStyle,
     setCashierCanVoidWithoutPin,
     setCashierCanRefundWithoutPin,
     setCashierCanComplimentaryWithoutPin,
     setCashierCanWriteOffWithoutPin,
     setCashierCanVoidAndReorderWithoutPin,
+    setCashierCanApplyServiceAmount,
+    setCashierCanApplyDiscount,
+    setCashierCanApplyDeliveryAmount,
   } = useSettingsStore()
 
   const [isSyncing, setIsSyncing] = useState(false)
@@ -190,7 +200,7 @@ export const SettingsPage = () => {
       }
     } catch (error) {
       console.error('Failed to update time:', error)
-      alert('Failed to update time. Please try again.')
+      toast.error('Update Failed', 'Failed to update time. Please try again.')
     } finally {
       setIsSyncing(false)
     }
@@ -218,7 +228,7 @@ export const SettingsPage = () => {
       // Update manager PIN via API
       const response = await settingsApi.updateManagerPin(currentPin, newPin)
       if (response.success) {
-        alert('Manager PIN updated successfully!')
+        toast.success('PIN Updated', 'Manager PIN updated successfully!')
         setShowPinChange(false)
         setCurrentPin('')
         setNewPin('')
@@ -505,43 +515,92 @@ export const SettingsPage = () => {
             </div>
           </div>
 
-          {/* Store Hours Settings */}
+          {/* Navbar Icon Settings */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <SectionHeader 
-              icon={Clock} 
-              title="Store Operating Hours" 
-              description="Configure when your store opens and closes"
+              icon={LayoutDashboard} 
+              title="Navbar Icon Style" 
+              description="Choose between outline or solid icons for the navigation menu"
               color="amber"
             />
             <div className="divide-y divide-gray-100">
-              {/* Open Time */}
+              {/* Icon Style Selection */}
               <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
                 <div className="flex-1 pr-4">
-                  <h3 className="text-sm font-medium text-gray-900">Opening Time</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">The time your store opens for business</p>
+                  <h3 className="text-sm font-medium text-gray-900">Icon Style</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Select preferred icon appearance for the sidebar navigation</p>
                 </div>
-                <input
-                  type="time"
-                  value={openTime}
-                  onChange={(e) => handleTimeChange('openTime', e.target.value)}
-                  disabled={isSyncing}
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50 bg-white"
-                />
+                <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-1 bg-gray-50">
+                  <button
+                    onClick={() => setNavbarIconStyle('outline')}
+                    className={`px-4 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-2 ${
+                      navbarIconStyle === 'outline' 
+                        ? 'text-black' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    style={navbarIconStyle === 'outline' ? { backgroundColor: '#F9C900' } : {}}
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    Outline
+                  </button>
+                  <button
+                    onClick={() => setNavbarIconStyle('solid')}
+                    className={`px-4 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-2 ${
+                      navbarIconStyle === 'solid' 
+                        ? 'text-black' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    style={navbarIconStyle === 'solid' ? { backgroundColor: '#F9C900' } : {}}
+                  >
+                    <LayoutDashboard className="h-4 w-4" fill="currentColor" />
+                    Solid
+                  </button>
+                </div>
               </div>
+            </div>
+          </div>
 
-              {/* Close Time */}
+          {/* Navbar Background Settings */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <SectionHeader 
+              icon={LayoutDashboard} 
+              title="Navbar Background" 
+              description="Choose between light or dark background for the navigation sidebar"
+              color="amber"
+            />
+            <div className="divide-y divide-gray-100">
+              {/* Background Style Selection */}
               <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
                 <div className="flex-1 pr-4">
-                  <h3 className="text-sm font-medium text-gray-900">Closing Time</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">The time your store closes for business</p>
+                  <h3 className="text-sm font-medium text-gray-900">Background Style</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Select preferred background color for the sidebar navigation</p>
                 </div>
-                <input
-                  type="time"
-                  value={closeTime}
-                  onChange={(e) => handleTimeChange('closeTime', e.target.value)}
-                  disabled={isSyncing}
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50 bg-white"
-                />
+                <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-1 bg-gray-50">
+                  <button
+                    onClick={() => setNavbarBackgroundStyle('light')}
+                    className={`px-4 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-2 ${
+                      navbarBackgroundStyle === 'light' 
+                        ? 'text-black' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    style={navbarBackgroundStyle === 'light' ? { backgroundColor: '#F9C900' } : {}}
+                  >
+                    <div className="w-4 h-4 rounded border border-amber-200" style={{ backgroundColor: '#FFFBF0' }} />
+                    Light
+                  </button>
+                  <button
+                    onClick={() => setNavbarBackgroundStyle('dark')}
+                    className={`px-4 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-2 ${
+                      navbarBackgroundStyle === 'dark' 
+                        ? 'text-black' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    style={navbarBackgroundStyle === 'dark' ? { backgroundColor: '#F9C900' } : {}}
+                  >
+                    <div className="w-4 h-4 rounded border border-gray-600 bg-gray-900" />
+                    Dark
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -550,6 +609,47 @@ export const SettingsPage = () => {
         {/* Manager Settings - Only visible to managers/admins */}
         {isManager && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Store Hours Settings */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <SectionHeader 
+                icon={Clock} 
+                title="Store Operating Hours" 
+                description="Configure when your store opens and closes"
+                color="amber"
+              />
+              <div className="divide-y divide-gray-100">
+                {/* Open Time */}
+                <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                  <div className="flex-1 pr-4">
+                    <h3 className="text-sm font-medium text-gray-900">Opening Time</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">The time your store opens for business</p>
+                  </div>
+                  <input
+                    type="time"
+                    value={openTime}
+                    onChange={(e) => handleTimeChange('openTime', e.target.value)}
+                    disabled={isSyncing}
+                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50 bg-white"
+                  />
+                </div>
+
+                {/* Close Time */}
+                <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                  <div className="flex-1 pr-4">
+                    <h3 className="text-sm font-medium text-gray-900">Closing Time</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">The time your store closes for business</p>
+                  </div>
+                  <input
+                    type="time"
+                    value={closeTime}
+                    onChange={(e) => handleTimeChange('closeTime', e.target.value)}
+                    disabled={isSyncing}
+                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50 bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Manager PIN Settings */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <SectionHeader 
@@ -672,6 +772,39 @@ export const SettingsPage = () => {
                   enabled={cashierCanVoidAndReorderWithoutPin}
                   onChange={() => setCashierCanVoidAndReorderWithoutPin(!cashierCanVoidAndReorderWithoutPin)}
                   warning={cashierCanVoidAndReorderWithoutPin}
+                />
+              </div>
+            </div>
+
+            {/* Cashier POS Permissions */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <SectionHeader 
+                icon={Shield} 
+                title="Cashier POS Permissions" 
+                description="Configure which POS actions cashiers can access without manager PIN"
+                color="purple"
+              />
+              <div className="divide-y divide-gray-100">
+                <SettingItem
+                  title="Apply Service Amount"
+                  description="Allow cashiers to add service charge to orders"
+                  enabled={cashierCanApplyServiceAmount}
+                  onChange={() => setCashierCanApplyServiceAmount(!cashierCanApplyServiceAmount)}
+                  warning={cashierCanApplyServiceAmount}
+                />
+                <SettingItem
+                  title="Apply Discount Amount"
+                  description="Allow cashiers to apply discounts to orders"
+                  enabled={cashierCanApplyDiscount}
+                  onChange={() => setCashierCanApplyDiscount(!cashierCanApplyDiscount)}
+                  warning={cashierCanApplyDiscount}
+                />
+                <SettingItem
+                  title="Apply Delivery Amount"
+                  description="Allow cashiers to add delivery fees to orders"
+                  enabled={cashierCanApplyDeliveryAmount}
+                  onChange={() => setCashierCanApplyDeliveryAmount(!cashierCanApplyDeliveryAmount)}
+                  warning={cashierCanApplyDeliveryAmount}
                 />
               </div>
             </div>

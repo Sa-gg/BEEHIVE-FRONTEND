@@ -11,9 +11,10 @@ interface MenuItemCardProps {
   onAddToOrder: (item: MenuItem) => void
   maxServings?: number  // -1 means unlimited (no recipe), undefined means not loaded yet
   mobileSize?: MobileCardSize // Size for mobile view
+  autoOutOfStock?: boolean // Whether to automatically mark items as out of stock when ingredients run out
 }
 
-export const MenuItemCard = ({ item, onAddToOrder, maxServings, mobileSize = 'medium' }: MenuItemCardProps) => {
+export const MenuItemCard = ({ item, onAddToOrder, maxServings, mobileSize = 'medium', autoOutOfStock = false }: MenuItemCardProps) => {
   const [animations, setAnimations] = useState<number[]>([])
 
   // Use maxServings directly (backend already accounts for cart and preparing orders)
@@ -24,8 +25,8 @@ export const MenuItemCard = ({ item, onAddToOrder, maxServings, mobileSize = 'me
       e.stopPropagation()
     }
     if (!item.available) return
-    // Prevent adding if out of stock based on recipe
-    if (availableStock !== undefined && availableStock !== -1 && availableStock <= 0) return
+    // Only prevent adding if autoOutOfStock is enabled AND out of stock based on recipe
+    if (autoOutOfStock && availableStock !== undefined && availableStock !== -1 && availableStock <= 0) return
     
     onAddToOrder(item)
     
@@ -41,7 +42,8 @@ export const MenuItemCard = ({ item, onAddToOrder, maxServings, mobileSize = 'me
 
   // Determine stock status (using available stock after cart deduction)
   const hasRecipe = availableStock !== undefined && availableStock !== -1
-  const isOutOfStock = hasRecipe && availableStock <= 0
+  // Only mark as out of stock if autoOutOfStock setting is enabled
+  const isOutOfStock = autoOutOfStock && hasRecipe && availableStock <= 0
   const isLowStock = hasRecipe && availableStock > 0 && availableStock <= 5
 
   // Mobile size classes

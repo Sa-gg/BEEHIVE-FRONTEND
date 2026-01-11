@@ -9,6 +9,7 @@ import { StockManagementModal } from '../../components/features/Admin/StockManag
 import { formatSmartStock } from '../../../shared/utils/stockFormat'
 import { printWithIframe } from '../../../shared/utils/printUtils'
 import { useAuthStore } from '../../store/authStore'
+import { toast } from '../../components/common/ToastNotification'
 
 // Use DTO type from API for inventory items
 type InventoryItem = InventoryItemDTO
@@ -111,7 +112,7 @@ export const InventoryPage = () => {
     if (!newItem.name || !newItem.category || newItem.currentStock === undefined || 
         newItem.minStock === undefined || newItem.maxStock === undefined || 
         !newItem.unit || newItem.costPerUnit === undefined) {
-      alert('Please fill in all required fields')
+      toast.warning('Validation Error', 'Please fill in all required fields')
       return
     }
 
@@ -131,7 +132,7 @@ export const InventoryPage = () => {
       setNewItem({})
       await loadInventory()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to add item')
+      toast.error('Add Failed', err instanceof Error ? err.message : 'Failed to add item')
       console.error('Error adding item:', err)
     }
   }
@@ -142,7 +143,7 @@ export const InventoryPage = () => {
       await inventoryApi.delete(id)
       await loadInventory()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete item')
+      toast.error('Delete Failed', err instanceof Error ? err.message : 'Failed to delete item')
       console.error('Error deleting item:', err)
     }
   }
@@ -170,7 +171,7 @@ export const InventoryPage = () => {
       setEditingItem(null)
       await loadInventory()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update item')
+      toast.error('Update Failed', err instanceof Error ? err.message : 'Failed to update item')
       console.error('Error updating item:', err)
     }
   }
@@ -400,7 +401,9 @@ export const InventoryPage = () => {
               </div>
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Total Items</p>
-            <p className="text-2xl lg:text-3xl font-bold text-gray-900">{stats.totalItems}</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">
+              {stats.totalItems.toLocaleString()}
+            </p>
             <p className="text-xs text-gray-400 mt-2">all inventory</p>
           </div>
           <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-2xl shadow-sm p-5 border border-yellow-100 hover:shadow-lg transition-all duration-300 group">
@@ -415,7 +418,9 @@ export const InventoryPage = () => {
               )}
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Low Stock</p>
-            <p className="text-2xl lg:text-3xl font-bold text-gray-900">{stats.lowStock}</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">
+              {stats.lowStock.toLocaleString()}
+            </p>
             <p className="text-xs text-gray-400 mt-2">{stats.lowStock > 0 ? 'needs restock' : 'all clear'}</p>
           </div>
           <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl shadow-sm p-5 border border-red-100 hover:shadow-lg transition-all duration-300 group">
@@ -430,7 +435,9 @@ export const InventoryPage = () => {
               )}
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Out of Stock</p>
-            <p className="text-2xl lg:text-3xl font-bold text-gray-900">{stats.outOfStock}</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">
+              {stats.outOfStock.toLocaleString()}
+            </p>
             <p className="text-xs text-gray-400 mt-2">{stats.outOfStock > 0 ? 'urgent attention' : 'all stocked'}</p>
           </div>
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-sm p-5 border border-green-100 hover:shadow-lg transition-all duration-300 group">
@@ -440,7 +447,9 @@ export const InventoryPage = () => {
               </div>
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Total Value</p>
-            <p className="text-xl lg:text-2xl font-bold text-gray-900">₱{stats.totalValue.toLocaleString()}</p>
+            <p className="text-xl lg:text-2xl font-bold text-gray-900">
+              ₱{stats.totalValue.toLocaleString()}
+            </p>
             <p className="text-xs text-gray-400 mt-2">inventory worth</p>
           </div>
         </div>
@@ -556,14 +565,14 @@ export const InventoryPage = () => {
             <>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50/80 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Item</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden md:table-cell">Category</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Stock</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden lg:table-cell">Supplier</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Item</th>
+                    <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">Category</th>
+                    <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Stock</th>
+                    <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">Supplier</th>
+                    <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -584,19 +593,19 @@ export const InventoryPage = () => {
                     
                     return (
                       <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-4">
+                        <td className="px-5 py-4">
                           <div>
                             <p className="font-semibold text-gray-900">{item.name}</p>
                             <p className="text-sm text-gray-500">₱{item.costPerUnit}/{item.unit}</p>
                           </div>
                         </td>
-                        <td className="px-4 py-4 hidden md:table-cell">
+                        <td className="px-5 py-4 hidden md:table-cell text-center">
                           <Badge variant="outline" className="capitalize text-xs">
                             {item.category.toLowerCase()}
                           </Badge>
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="space-y-1">
+                        <td className="px-5 py-4 text-center">
+                          <div className="space-y-1 flex flex-col items-center">
                             <p className="font-semibold text-sm">
                               {formatSmartStock(item.currentStock, item.unit)}
                             </p>
@@ -612,52 +621,52 @@ export const InventoryPage = () => {
                             <p className="text-xs text-gray-500">{percentage}% of max</p>
                           </div>
                         </td>
-                        <td className="px-4 py-4 hidden lg:table-cell">
+                        <td className="px-5 py-4 hidden lg:table-cell text-center">
                           <div>
                             <p className="text-sm text-gray-700">{item.supplier}</p>
                             <p className="text-xs text-gray-500">Last: {getDaysAgo(item.lastRestocked)}</p>
                           </div>
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-5 py-4 text-center">
                           <Badge className={`${statusConfig[item.status].color} border text-xs`}>
                             <StatusIcon className="h-3 w-3 mr-1" />
                             {statusConfig[item.status].label}
                           </Badge>
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-5 py-4">
                           {canManageInventory ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center gap-2">
                               <Button
                                 size="sm"
                                 onClick={() => {
                                   setSelectedItemForStock(item)
                                   setShowStockModal(true)
                                 }}
-                                className="h-9 px-4 font-medium"
+                                className="h-8 px-3 text-xs font-medium"
                                 style={{ backgroundColor: '#F9C900', color: '#000000' }}
                               >
-                                <ArrowUpDown className="h-4 w-4 mr-2" />
-                                Manage Stock
+                                <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
+                                Stock
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => openEditModal(item)}
-                                className="h-9 px-3 text-blue-600 hover:bg-blue-50 border-blue-200"
+                                className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50 border-blue-200"
                               >
-                                <Pencil className="h-4 w-4" />
+                                <Pencil className="h-3.5 w-3.5" />
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => deleteItem(item.id)}
-                                className="h-9 px-3 text-red-600 hover:bg-red-50 border-red-200"
+                                className="h-8 w-8 p-0 text-red-600 hover:bg-red-50 border-red-200"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 text-gray-500">
+                            <div className="flex items-center justify-end gap-2 text-gray-500">
                               <Eye className="h-4 w-4" />
                               <span className="text-sm">View Only</span>
                             </div>

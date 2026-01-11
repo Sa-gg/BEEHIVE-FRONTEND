@@ -80,21 +80,21 @@ export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact =
         </div>
       ) : (
         // Regular grid layout - using same curved button design
-        <div className="px-2.5 pt-2 pb-2">
-          <h3 className="font-semibold text-xs mb-2 line-clamp-2 min-h-[2rem]">{item.name}</h3>
+        <div className="px-2 pt-1.5 pb-1.5">
+          <h3 className="font-semibold text-[10px] sm:text-xs mb-1.5 line-clamp-2 min-h-[1.75rem]">{item.name}</h3>
           <div className="flex items-center justify-between">
-            <span className="text-sm font-bold" style={{ color: '#F9C900' }}>₱{item.price.toFixed(2)}</span>
+            <span className="text-xs sm:text-sm font-bold" style={{ color: '#F9C900' }}>₱{item.price.toFixed(2)}</span>
             <button
               onClick={handleAddToCart}
               disabled={!item.available}
-              className="h-14 w-14 lg:h-12 lg:w-12 flex items-center justify-center transition-all hover:scale-105 active:scale-95 shrink-0"
+              className="h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center transition-all hover:scale-105 active:scale-95 shrink-0"
               style={{ 
                 backgroundColor: '#F9C900',
-                borderTopLeftRadius: '24px',
-                borderBottomRightRadius: '8px'
+                borderTopLeftRadius: '20px',
+                borderBottomRightRadius: '6px'
               }}
             >
-              <Plus className="h-7 w-7 lg:h-6 lg:w-6 text-black" />
+              <Plus className="h-5 w-5 sm:h-6 sm:w-6 text-black" />
             </button>
           </div>
         </div>

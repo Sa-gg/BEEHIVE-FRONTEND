@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Calculator, Delete, Percent, Truck, BadgePercent, HandCoins } from 'lucide-react'
+import { X, Delete, Percent, Truck, BadgePercent, HandCoins } from 'lucide-react'
 import { Button } from './ui/button'
 
 export type FeeType = 'delivery' | 'service' | 'discount'

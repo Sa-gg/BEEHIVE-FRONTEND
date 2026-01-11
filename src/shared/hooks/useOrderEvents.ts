@@ -11,6 +11,7 @@ export interface OrderEvent {
 
 interface UseOrderEventsOptions {
   type: 'cashier' | 'customer';
+  deviceId?: string;
   onNewOrder?: (order: unknown) => void;
   onOrderUpdate?: (order: unknown) => void;
   onConnected?: (data: unknown) => void;

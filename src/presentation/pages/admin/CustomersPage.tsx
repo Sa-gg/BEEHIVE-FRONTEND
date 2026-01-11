@@ -27,6 +27,7 @@ import {
   type UpdateCustomerDTO,
   getStatusDisplay
 } from '../../../infrastructure/api/customers.api'
+import { toast } from '../../components/common/ToastNotification'
 
 export const CustomersPage = () => {
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -150,7 +151,7 @@ export const CustomersPage = () => {
     e.preventDefault()
     
     if (!formData.name || !formData.email || (!editingCustomer && !formData.password)) {
-      alert('Please fill in all required fields')
+      toast.warning('Validation Error', 'Please fill in all required fields')
       return
     }
 
@@ -183,7 +184,7 @@ export const CustomersPage = () => {
       setIsModalOpen(false)
       resetForm()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save customer')
+      toast.error('Save Failed', err instanceof Error ? err.message : 'Failed to save customer')
     } finally {
       setSubmitting(false)
     }
@@ -197,7 +198,7 @@ export const CustomersPage = () => {
       await loadCustomers()
       await loadStats()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete customer')
+      toast.error('Delete Failed', err instanceof Error ? err.message : 'Failed to delete customer')
     }
   }
 

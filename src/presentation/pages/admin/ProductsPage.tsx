@@ -32,6 +32,7 @@ import { menuItemsApi, uploadApi } from '../../../infrastructure/api/menuItems.a
 import type { MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
 import { categoriesApi } from '../../../infrastructure/api/categories.api'
 import type { CategoryDTO } from '../../../infrastructure/api/categories.api'
+import { toast } from '../../components/common/ToastNotification'
 
 interface Product {
   id: string
@@ -165,7 +166,7 @@ export const ProductsPage = () => {
       setProducts(mappedProducts)
     } catch (error) {
       console.error('Failed to fetch products:', error)
-      alert('Failed to load products. Please try again.')
+      toast.error('Failed to load products', 'Please try again.')
     } finally {
       setLoading(false)
     }
@@ -201,7 +202,7 @@ export const ProductsPage = () => {
     e.preventDefault()
     
     if (!categoryFormData.name || !categoryFormData.displayName) {
-      alert('Please fill in name and display name')
+      toast.warning('Validation Error', 'Please fill in name and display name')
       return
     }
     
@@ -214,14 +215,14 @@ export const ProductsPage = () => {
           displayName: categoryFormData.displayName,
           description: categoryFormData.description || undefined
         })
-        alert('Category updated successfully!')
+        toast.success('Category updated successfully!')
       } else {
         await categoriesApi.create({
           name: categoryFormData.name,
           displayName: categoryFormData.displayName,
           description: categoryFormData.description || undefined
         })
-        alert('Category created successfully!')
+        toast.success('Category created successfully!')
       }
       
       setIsCategoryModalOpen(false)
@@ -230,7 +231,7 @@ export const ProductsPage = () => {
     } catch (error) {
       console.error('Failed to save category:', error)
       const err = error as { response?: { data?: { message?: string } } }
-      alert(err.response?.data?.message || 'Failed to save category. Please try again.')
+      toast.error('Failed to save category', err.response?.data?.message || 'Please try again.')
     } finally {
       setSubmittingCategory(false)
     }
@@ -243,12 +244,12 @@ export const ProductsPage = () => {
     
     try {
       await categoriesApi.delete(id)
-      alert('Category deleted successfully!')
+      toast.success('Category deleted successfully!')
       await fetchCategories()
     } catch (error) {
       console.error('Failed to delete category:', error)
       const err = error as { response?: { data?: { message?: string } } }
-      alert(err.response?.data?.message || 'Failed to delete category. Please try again.')
+      toast.error('Failed to delete category', err.response?.data?.message || 'Please try again.')
     }
   }
 
@@ -263,11 +264,11 @@ export const ProductsPage = () => {
       
       const response = await uploadApi.uploadImage(uploadFormData)
       setFormData(prev => ({ ...prev, image: response.data.path }))
-      alert('Image uploaded successfully!')
+      toast.success('Image uploaded successfully!')
     } catch (error) {
       console.error('Failed to upload image:', error)
       const err = error as { response?: { data?: { message?: string } } }
-      alert(err.response?.data?.message || 'Failed to upload image. Please try again.')
+      toast.error('Failed to upload image', err.response?.data?.message || 'Please try again.')
     } finally {
       setUploadingImage(false)
     }
@@ -294,12 +295,12 @@ export const ProductsPage = () => {
     if (!file) return
 
     if (!file.type.startsWith('image/')) {
-      alert('Please drop an image file')
+      toast.warning('Invalid File', 'Please drop an image file')
       return
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('Image size must be less than 5MB')
+      toast.warning('File Too Large', 'Image size must be less than 5MB')
       return
     }
 
@@ -310,11 +311,11 @@ export const ProductsPage = () => {
       
       const response = await uploadApi.uploadImage(uploadFormData)
       setFormData(prev => ({ ...prev, image: response.data.path }))
-      alert('Image uploaded successfully!')
+      toast.success('Image uploaded successfully!')
     } catch (error) {
       console.error('Failed to upload image:', error)
       const err = error as { response?: { data?: { message?: string } } }
-      alert(err.response?.data?.message || 'Failed to upload image. Please try again.')
+      toast.error('Failed to upload image', err.response?.data?.message || 'Please try again.')
     } finally {
       setUploadingImage(false)
     }
@@ -356,7 +357,7 @@ export const ProductsPage = () => {
     e.preventDefault()
     
     if (!formData.name || !formData.categoryId || !formData.price || !formData.prepTime) {
-      alert('Please fill in all required fields')
+      toast.warning('Validation Error', 'Please fill in all required fields')
       return
     }
 
@@ -386,10 +387,10 @@ export const ProductsPage = () => {
 
       if (editingProduct) {
         await menuItemsApi.update(editingProduct.id, payload)
-        alert('Product updated successfully!')
+        toast.success('Product updated successfully!')
       } else {
         await menuItemsApi.create(payload)
-        alert('Product created successfully!')
+        toast.success('Product created successfully!')
       }
 
       setIsModalOpen(false)
@@ -399,7 +400,7 @@ export const ProductsPage = () => {
     } catch (error) {
       console.error('Failed to save product:', error)
       const err = error as { response?: { data?: { message?: string } } }
-      alert(err.response?.data?.message || 'Failed to save product. Please try again.')
+      toast.error('Failed to save product', err.response?.data?.message || 'Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -412,12 +413,12 @@ export const ProductsPage = () => {
 
     try {
       await menuItemsApi.delete(id)
-      alert('Product deleted successfully!')
+      toast.success('Product deleted successfully!')
       await fetchProducts()
     } catch (error) {
       console.error('Failed to delete product:', error)
       const err = error as { response?: { data?: { message?: string } } }
-      alert(err.response?.data?.message || 'Failed to delete product. Please try again.')
+      toast.error('Failed to delete product', err.response?.data?.message || 'Please try again.')
     }
   }
 
@@ -428,7 +429,7 @@ export const ProductsPage = () => {
     } catch (error) {
       console.error('Failed to toggle availability:', error)
       const err = error as { response?: { data?: { message?: string } } }
-      alert(err.response?.data?.message || 'Failed to update product. Please try again.')
+      toast.error('Failed to update product', err.response?.data?.message || 'Please try again.')
     }
   }
 
@@ -439,7 +440,7 @@ export const ProductsPage = () => {
     } catch (error) {
       console.error('Failed to toggle featured:', error)
       const err = error as { response?: { data?: { message?: string } } }
-      alert(err.response?.data?.message || 'Failed to update product. Please try again.')
+      toast.error('Failed to update product', err.response?.data?.message || 'Please try again.')
     }
   }
 
@@ -459,9 +460,6 @@ export const ProductsPage = () => {
   const activeProducts = products.filter(p => p.available).length
   const outOfStockProducts = products.filter(p => !p.available).length
   const featuredProducts = products.filter(p => p.featured).length
-  const avgProfitMargin = products.length > 0 
-    ? (products.reduce((sum, p) => sum + parseFloat(getProfitMargin(p)), 0) / products.length).toFixed(1)
-    : '0'
 
   return (
     <AdminLayout>
@@ -485,64 +483,64 @@ export const ProductsPage = () => {
           </Button>
         </div>
 
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4">
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Items</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{totalProducts}</p>
-              </div>
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Package className="h-6 w-6 text-blue-600" />
+        {/* Statistics Cards - Updated to match InventoryPage design */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-5 border border-blue-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-blue-100 rounded-xl group-hover:scale-110 transition-transform">
+                <Package className="h-5 w-5 text-blue-600" />
               </div>
             </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">Total Items</p>
+            <p className="text-xl lg:text-2xl font-bold text-gray-900">{totalProducts}</p>
+            <p className="text-xs text-gray-400 mt-2">in catalog</p>
           </div>
 
           <div 
-            className={`bg-white rounded-xl p-5 shadow-sm border cursor-pointer transition-all ${
-              availabilityFilter === 'available' ? 'border-green-400 ring-2 ring-green-200' : 'border-gray-200 hover:border-green-300'
+            className={`rounded-2xl shadow-sm p-5 border cursor-pointer transition-all duration-300 group ${
+              availabilityFilter === 'available' 
+                ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 ring-2 ring-green-200' 
+                : 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-100 hover:shadow-lg'
             }`}
             onClick={() => setAvailabilityFilter(availabilityFilter === 'available' ? 'all' : 'available')}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Available</p>
-                <p className="text-2xl font-bold text-green-600 mt-1">{activeProducts}</p>
-              </div>
-              <div className="p-3 bg-green-100 rounded-lg">
-                <CheckCircle className="h-6 w-6 text-green-600" />
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-green-100 rounded-xl group-hover:scale-110 transition-transform">
+                <CheckCircle className="h-5 w-5 text-green-600" />
               </div>
             </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">Available</p>
+            <p className="text-xl lg:text-2xl font-bold text-green-600">{activeProducts}</p>
+            <p className="text-xs text-gray-400 mt-2">click to filter</p>
           </div>
 
           <div 
-            className={`bg-white rounded-xl p-5 shadow-sm border cursor-pointer transition-all ${
-              availabilityFilter === 'out-of-stock' ? 'border-red-400 ring-2 ring-red-200' : 'border-gray-200 hover:border-red-300'
+            className={`rounded-2xl shadow-sm p-5 border cursor-pointer transition-all duration-300 group ${
+              availabilityFilter === 'out-of-stock' 
+                ? 'bg-gradient-to-br from-red-100 to-rose-100 border-red-300 ring-2 ring-red-200' 
+                : 'bg-gradient-to-br from-red-50 to-rose-50 border-red-100 hover:shadow-lg'
             }`}
             onClick={() => setAvailabilityFilter(availabilityFilter === 'out-of-stock' ? 'all' : 'out-of-stock')}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Out of Stock</p>
-                <p className="text-2xl font-bold text-red-600 mt-1">{outOfStockProducts}</p>
-              </div>
-              <div className="p-3 bg-red-100 rounded-lg">
-                <AlertCircle className="h-6 w-6 text-red-600" />
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-red-100 rounded-xl group-hover:scale-110 transition-transform">
+                <AlertCircle className="h-5 w-5 text-red-600" />
               </div>
             </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">Out of Stock</p>
+            <p className="text-xl lg:text-2xl font-bold text-red-600">{outOfStockProducts}</p>
+            <p className="text-xs text-gray-400 mt-2">click to filter</p>
           </div>
 
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Featured</p>
-                <p className="text-2xl font-bold text-amber-600 mt-1">{featuredProducts}</p>
-              </div>
-              <div className="p-3 bg-amber-100 rounded-lg">
-                <Star className="h-6 w-6 text-amber-600" />
+          <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl shadow-sm p-5 border border-amber-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-amber-100 rounded-xl group-hover:scale-110 transition-transform">
+                <Star className="h-5 w-5 text-amber-600" />
               </div>
             </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">Featured</p>
+            <p className="text-xl lg:text-2xl font-bold text-amber-600">{featuredProducts}</p>
+            <p className="text-xs text-gray-400 mt-2">highlighted items</p>
           </div>
         </div>
 
@@ -635,11 +633,11 @@ export const ProductsPage = () => {
 
         {/* Products Display */}
         {!loading && viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {filteredProducts.map(product => {
               return (
                 <div key={product.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
-                  <div className="aspect-square bg-gray-100 relative">
+                  <div className="aspect-video bg-gray-100 relative">
                     {product.image ? (
                       <img
                         src={getImageUrl(product.image) || ''}
@@ -648,42 +646,42 @@ export const ProductsPage = () => {
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <Package className="h-12 w-12 text-gray-300" />
+                        <Package className="h-8 w-8 text-gray-300" />
                       </div>
                     )}
-                    <div className="absolute top-2 right-2 flex gap-2">
+                    <div className="absolute top-1.5 right-1.5 flex gap-1">
                       {product.featured && (
-                        <Badge className="bg-yellow-100 text-yellow-800">Featured</Badge>
+                        <Badge className="bg-yellow-100 text-yellow-800 text-[10px] px-1.5 py-0.5">Featured</Badge>
                       )}
                       {!product.available && (
-                        <Badge variant="destructive">Unavailable</Badge>
+                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">Unavailable</Badge>
                       )}
                     </div>
                   </div>
                   
-                  <div className="p-4">
+                  <div className="p-3">
                     <div className="mb-2">
-                      <h3 className="font-semibold text-sm mb-1 line-clamp-1">{product.name}</h3>
-                      <p className="text-xs text-gray-500">{product.category?.displayName || getCategoryDisplayName(product.categoryId)}</p>
+                      <h3 className="font-semibold text-xs mb-0.5 line-clamp-1">{product.name}</h3>
+                      <p className="text-[10px] text-gray-500">{product.category?.displayName || getCategoryDisplayName(product.categoryId)}</p>
                     </div>
                     
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center justify-between mb-2">
                       <div>
-                        <p className="text-lg font-bold" style={{ color: '#F9C900' }}>₱{product.price}</p>
-                        <p className="text-xs text-gray-500">Cost: ₱{product.cost ?? 0}</p>
+                        <p className="text-sm font-bold" style={{ color: '#F9C900' }}>₱{product.price}</p>
+                        <p className="text-[10px] text-gray-500">Cost: ₱{product.cost ?? 0}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-semibold text-gray-900">{product.prepTime ?? 5} mins</p>
-                        <p className="text-xs text-green-600">+{getProfitMargin(product)}% margin</p>
+                        <p className="text-xs font-semibold text-gray-900">{product.prepTime ?? 5}m</p>
+                        <p className="text-[10px] text-green-600">+{getProfitMargin(product)}%</p>
                       </div>
                     </div>
                     
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1.5">
                       {/* Quick Stock Toggle - Prominent for rush hours */}
                       <Button
                         size="sm"
                         onClick={() => toggleAvailability(product.id)}
-                        className={`w-full font-medium ${
+                        className={`w-full font-medium text-xs h-7 ${
                           product.available 
                             ? 'bg-red-100 hover:bg-red-200 text-red-700 border border-red-300' 
                             : 'bg-green-100 hover:bg-green-200 text-green-700 border border-green-300'
@@ -693,12 +691,12 @@ export const ProductsPage = () => {
                         {product.available ? (
                           <>
                             <AlertCircle className="h-3 w-3 mr-1" />
-                            Mark Out of Stock
+                            Out of Stock
                           </>
                         ) : (
                           <>
                             <CheckCircle className="h-3 w-3 mr-1" />
-                            Mark Available
+                            Available
                           </>
                         )}
                       </Button>
@@ -706,10 +704,10 @@ export const ProductsPage = () => {
                         variant="outline"
                         size="sm"
                         onClick={() => handleEdit(product)}
-                        className="w-full"
+                        className="w-full text-xs h-7"
                       >
                         <Pencil className="h-3 w-3 mr-1" />
-                        Edit Details
+                        Edit
                       </Button>
                     </div>
                   </div>

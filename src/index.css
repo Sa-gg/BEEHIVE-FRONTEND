@@ -1,5 +1,55 @@
 @import "tailwindcss";
 
+/* ========== Global Scrollbar Styles ========== */
+/* Use overlay scrollbar so it doesn't push content */
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+/* Custom scrollbar styling - thin and themed */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+/* Admin/Dark theme scrollbar */
+.dark-scrollbar::-webkit-scrollbar-thumb,
+[style*="background-color: #000"]::-webkit-scrollbar-thumb,
+[style*="background-color: rgb(0, 0, 0)"]::-webkit-scrollbar-thumb {
+  background: rgba(249, 201, 0, 0.3);
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb:hover,
+[style*="background-color: #000"]::-webkit-scrollbar-thumb:hover,
+[style*="background-color: rgb(0, 0, 0)"]::-webkit-scrollbar-thumb:hover {
+  background: rgba(249, 201, 0, 0.5);
+}
+
+/* Overlay scrollbar - doesn't take space */
+.scrollbar-overlay {
+  overflow: overlay !important;
+}
+
 /* Hide scrollbar for Chrome, Safari and Opera */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;

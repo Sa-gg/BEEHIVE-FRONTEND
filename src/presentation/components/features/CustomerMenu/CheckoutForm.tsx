@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { OrderItem } from '../../../../core/domain/entities/Order.entity'
 import { Button } from '../../common/ui/button'
 import { Input } from '../../common/ui/input'
 import { Label } from '../../common/ui/label'
-import { ArrowLeft, ShoppingBag, User, MapPin, CreditCard, MessageSquare, Utensils, Package, Truck, Banknote, Smartphone, CreditCard as CardIcon } from 'lucide-react'
+import { ArrowLeft, ShoppingBag, User, MapPin, CreditCard, MessageSquare, Utensils, Package, Truck, Banknote, Smartphone, CreditCard as CardIcon, Bell } from 'lucide-react'
 import { useAuthStore } from '../../../store/authStore'
+import { ordersApi } from '../../../../infrastructure/api/orders.api'
+import { MyOrdersModal } from './MyOrdersModal'
+import { getDeviceId } from '../../../../shared/utils/deviceId'
 
 interface CheckoutFormProps {
   items: OrderItem[]
@@ -20,6 +23,12 @@ export const CheckoutForm = ({ items, onSubmit, onBack, isSubmitting = false }: 
   const [notes, setNotes] = useState('')
   const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEOUT' | 'DELIVERY'>('DINE_IN')
   const [paymentMethod, setPaymentMethod] = useState<string>('CASH')
+  
+  // Order notifications state
+  const [orderNotifications, setOrderNotifications] = useState(0)
+  const [hasOrderUpdates, setHasOrderUpdates] = useState(false)
+  const [showMyOrders, setShowMyOrders] = useState(false)
+  const deviceId = getDeviceId()
 
   // Pre-fill customer name if user is authenticated
   useEffect(() => {
@@ -27,6 +36,40 @@ export const CheckoutForm = ({ items, onSubmit, onBack, isSubmitting = false }: 
       setCustomerName(user.name)
     }
   }, [isAuthenticated, user])
+
+  // Refresh order notifications
+  const refreshOrderNotifications = useCallback(async () => {
+    try {
+      let customerOrders
+      
+      if (user) {
+        const allOrders = await ordersApi.getAll()
+        customerOrders = allOrders.filter(
+          order => order.customerName === user?.name || order.customerName === user?.email
+        )
+      } else {
+        customerOrders = await ordersApi.getMyOrders()
+      }
+      
+      const activeCount = customerOrders.filter(
+        o => !['COMPLETED', 'CANCELLED'].includes(o.status)
+      ).length
+      
+      setOrderNotifications(activeCount)
+      
+      const hasReady = customerOrders.some(o => o.status === 'READY')
+      setHasOrderUpdates(hasReady)
+    } catch (error) {
+      console.error('Failed to refresh order notifications:', error)
+    }
+  }, [user])
+
+  // Poll for order updates
+  useEffect(() => {
+    refreshOrderNotifications()
+    const interval = setInterval(refreshOrderNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [refreshOrderNotifications])
 
   // VAT is inclusive (already included in the displayed prices)
   const total = items.reduce((sum, item) => sum + item.subtotal, 0)
@@ -53,12 +96,53 @@ export const CheckoutForm = ({ items, onSubmit, onBack, isSubmitting = false }: 
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-white pb-28">
-      {/* Floating Bee Icon */}
-      <div className="fixed top-4 right-4 z-40">
-        <div className="w-10 h-10 rounded-full bg-white shadow-md border-2 border-amber-300 flex items-center justify-center">
-          <span className="text-xl">🐝</span>
+      {/* Floating Bee Icon - Clickable with notifications */}
+      <button
+        onClick={() => setShowMyOrders(true)}
+        className="fixed top-4 right-4 z-40 group"
+      >
+        <div className={`w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 ${
+          orderNotifications > 0 
+            ? 'bg-gradient-to-br from-yellow-400 to-orange-400 border-2 border-yellow-300 animate-bounce-slow' 
+            : 'bg-white border-2 border-amber-300 hover:border-yellow-400'
+        } hover:shadow-xl hover:scale-110`}>
+          <span className={`text-2xl transition-transform duration-300 ${orderNotifications > 0 ? 'animate-wiggle' : 'group-hover:scale-110'}`}>
+            🐝
+          </span>
         </div>
-      </div>
+        
+        {/* Notification Badge */}
+        {orderNotifications > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center text-xs font-bold text-white bg-red-500 shadow-lg">
+            {orderNotifications}
+          </span>
+        )}
+        
+        {/* Ready Order Pulse Effect */}
+        {hasOrderUpdates && (
+          <span className="absolute -top-2 -left-2 w-5 h-5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-5 w-5 bg-green-500 items-center justify-center shadow-sm">
+              <Bell className="h-2.5 w-2.5 text-white" />
+            </span>
+          </span>
+        )}
+      </button>
+
+      {/* Custom animation styles */}
+      <style>{`
+        @keyframes bounce-slow {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
+        }
+        @keyframes wiggle {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(-5deg); }
+          75% { transform: rotate(5deg); }
+        }
+        .animate-bounce-slow { animation: bounce-slow 2s ease-in-out infinite; }
+        .animate-wiggle { animation: wiggle 0.5s ease-in-out infinite; }
+      `}</style>
 
       {/* Header */}
       <div className="bg-white sticky top-0 z-30 shadow-sm">
@@ -249,6 +333,13 @@ export const CheckoutForm = ({ items, onSubmit, onBack, isSubmitting = false }: 
           </div>
         </form>
       </div>
+
+      {/* My Orders Modal */}
+      <MyOrdersModal
+        open={showMyOrders}
+        onOpenChange={setShowMyOrders}
+        onFeedbackSubmitted={refreshOrderNotifications}
+      />
     </div>
   )
 }

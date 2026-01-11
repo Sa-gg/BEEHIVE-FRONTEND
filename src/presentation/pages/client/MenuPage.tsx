@@ -436,6 +436,9 @@ export const MenuPage = () => {
       setConfirmedOrder(order)
       setViewState('confirmation')
       setCartItems([]) // Clear cart after successful order
+      
+      // Immediately refresh order notifications for real-time count
+      refreshOrderNotifications()
 
       // Show mood reflection if mood was selected
       if (selectedMood) {
@@ -1103,7 +1106,7 @@ export const MenuPage = () => {
               <p className="text-sm">No items found</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
               {filteredItems.map((item) => (
                 <CustomerMenuItemCard
                   key={item.id}

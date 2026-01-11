@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { CustomerOrder } from '../../../../core/domain/entities/CustomerOrder.entity'
 import { Button } from '../../common/ui/button'
-import { Badge } from '../../common/ui/badge'
 import { CheckCircle2, Clock, ChefHat, Bell, PartyPopper, Home } from 'lucide-react'
-import { formatOrderStatus, getStatusColor } from '../../../../shared/utils/orderUtils'
 import { useOrderEvents } from '../../../../shared/hooks/useOrderEvents'
+import { ordersApi } from '../../../../infrastructure/api/orders.api'
+import { MyOrdersModal } from './MyOrdersModal'
+import { useAuthStore } from '../../../store/authStore'
 
 interface OrderConfirmationProps {
   order: CustomerOrder
@@ -33,16 +34,58 @@ const getStatusIndex = (status: string) => {
 export const OrderConfirmation = ({ order: initialOrder, onNewOrder }: OrderConfirmationProps) => {
   const [order, setOrder] = useState<CustomerOrder>(initialOrder)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [orderNotifications, setOrderNotifications] = useState(0)
+  const [hasOrderUpdates, setHasOrderUpdates] = useState(false)
+  const [showMyOrders, setShowMyOrders] = useState(false)
+  
+  const { user } = useAuthStore()
   
   const currentStatusIndex = getStatusIndex(order.status)
-  const isReady = order.status === 'READY'
-  const isCompleted = order.status === 'COMPLETED'
+  const isReady = order.status === 'ready'
+  const isCompleted = order.status === 'completed'
+
+  // Refresh order notifications count - same logic as MyOrdersModal
+  const refreshOrderNotifications = useCallback(async () => {
+    try {
+      let customerOrders: any[]
+      
+      if (user) {
+        // For authenticated users, filter by name (same as MyOrdersModal)
+        const allOrders = await ordersApi.getAll()
+        customerOrders = allOrders.filter(
+          (order: any) => order.customerName === user?.name || order.customerName === user?.email
+        )
+      } else {
+        // For guests, fetch orders by device ID
+        customerOrders = await ordersApi.getMyOrders()
+      }
+      
+      // Only count truly active orders (not completed, not cancelled)
+      const activeOrders = customerOrders.filter((o: any) => {
+        const status = (o.status || '').toUpperCase()
+        return !['COMPLETED', 'CANCELLED'].includes(status)
+      })
+      setOrderNotifications(activeOrders.length)
+      setHasOrderUpdates(activeOrders.some((o: any) => 
+        ['ready', 'READY'].includes(o.status)
+      ))
+    } catch {
+      // Ignore errors
+    }
+  }, [user])
+
+  // Poll for order notifications
+  useEffect(() => {
+    refreshOrderNotifications()
+    const interval = setInterval(refreshOrderNotifications, 10000)
+    return () => clearInterval(interval)
+  }, [refreshOrderNotifications])
 
   // Real-time order update handler
   const onOrderUpdate = useCallback((updatedOrder: any) => {
     if (updatedOrder.id === order.id) {
-      const wasNotReady = order.status !== 'READY'
-      const isNowReady = updatedOrder.status === 'READY'
+      const wasNotReady = order.status !== 'ready'
+      const isNowReady = updatedOrder.status === 'ready' || updatedOrder.status === 'READY'
       
       // Show confetti when order becomes ready
       if (wasNotReady && isNowReady) {
@@ -99,12 +142,41 @@ export const OrderConfirmation = ({ order: initialOrder, onNewOrder }: OrderConf
         </div>
       )}
 
-      {/* Floating Bee Icon - Top Right */}
-      <div className="fixed top-4 right-4 z-40">
-        <div className={`w-12 h-12 rounded-full bg-white shadow-lg border-2 border-amber-300 flex items-center justify-center ${isReady ? 'animate-bounce' : ''}`}>
-          <span className="text-2xl">🐝</span>
+      {/* Floating Bee Icon - Top Right with Notifications (matches MenuPage styling) */}
+      <button
+        onClick={() => setShowMyOrders(true)}
+        className={`fixed top-4 right-4 z-40 group transition-all duration-300 ${
+          hasOrderUpdates || orderNotifications > 0 ? 'animate-bounce-slow' : ''
+        }`}
+      >
+        <div className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 ${
+          orderNotifications > 0 
+            ? 'bg-gradient-to-br from-yellow-400 to-orange-400 border-2 border-yellow-300' 
+            : 'bg-white border-2 border-gray-200 hover:border-yellow-400'
+        } hover:shadow-2xl hover:scale-110`}>
+          {/* Bee Emoji */}
+          <span className={`text-2xl transition-transform duration-300 ${orderNotifications > 0 ? 'animate-wiggle' : 'group-hover:scale-110'}`}>
+            🐝
+          </span>
         </div>
-      </div>
+        
+        {/* Notification Badge */}
+        {orderNotifications > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[24px] h-6 px-1.5 rounded-full flex items-center justify-center text-xs font-bold text-white bg-red-500 shadow-lg">
+            {orderNotifications}
+          </span>
+        )}
+        
+        {/* Ready Order Pulse Effect */}
+        {hasOrderUpdates && (
+          <span className="absolute -top-2 -left-2 w-5 h-5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-5 w-5 bg-green-500 items-center justify-center shadow-sm">
+              <Bell className="h-2.5 w-2.5 text-white" />
+            </span>
+          </span>
+        )}
+      </button>
 
       {/* Success Header */}
       <div className="bg-white px-6 py-8 text-center shadow-sm">
@@ -251,11 +323,11 @@ export const OrderConfirmation = ({ order: initialOrder, onNewOrder }: OrderConf
           <div className="bg-gray-50 rounded-xl p-3 space-y-2">
             <div className="flex justify-between text-sm text-gray-500">
               <span>Subtotal</span>
-              <span>₱{(order.total - order.total * 0.12).toFixed(2)}</span>
+              <span>₱{(order.total / 1.12).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm text-gray-500">
               <span>VAT (12%)</span>
-              <span>₱{(order.total * 0.12).toFixed(2)}</span>
+              <span>₱{(order.total - order.total / 1.12).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200 text-gray-800">
               <span>Total</span>
@@ -299,16 +371,31 @@ export const OrderConfirmation = ({ order: initialOrder, onNewOrder }: OrderConf
           animation: confetti 3s ease-in-out forwards;
         }
         @keyframes wiggle {
-          0%, 100% { transform: rotate(-3deg); }
-          50% { transform: rotate(3deg); }
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(-5deg); }
+          75% { transform: rotate(5deg); }
         }
         .animate-wiggle {
-          animation: wiggle 0.3s ease-in-out infinite;
+          animation: wiggle 0.5s ease-in-out infinite;
+        }
+        @keyframes bounce-slow {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-8px); }
+        }
+        .animate-bounce-slow {
+          animation: bounce-slow 2s ease-in-out infinite;
         }
         .border-3 {
           border-width: 3px;
         }
       `}</style>
+
+      {/* My Orders Modal */}
+      <MyOrdersModal
+        open={showMyOrders}
+        onOpenChange={setShowMyOrders}
+        onFeedbackSubmitted={refreshOrderNotifications}
+      />
     </div>
   )
 }

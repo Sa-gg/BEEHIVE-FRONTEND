@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { authApi, type User as UserType } from '../../../infrastructure/api/auth.api'
 import { useAuthStore } from '../../store/authStore'
+import { toast } from '../../components/common/ToastNotification'
 
 // Role definitions
 const ROLES = [
@@ -192,6 +193,7 @@ export const AccountsPage = () => {
   
   // Check if current user is admin (can manage permissions)
   const isAdmin = currentUser?.role === 'ADMIN'
+  const isManager = currentUser?.role === 'MANAGER'
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -314,7 +316,7 @@ export const AccountsPage = () => {
     e.preventDefault()
     
     if (!formData.name || !formData.email || (!editingUser && !formData.password)) {
-      alert('Please fill in all required fields')
+      toast.warning('Validation Error', 'Please fill in all required fields')
       return
     }
 
@@ -348,7 +350,7 @@ export const AccountsPage = () => {
       setIsModalOpen(false)
       resetForm()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save user')
+      toast.error('Save Failed', err instanceof Error ? err.message : 'Failed to save user')
     } finally {
       setSubmitting(false)
     }
@@ -361,7 +363,7 @@ export const AccountsPage = () => {
       await authApi.deleteUser(id)
       await loadUsers()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete account')
+      toast.error('Delete Failed', err instanceof Error ? err.message : 'Failed to delete account')
     }
   }
 
@@ -457,86 +459,72 @@ export const AccountsPage = () => {
           </Button>
         </div>
 
-        {/* Stats Cards - Compact style */}
-        <div className="grid grid-cols-3 lg:grid-cols-7 gap-3">
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total</p>
-                <p className="text-xl font-bold text-gray-900 mt-1">{isAdmin ? stats.totalUsers : stats.totalUsers - stats.admins}</p>
-              </div>
-              <div className="p-2 bg-gray-100 rounded-lg">
+        {/* Stats Cards - Updated to match InventoryPage design */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 lg:gap-4">
+          <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl shadow-sm p-4 border border-gray-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-gray-100 rounded-xl group-hover:scale-110 transition-transform">
                 <Users className="h-4 w-4 text-gray-600" />
               </div>
             </div>
+            <p className="text-xs font-medium text-gray-500 mb-0.5">Total</p>
+            <p className="text-lg lg:text-xl font-bold text-gray-900">{isAdmin ? stats.totalUsers : stats.totalUsers - stats.admins}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Customers</p>
-                <p className="text-xl font-bold text-blue-600 mt-1">{stats.customers}</p>
-              </div>
-              <div className="p-2 bg-blue-100 rounded-lg">
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-4 border border-blue-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-blue-100 rounded-xl group-hover:scale-110 transition-transform">
                 <UserCircle className="h-4 w-4 text-blue-600" />
               </div>
             </div>
+            <p className="text-xs font-medium text-gray-500 mb-0.5">Customers</p>
+            <p className="text-lg lg:text-xl font-bold text-blue-600">{stats.customers}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Cashiers</p>
-                <p className="text-xl font-bold text-green-600 mt-1">{stats.cashiers}</p>
-              </div>
-              <div className="p-2 bg-green-100 rounded-lg">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-sm p-4 border border-green-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-green-100 rounded-xl group-hover:scale-110 transition-transform">
                 <Store className="h-4 w-4 text-green-600" />
               </div>
             </div>
+            <p className="text-xs font-medium text-gray-500 mb-0.5">Cashiers</p>
+            <p className="text-lg lg:text-xl font-bold text-green-600">{stats.cashiers}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Cooks</p>
-                <p className="text-xl font-bold text-orange-600 mt-1">{stats.cooks}</p>
-              </div>
-              <div className="p-2 bg-orange-100 rounded-lg">
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl shadow-sm p-4 border border-orange-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-orange-100 rounded-xl group-hover:scale-110 transition-transform">
                 <ChefHat className="h-4 w-4 text-orange-600" />
               </div>
             </div>
+            <p className="text-xs font-medium text-gray-500 mb-0.5">Cooks</p>
+            <p className="text-lg lg:text-xl font-bold text-orange-600">{stats.cooks}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Managers</p>
-                <p className="text-xl font-bold text-purple-600 mt-1">{stats.managers}</p>
-              </div>
-              <div className="p-2 bg-purple-100 rounded-lg">
+          <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl shadow-sm p-4 border border-purple-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-purple-100 rounded-xl group-hover:scale-110 transition-transform">
                 <ShieldCheck className="h-4 w-4 text-purple-600" />
               </div>
             </div>
+            <p className="text-xs font-medium text-gray-500 mb-0.5">Managers</p>
+            <p className="text-lg lg:text-xl font-bold text-purple-600">{stats.managers}</p>
           </div>
           {isAdmin && (
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Admins</p>
-                  <p className="text-xl font-bold text-red-600 mt-1">{stats.admins}</p>
-                </div>
-                <div className="p-2 bg-red-100 rounded-lg">
+            <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl shadow-sm p-4 border border-red-100 hover:shadow-lg transition-all duration-300 group">
+              <div className="flex items-center justify-between mb-2">
+                <div className="p-2 bg-red-100 rounded-xl group-hover:scale-110 transition-transform">
                   <Shield className="h-4 w-4 text-red-600" />
                 </div>
               </div>
+              <p className="text-xs font-medium text-gray-500 mb-0.5">Admins</p>
+              <p className="text-lg lg:text-xl font-bold text-red-600">{stats.admins}</p>
             </div>
           )}
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Active</p>
-                <p className="text-xl font-bold text-emerald-600 mt-1">{stats.activeUsers}</p>
-              </div>
-              <div className="p-2 bg-emerald-100 rounded-lg">
+          <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl shadow-sm p-4 border border-emerald-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-emerald-100 rounded-xl group-hover:scale-110 transition-transform">
                 <UserCheck className="h-4 w-4 text-emerald-600" />
               </div>
             </div>
+            <p className="text-xs font-medium text-gray-500 mb-0.5">Active</p>
+            <p className="text-lg lg:text-xl font-bold text-emerald-600">{stats.activeUsers}</p>
           </div>
         </div>
 
@@ -670,9 +658,9 @@ export const AccountsPage = () => {
                           )}
                         </td>
                         <td className="px-4 py-4">
-                          <div className="flex items-center justify-end gap-1">
-                            {/* Permission button - only show for admin managing staff (not customers or other admins) */}
-                            {isAdmin && user.role !== 'CUSTOMER' && user.role !== 'ADMIN' ? (
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Permission button - only show for managers/admins managing staff (not customers) */}
+                            {(isAdmin || isManager) && user.role !== 'CUSTOMER' && user.role !== 'ADMIN' && !(isManager && user.role === 'MANAGER') ? (
                               <button
                                 onClick={() => handleOpenPermissions(user)}
                                 className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
@@ -680,10 +668,7 @@ export const AccountsPage = () => {
                               >
                                 <Shield className="h-4 w-4" />
                               </button>
-                            ) : (
-                              /* Invisible placeholder to maintain alignment */
-                              <div className="w-8 h-8" />
-                            )}
+                            ) : null}
                             <button
                               onClick={() => handleEdit(user)}
                               className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"

@@ -1,6 +1,6 @@
 import type { OrderItem } from '../../../../core/domain/entities/Order.entity'
 import { Button } from '../../common/ui/button'
-import { Minus, Plus, Trash2, ShoppingBag, X, ArrowRight } from 'lucide-react'
+import { Minus, Plus, ShoppingBag, X, ArrowRight } from 'lucide-react'
 
 interface CartDrawerProps {
   items: OrderItem[]

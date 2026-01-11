@@ -96,7 +96,6 @@ export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrd
   const [ratingInProgress, setRatingInProgress] = useState<string | null>(null)
   const [feedbackConfig, setFeedbackConfig] = useState<MoodFeedbackConfig | null>(null)
   const [showFeedbackPrompt, setShowFeedbackPrompt] = useState<string | null>(null)
-  const [moodAnalytics, setMoodAnalytics] = useState<any[]>([])
 
   // Check if a specific order can receive feedback
   const canOrderReceiveFeedback = useCallback((order: OrderResponse): boolean => {
@@ -145,12 +144,8 @@ export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrd
 
   const fetchFeedbackConfig = async () => {
     try {
-      const [config, analytics] = await Promise.all([
-        moodSettingsApi.getFeedbackConfig(),
-        moodSettingsApi.getMoodAnalytics().catch(() => [])
-      ])
+      const config = await moodSettingsApi.getFeedbackConfig()
       setFeedbackConfig(config)
-      setMoodAnalytics(analytics)
     } catch (error) {
       console.error('Failed to fetch feedback config:', error)
     }
@@ -469,10 +464,10 @@ export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrd
                 <span className="text-sm font-medium text-gray-700">Summary</span>
               </div>
               <div className="flex justify-between text-sm text-gray-600">
-                <span>Subtotal</span><span>₱{order.subtotal.toFixed(2)}</span>
+                <span>Subtotal</span><span>₱{(order.totalAmount / 1.12).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-600">
-                <span>Tax</span><span>₱{order.tax.toFixed(2)}</span>
+                <span>VAT (12%)</span><span>₱{(order.totalAmount - order.totalAmount / 1.12).toFixed(2)}</span>
               </div>
               <div className="flex justify-between font-bold pt-2 border-t border-gray-100">
                 <span>Total</span>

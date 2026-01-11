@@ -1,8 +1,25 @@
-import { type ReactNode, useState, useEffect, useCallback } from 'react'
+import { type ReactNode, useState, useEffect, useCallback, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Menu, X, LogOut, Bell, LayoutDashboard, CreditCard, Package, ClipboardList, ChefHat, TrendingUp, FileText, Wallet, Tag, Users, Brain, Settings } from 'lucide-react'
+// Solid icons from react-icons
+import { 
+  RiDashboardFill, 
+  RiBankCardFill, 
+  RiFileList3Fill, 
+  RiArchiveFill,
+  RiRestaurantFill,
+  RiLineChartFill,
+  RiFileTextFill,
+  RiWalletFill,
+  RiPriceTag3Fill,
+  RiTeamFill,
+  RiBrainFill,
+  RiSettings4Fill
+} from 'react-icons/ri'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
+import { useSettingsStore } from '../../store/settingsStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
 import { playNotificationSound, vibrate } from '../../../shared/utils/notificationSound'
 
@@ -35,6 +52,8 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
     return saved !== 'true'
   })
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [sidebarNeedsScroll, setSidebarNeedsScroll] = useState(false)
+  const sidebarContentRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
@@ -170,21 +189,29 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
 
   // Get user's permissions based on role
   const userPermissions = user?.role ? DEFAULT_PERMISSIONS[user.role as UserRole] || {} : {}
+  
+  // Get only the settings we need for the navbar - use shallow to prevent unnecessary re-renders
+  const { navbarIconStyle, navbarBackgroundStyle } = useSettingsStore(
+    useShallow((state) => ({
+      navbarIconStyle: state.navbarIconStyle,
+      navbarBackgroundStyle: state.navbarBackgroundStyle
+    }))
+  )
 
-  // Permission-based menu items - each item has a required permission and icon color
+  // Permission-based menu items - each item has outline and solid icons
   const allMenuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/admin', badge: null, permission: 'viewDashboard', iconColor: 'text-blue-400' },
-    { icon: CreditCard, label: 'POS', path: '/admin/pos', badge: null, permission: 'accessPOS', iconColor: 'text-emerald-400' },
-    { icon: ClipboardList, label: 'Orders', path: '/admin/orders', badge: pendingOrderCount > 0 ? pendingOrderCount : null, badgeColor: 'bg-red-500', permission: 'viewOrders', iconColor: 'text-amber-400' },
-    { icon: Package, label: 'Inventory', path: '/admin/inventory', badge: stockAlertCount > 0 ? stockAlertCount : null, badgeColor: 'bg-orange-500', permission: 'viewInventory', iconColor: 'text-cyan-400' },
-    { icon: ChefHat, label: 'Recipes', path: '/admin/recipes', badge: null, permission: 'viewRecipes', iconColor: 'text-orange-400' },
-    { icon: TrendingUp, label: 'Sales', path: '/admin/sales', badge: null, permission: 'viewSales', iconColor: 'text-green-400' },
-    { icon: FileText, label: 'Reports', path: '/admin/reports', badge: null, permission: 'viewReports', iconColor: 'text-indigo-400' },
-    { icon: Wallet, label: 'Expenses', path: '/admin/expenses', badge: null, permission: 'viewExpenses', iconColor: 'text-red-400' },
-    { icon: Tag, label: 'Products', path: '/admin/products', badge: null, permission: 'viewProducts', iconColor: 'text-purple-400' },
-    { icon: Users, label: 'Accounts', path: '/admin/accounts', badge: null, permission: 'viewAccounts', iconColor: 'text-teal-400' },
-    { icon: Brain, label: 'Mood System', path: '/admin/mood-settings', badge: null, permission: 'manageMoodSettings', iconColor: 'text-pink-400' },
-    { icon: Settings, label: 'Settings', path: '/admin/settings', badge: null, permission: 'viewSettings', iconColor: 'text-gray-400' },
+    { outlineIcon: LayoutDashboard, solidIcon: RiDashboardFill, label: 'Dashboard', path: '/admin', badge: null, permission: 'viewDashboard', iconColor: 'text-blue-400' },
+    { outlineIcon: CreditCard, solidIcon: RiBankCardFill, label: 'POS', path: '/admin/pos', badge: null, permission: 'accessPOS', iconColor: 'text-emerald-400' },
+    { outlineIcon: ClipboardList, solidIcon: RiFileList3Fill, label: 'Orders', path: '/admin/orders', badge: pendingOrderCount > 0 ? pendingOrderCount : null, badgeColor: 'bg-red-500', permission: 'viewOrders', iconColor: 'text-amber-400' },
+    { outlineIcon: Package, solidIcon: RiArchiveFill, label: 'Inventory', path: '/admin/inventory', badge: stockAlertCount > 0 ? stockAlertCount : null, badgeColor: 'bg-orange-500', permission: 'viewInventory', iconColor: 'text-cyan-400' },
+    { outlineIcon: ChefHat, solidIcon: RiRestaurantFill, label: 'Recipes', path: '/admin/recipes', badge: null, permission: 'viewRecipes', iconColor: 'text-orange-400' },
+    { outlineIcon: TrendingUp, solidIcon: RiLineChartFill, label: 'Sales', path: '/admin/sales', badge: null, permission: 'viewSales', iconColor: 'text-green-400' },
+    { outlineIcon: FileText, solidIcon: RiFileTextFill, label: 'Reports', path: '/admin/reports', badge: null, permission: 'viewReports', iconColor: 'text-indigo-400' },
+    { outlineIcon: Wallet, solidIcon: RiWalletFill, label: 'Expenses', path: '/admin/expenses', badge: null, permission: 'viewExpenses', iconColor: 'text-red-400' },
+    { outlineIcon: Tag, solidIcon: RiPriceTag3Fill, label: 'Products', path: '/admin/products', badge: null, permission: 'viewProducts', iconColor: 'text-purple-400' },
+    { outlineIcon: Users, solidIcon: RiTeamFill, label: 'Accounts', path: '/admin/accounts', badge: null, permission: 'viewAccounts', iconColor: 'text-teal-400' },
+    { outlineIcon: Brain, solidIcon: RiBrainFill, label: 'Mood System', path: '/admin/mood-settings', badge: null, permission: 'manageMoodSettings', iconColor: 'text-pink-400' },
+    { outlineIcon: Settings, solidIcon: RiSettings4Fill, label: 'Settings', path: '/admin/settings', badge: null, permission: 'viewSettings', iconColor: 'text-gray-400' },
   ]
 
   // Filter menu items based on user's permissions
@@ -192,6 +219,33 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
     if (!user?.role) return false
     return userPermissions[item.permission] === true
   })
+
+  // Check if sidebar content needs scrolling (placed after menuItems definition)
+  // Use requestAnimationFrame to prevent flash during page transitions
+  useEffect(() => {
+    let rafId: number
+    let timeoutId: ReturnType<typeof setTimeout>
+    
+    const checkOverflow = () => {
+      // Use RAF + small delay to let DOM settle after page transitions
+      rafId = requestAnimationFrame(() => {
+        timeoutId = setTimeout(() => {
+          if (sidebarContentRef.current) {
+            const { scrollHeight, clientHeight } = sidebarContentRef.current
+            setSidebarNeedsScroll(scrollHeight > clientHeight)
+          }
+        }, 50) // Small delay to prevent flash
+      })
+    }
+    
+    checkOverflow()
+    window.addEventListener('resize', checkOverflow)
+    return () => {
+      window.removeEventListener('resize', checkOverflow)
+      cancelAnimationFrame(rafId)
+      clearTimeout(timeoutId)
+    }
+  }, [sidebarOpen, menuItems.length])
 
   const totalNotifications = pendingOrderCount + stockAlertCount
 
@@ -245,9 +299,9 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
             ? (sidebarOpen ? 'w-64 translate-x-0' : 'w-64 -translate-x-full')
             : (sidebarOpen ? 'w-64' : 'w-20')
         }`}
-        style={{ backgroundColor: '#000000' }}
+        style={{ backgroundColor: navbarBackgroundStyle === 'light' ? '#FFFBF0' : '#000000' }}
       >
-        <div className="p-4 h-full flex flex-col overflow-y-auto">{/* Logo & Toggle */}
+        <div ref={sidebarContentRef} className={`p-4 h-full flex flex-col overflow-y-auto ${navbarBackgroundStyle === 'light' ? 'light-scrollbar' : 'dark-scrollbar'}`}>{/* Logo & Toggle */}
           <div className="flex items-center justify-between mb-8">
             <div className={`flex items-center gap-3 ${!sidebarOpen && !isMobile && 'hidden'}`}>
               <img src="/assets/logo.png" alt="BEEHIVE" className="h-10 w-10 object-contain" />
@@ -255,13 +309,13 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                 <h1 className="text-xl font-bold" style={{ color: '#F9C900' }}>
                   BEEHIVE
                 </h1>
-                <p className="text-xs text-gray-400">Admin Panel</p>
+                <p className={`text-xs ${navbarBackgroundStyle === 'light' ? 'text-gray-500' : 'text-gray-400'}`}>Admin Panel</p>
               </div>
             </div>
             {!isMobile && (
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="text-gray-400 hover:text-[#F9C900] transition-colors p-2"
+                className={`${navbarBackgroundStyle === 'light' ? 'text-gray-500' : 'text-gray-400'} hover:text-[#F9C900] transition-colors p-2`}
               >
                 {sidebarOpen ? '←' : '→'}
               </button>
@@ -269,7 +323,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
             {isMobile && (
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="text-gray-400 hover:text-[#F9C900] transition-colors p-2"
+                className={`${navbarBackgroundStyle === 'light' ? 'text-gray-500' : 'text-gray-400'} hover:text-[#F9C900] transition-colors p-2`}
               >
                 <X className="h-6 w-6" />
               </button>
@@ -280,7 +334,8 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
           <nav className="space-y-1 flex-1">
             {menuItems.map((item) => {
               const isActive = location.pathname === item.path
-              const IconComponent = item.icon
+              // Select icon based on user preference
+              const IconComponent = navbarIconStyle === 'solid' ? item.solidIcon : item.outlineIcon
               return (
                 <Link
                   key={item.path}
@@ -288,13 +343,15 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                   className={`relative flex items-center ${sidebarOpen || isMobile ? 'gap-3' : 'justify-center'} px-4 py-3 rounded-lg transition-all ${
                     isActive
                       ? 'text-[#000000] font-semibold shadow-lg'
-                      : 'text-gray-300 hover:text-white hover:bg-gray-800'
+                      : navbarBackgroundStyle === 'light' 
+                        ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                        : 'text-gray-300 hover:text-white hover:bg-gray-800'
                   }`}
                   style={isActive ? { backgroundColor: '#F9C900' } : {}}
                   title={!sidebarOpen && !isMobile ? item.label : undefined}
                 >
                   <span className="flex-shrink-0 relative">
-                    <IconComponent className={`h-5 w-5 ${isActive ? 'text-gray-900' : item.iconColor}`} strokeWidth={1.5} fill="currentColor" />
+                    <IconComponent className={`h-5 w-5 ${isActive ? 'text-gray-900' : item.iconColor}`} />
                     {/* Badge for collapsed sidebar */}
                     {!sidebarOpen && !isMobile && item.badge && (
                       <span className={`absolute -top-1 -right-1 w-4 h-4 ${item.badgeColor} text-white text-[10px] font-bold rounded-full flex items-center justify-center`}>
@@ -318,17 +375,17 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
             })}
           </nav>
 
-          {/* Bottom Section - User Info & Logout */}
+          {/* Bottom Section - User Info & Logout (always visible) */}
           {(sidebarOpen || isMobile) && (
-            <div className="border-t border-gray-800 pt-4 mt-4 space-y-3">
-              <div className="px-4 py-3 rounded-lg bg-gray-800/50">
+            <div className={`border-t ${navbarBackgroundStyle === 'light' ? 'border-gray-200' : 'border-gray-800'} pt-4 mt-4 space-y-3`}>
+              <div className={`px-4 py-3 rounded-lg ${navbarBackgroundStyle === 'light' ? 'bg-gray-100' : 'bg-gray-800/50'}`}>
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-black font-bold" style={{ backgroundColor: '#F9C900' }}>
                     {user?.name?.charAt(0).toUpperCase() || 'U'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{user?.name || 'User'}</p>
-                    <p className="text-xs text-gray-400">{user?.role || 'Role'}</p>
+                    <p className={`text-sm font-medium ${navbarBackgroundStyle === 'light' ? 'text-gray-900' : 'text-white'} truncate`}>{user?.name || 'User'}</p>
+                    <p className={`text-xs ${navbarBackgroundStyle === 'light' ? 'text-gray-500' : 'text-gray-400'}`}>{user?.role || 'Role'}</p>
                   </div>
                 </div>
                 <button
@@ -339,19 +396,19 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                   Sign Out
                 </button>
               </div>
-              <div className="px-4 py-2 text-xs text-gray-500">
+              <div className={`px-4 py-2 text-xs ${navbarBackgroundStyle === 'light' ? 'text-gray-400' : 'text-gray-500'}`}>
                 <p>© 2025 BEEHIVE</p>
                 <p>Version 1.0.0</p>
               </div>
             </div>
           )}
           
-          {/* Collapsed state - logout button only */}
+          {/* Collapsed state - logout button only (always visible) */}
           {!sidebarOpen && !isMobile && (
-            <div className="border-t border-gray-800 pt-4 mt-4">
+            <div className={`border-t ${navbarBackgroundStyle === 'light' ? 'border-gray-200' : 'border-gray-800'} pt-4 mt-4`}>
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center justify-center p-3 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-red-400 transition-colors"
+                className={`w-full flex items-center justify-center p-3 rounded-lg ${navbarBackgroundStyle === 'light' ? 'hover:bg-gray-100 text-gray-500' : 'hover:bg-gray-800 text-gray-400'} hover:text-red-400 transition-colors`}
                 title="Sign Out"
               >
                 <LogOut className="h-5 w-5" />
@@ -368,8 +425,10 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
           : (sidebarOpen ? 'lg:ml-64 lg:w-[calc(100%-16rem)]' : 'lg:ml-20 lg:w-[calc(100%-5rem)]')
       }`}>
         {/* Top Bar */}
-        {!hideHeader && !(hideHeaderOnDesktop && !isMobile) && (
-          <header className="shadow-md backdrop-blur-md sticky top-0 z-30" style={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}>
+        {/* Show header when: not hideHeader AND (on mobile OR not hideHeaderOnDesktop) */}
+        {/* This ensures mobile always gets the header with hamburger menu for consistent UX */}
+        {!hideHeader && (isMobile || !hideHeaderOnDesktop) && (
+          <header className="shadow-md backdrop-blur-md sticky top-0 z-30" style={{ backgroundColor: 'rgba(255, 251, 240, 0.95)' }}>
             <div className="flex justify-between items-center px-4 lg:px-6 py-4">
               {/* Mobile Hamburger Menu */}
               {isMobile && (
@@ -586,8 +645,9 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
 
         {/* Page Content */}
         <main className={`flex-1 overflow-auto ${!noPadding ? 'p-4 lg:p-6' : ''}`}>
-          {/* Floating Hamburger Menu for pages with hideHeader */}
-          {(hideHeader || hideHeaderOnDesktop) && isMobile && (
+          {/* Floating Hamburger Menu only for pages with hideHeader (completely hidden on all devices) */}
+          {/* Note: hideHeaderOnDesktop pages now show header on mobile, so they don't need floating hamburger */}
+          {hideHeader && isMobile && (
             <button
               onClick={() => setSidebarOpen(true)}
               className="fixed top-4 left-4 z-[60] p-3 rounded-lg shadow-lg transition-colors"

@@ -11,22 +11,18 @@ import {
   Trash2, 
   X, 
   TrendingUp,
-  TrendingDown,
   DollarSign,
   FileText,
   Loader2,
   Calendar,
   ArrowUpRight,
-  ArrowDownRight,
   Receipt,
   BarChart3,
-  Filter,
   Building2,
   Zap,
   Users2,
   Wrench,
   MoreHorizontal,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Printer
@@ -43,6 +39,7 @@ import {
 } from '../../../infrastructure/api/expenses.api'
 import { DateFilter, type DateFilterValue, filterByDateRange } from '../../components/common/DateFilter'
 import { printWithIframe } from '../../../shared/utils/printUtils'
+import { toast } from '../../components/common/ToastNotification'
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   [ExpenseCategory.RENT_LEASE]: <Building2 className="h-4 w-4" />,
@@ -189,7 +186,7 @@ export const ExpensesPage = () => {
     e.preventDefault()
     
     if (!formData.category || !formData.date || !formData.amount || !formData.frequency) {
-      alert('Please fill in all required fields')
+      toast.warning('Validation Error', 'Please fill in all required fields')
       return
     }
 
@@ -220,7 +217,7 @@ export const ExpensesPage = () => {
       resetForm()
       setIsModalOpen(false)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save expense')
+      toast.error('Save Failed', err instanceof Error ? err.message : 'Failed to save expense')
       console.error('Error saving expense:', err)
     } finally {
       setSubmitting(false)
@@ -256,7 +253,7 @@ export const ExpensesPage = () => {
         await expensesApi.delete(id)
         await loadExpenses()
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Failed to delete expense')
+        toast.error('Delete Failed', err instanceof Error ? err.message : 'Failed to delete expense')
         console.error('Error deleting expense:', err)
       }
     }

@@ -115,7 +115,6 @@ export const CashCalculatorModal = ({
 
   // Quick amount suggestions based on total
   const getQuickAmounts = () => {
-    const roundedTotal = Math.ceil(totalAmount)
     const suggestions = [
       Math.ceil(totalAmount / 50) * 50,
       Math.ceil(totalAmount / 100) * 100,

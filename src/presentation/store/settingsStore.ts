@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware'
 
 export type SeparatorDirection = 'off' | 'horizontal' | 'vertical'
 export type POSMobileCardSize = 'small' | 'medium' | 'large'
+export type NavbarIconStyle = 'outline' | 'solid'
+export type NavbarBackgroundStyle = 'light' | 'dark'
 
 interface SettingsState {
   // Payment settings
@@ -32,12 +34,21 @@ interface SettingsState {
   posMobileColumnsPerRow: number // 1, 2, 3, or 4 columns per row in mobile view
   posMobileCardSize: POSMobileCardSize // small, medium, or large card size
   
+  // UI settings - Navbar
+  navbarIconStyle: NavbarIconStyle // outline (lucide) or solid (react-icons)
+  navbarBackgroundStyle: NavbarBackgroundStyle // light or dark navbar background
+  
   // Cashier permissions - whether actions require manager PIN
   cashierCanVoidWithoutPin: boolean
   cashierCanRefundWithoutPin: boolean
   cashierCanComplimentaryWithoutPin: boolean
   cashierCanWriteOffWithoutPin: boolean
   cashierCanVoidAndReorderWithoutPin: boolean
+  
+  // Cashier POS permissions - whether cashier can apply these amounts
+  cashierCanApplyServiceAmount: boolean
+  cashierCanApplyDiscount: boolean
+  cashierCanApplyDeliveryAmount: boolean
   
   // Actions
   setMarkPaidOnPrintReceipt: (value: boolean) => void
@@ -55,11 +66,18 @@ interface SettingsState {
   setStatusSeparatorDirection: (value: SeparatorDirection) => void
   setPosMobileColumnsPerRow: (value: number) => void
   setPosMobileCardSize: (value: POSMobileCardSize) => void
+  setNavbarIconStyle: (value: NavbarIconStyle) => void
+  setNavbarBackgroundStyle: (value: NavbarBackgroundStyle) => void
   setCashierCanVoidWithoutPin: (value: boolean) => void
   setCashierCanRefundWithoutPin: (value: boolean) => void
   setCashierCanComplimentaryWithoutPin: (value: boolean) => void
   setCashierCanWriteOffWithoutPin: (value: boolean) => void
   setCashierCanVoidAndReorderWithoutPin: (value: boolean) => void
+  
+  // Cashier POS permissions setters
+  setCashierCanApplyServiceAmount: (value: boolean) => void
+  setCashierCanApplyDiscount: (value: boolean) => void
+  setCashierCanApplyDeliveryAmount: (value: boolean) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -92,12 +110,21 @@ export const useSettingsStore = create<SettingsState>()(
       posMobileColumnsPerRow: 2, // Default 2 columns per row
       posMobileCardSize: 'medium' as POSMobileCardSize, // Default medium size
       
+      // Default settings - UI Navbar
+      navbarIconStyle: 'outline' as NavbarIconStyle, // Default outline (lucide icons)
+      navbarBackgroundStyle: 'dark' as NavbarBackgroundStyle, // Default dark navbar
+      
       // Default settings - Cashier permissions (all require PIN by default)
       cashierCanVoidWithoutPin: false,
       cashierCanRefundWithoutPin: false,
       cashierCanComplimentaryWithoutPin: false,
       cashierCanWriteOffWithoutPin: false,
       cashierCanVoidAndReorderWithoutPin: false,
+      
+      // Default settings - Cashier POS permissions (all disabled by default - require manager PIN)
+      cashierCanApplyServiceAmount: false,
+      cashierCanApplyDiscount: false,
+      cashierCanApplyDeliveryAmount: false,
       
       // Actions
       setMarkPaidOnPrintReceipt: (value: boolean) => 
@@ -145,6 +172,12 @@ export const useSettingsStore = create<SettingsState>()(
       setPosMobileCardSize: (value: POSMobileCardSize) =>
         set({ posMobileCardSize: value }),
         
+      setNavbarIconStyle: (value: NavbarIconStyle) =>
+        set({ navbarIconStyle: value }),
+        
+      setNavbarBackgroundStyle: (value: NavbarBackgroundStyle) =>
+        set({ navbarBackgroundStyle: value }),
+        
       setCashierCanVoidWithoutPin: (value: boolean) =>
         set({ cashierCanVoidWithoutPin: value }),
         
@@ -159,6 +192,15 @@ export const useSettingsStore = create<SettingsState>()(
         
       setCashierCanVoidAndReorderWithoutPin: (value: boolean) =>
         set({ cashierCanVoidAndReorderWithoutPin: value }),
+        
+      setCashierCanApplyServiceAmount: (value: boolean) =>
+        set({ cashierCanApplyServiceAmount: value }),
+        
+      setCashierCanApplyDiscount: (value: boolean) =>
+        set({ cashierCanApplyDiscount: value }),
+        
+      setCashierCanApplyDeliveryAmount: (value: boolean) =>
+        set({ cashierCanApplyDeliveryAmount: value }),
     }),
     {
       name: 'beehive-settings',

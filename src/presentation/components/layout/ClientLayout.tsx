@@ -1,8 +1,9 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { CustomerDropdown } from '../features/CustomerMenu/CustomerDropdown'
 import { MyOrdersModal } from '../features/CustomerMenu/MyOrdersModal'
+import { Menu, X } from 'lucide-react'
 
 interface ClientLayoutProps {
   children: ReactNode
@@ -18,53 +19,161 @@ interface ClientLayoutProps {
 export const ClientLayout = ({ children, hideHeader = false }: ClientLayoutProps) => {
   const { isAuthenticated } = useAuthStore()
   const [showMyOrders, setShowMyOrders] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isScrolled, setIsScrolled] = useState(false)
+
+  // Handle scroll effect for navbar
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 50)
+    }
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
       {!hideHeader && (
       <header 
-        className="shadow-lg sticky top-0 z-50 backdrop-blur-md"
-        style={{ backgroundColor: 'rgba(255, 250, 240, 0.75)' }}
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          isScrolled 
+            ? 'backdrop-blur-xl shadow-lg border-b border-yellow-200/30' 
+            : 'backdrop-blur-none'
+        }`}
+        style={{ 
+          backgroundColor: isScrolled ? 'rgba(255, 251, 240, 0.85)' : 'transparent'
+        }}
       >
         <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-3">
-              <img src="/assets/logo.png" alt="BEEHIVE" className="h-12 w-12 object-contain" />
-              <span className="text-2xl font-bold" style={{ color: '#F9C900' }}>BEEHIVE</span>
+            <Link to="/" className="flex items-center gap-2 sm:gap-3">
+              <img src="/assets/logo.png" alt="BEEHIVE" className="h-10 w-10 sm:h-12 sm:w-12 object-contain" />
+              <span 
+                className={`text-xl sm:text-2xl font-bold transition-colors duration-300 ${
+                  isScrolled ? '' : 'drop-shadow-lg'
+                }`}
+                style={{ color: '#F9C900' }}
+              >
+                BEEHIVE
+              </span>
             </Link>
 
-            {/* Navigation */}
+            {/* Desktop Navigation */}
             <div className="hidden md:flex space-x-8">
-              <Link to="/" className="text-gray-700 hover:text-[#F9C900] font-medium transition-colors">Home</Link>
-              <Link to="/menu" className="text-gray-700 hover:text-[#F9C900] font-medium transition-colors">Menu</Link>
-              <Link to="/about" className="text-gray-700 hover:text-[#F9C900] font-medium transition-colors">About</Link>
+              <Link 
+                to="/" 
+                className={`font-medium transition-all duration-300 ${
+                  isScrolled 
+                    ? 'text-gray-700 hover:text-[#D4A000]' 
+                    : 'text-white hover:text-[#F9C900] drop-shadow-md'
+                }`}
+              >
+                Home
+              </Link>
+              <Link 
+                to="/menu" 
+                className={`font-medium transition-all duration-300 ${
+                  isScrolled 
+                    ? 'text-gray-700 hover:text-[#D4A000]' 
+                    : 'text-white hover:text-[#F9C900] drop-shadow-md'
+                }`}
+              >
+                Menu
+              </Link>
+              <Link 
+                to="/about" 
+                className={`font-medium transition-all duration-300 ${
+                  isScrolled 
+                    ? 'text-gray-700 hover:text-[#D4A000]' 
+                    : 'text-white hover:text-[#F9C900] drop-shadow-md'
+                }`}
+              >
+                About
+              </Link>
             </div>
 
             {/* Auth Section */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {isAuthenticated ? (
                 <CustomerDropdown onViewOrders={() => setShowMyOrders(true)} />
               ) : (
                 <>
                   <Link
                     to="/login"
-                    className="px-4 py-2 text-gray-700 hover:text-[#F9C900] font-medium transition-colors"
+                    className={`hidden sm:block px-4 py-2 font-medium transition-all duration-300 ${
+                      isScrolled 
+                        ? 'text-gray-700 hover:text-[#D4A000]' 
+                        : 'text-white hover:text-[#F9C900] drop-shadow-md'
+                    }`}
                   >
                     Sign In
                   </Link>
                   <Link
                     to="/register"
-                    className="px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg"
-                    style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                    className="px-3 sm:px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg text-sm sm:text-base text-black"
+                    style={{ backgroundColor: '#F9C900' }}
                   >
                     Register
                   </Link>
                 </>
               )}
+              
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className={`md:hidden p-2 rounded-lg transition-colors ${
+                  isScrolled 
+                    ? 'text-gray-700 hover:text-[#D4A000] hover:bg-yellow-50' 
+                    : 'text-white hover:text-[#F9C900]'
+                }`}
+              >
+                {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </button>
             </div>
           </div>
+          
+          {/* Mobile Navigation Menu */}
+          {mobileMenuOpen && (
+            <div 
+              className="md:hidden py-4 border-t border-yellow-200/50 backdrop-blur-xl rounded-b-xl"
+              style={{ backgroundColor: 'rgba(255, 251, 240, 0.95)' }}
+            >
+              <div className="flex flex-col space-y-3">
+                <Link 
+                  to="/" 
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-gray-700 hover:text-[#D4A000] font-medium transition-colors px-2 py-2 rounded-lg hover:bg-yellow-50"
+                >
+                  Home
+                </Link>
+                <Link 
+                  to="/menu" 
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-gray-700 hover:text-[#D4A000] font-medium transition-colors px-2 py-2 rounded-lg hover:bg-yellow-50"
+                >
+                  Menu
+                </Link>
+                <Link 
+                  to="/about" 
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-gray-700 hover:text-[#D4A000] font-medium transition-colors px-2 py-2 rounded-lg hover:bg-yellow-50"
+                >
+                  About
+                </Link>
+                {!isAuthenticated && (
+                  <Link 
+                    to="/login" 
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="text-gray-700 hover:text-[#D4A000] font-medium transition-colors px-2 py-2 rounded-lg hover:bg-yellow-50"
+                  >
+                    Sign In
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
         </nav>
       </header>
       )}

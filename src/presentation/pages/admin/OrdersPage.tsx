@@ -257,7 +257,7 @@ export const OrdersPage = () => {
       ))
       // Clear the state
       window.history.replaceState({}, document.title)
-      alert('Order updated successfully!')
+      toast.success('Order Updated', 'Order updated successfully!')
     }
   }, [location.state])
 
@@ -292,9 +292,10 @@ export const OrdersPage = () => {
       // Get the updated order from API response (includes processedBy when completed)
       const updatedOrder = await ordersApi.updateStatus(orderId, newStatus)
       
-      // When marking as COMPLETED, also mark all order items as COMPLETED
+      // When marking as COMPLETED, also mark non-voided order items as COMPLETED
       if (newStatus === 'COMPLETED') {
         try {
+          // Only mark items that are not VOIDED
           await ordersApi.markAllItemsCompleted(orderId)
         } catch (itemError) {
           console.error('Failed to mark items as completed:', itemError)
@@ -308,16 +309,19 @@ export const OrdersPage = () => {
               status: newStatus, 
               completedAt: newStatus === 'COMPLETED' ? new Date().toISOString() : order.completedAt,
               processedBy: updatedOrder.processedBy || order.processedBy,
-              // Update all items to COMPLETED if order is completed
+              // Update only non-VOIDED items to COMPLETED if order is completed
               items: newStatus === 'COMPLETED' 
-                ? order.items.map(item => ({ ...item, status: item.status !== 'VOIDED' ? 'COMPLETED' as const : item.status }))
+                ? order.items.map(item => ({ 
+                    ...item, 
+                    status: item.status === 'VOIDED' ? 'VOIDED' as const : 'COMPLETED' as const 
+                  }))
                 : order.items
             }
           : order
       ))
     } catch (error: any) {
       console.error('Failed to update order status:', error)
-      alert(`Failed to update order status: ${error.response?.data?.error || error.message}`)
+      toast.error('Update Failed', `Failed to update order status: ${error.response?.data?.error || error.message}`)
     }
   }
 
@@ -335,7 +339,7 @@ export const OrdersPage = () => {
       }
     } catch (error: any) {
       console.error('Failed to update payment status:', error)
-      alert(`Failed to update payment status: ${error.response?.data?.error || error.message}`)
+      toast.error('Update Failed', `Failed to update payment status: ${error.response?.data?.error || error.message}`)
     }
   }
 
@@ -354,10 +358,10 @@ export const OrdersPage = () => {
       setSelectedOrder({ ...selectedOrder, paymentMethod: selectedPaymentMethod })
       
       setShowPaymentMethodModal(false)
-      alert('Payment method updated successfully')
+      toast.success('Payment Method Updated', 'Payment method updated successfully')
     } catch (error: any) {
       console.error('Failed to update payment method:', error)
-      alert(`Failed to update payment method: ${error.response?.data?.error || error.message}`)
+      toast.error('Update Failed', `Failed to update payment method: ${error.response?.data?.error || error.message}`)
     }
   }
 
@@ -374,7 +378,7 @@ export const OrdersPage = () => {
   // Handle reason submission and open PIN modal
   const handleReasonSubmit = () => {
     if (!actionReason.trim()) {
-      alert('Please enter a reason for this action')
+      toast.warning('Reason Required', 'Please enter a reason for this action')
       return
     }
     setShowReasonModal(false)
@@ -401,28 +405,28 @@ export const OrdersPage = () => {
           await ordersApi.voidOrder(orderId, actionReason, managerId)
           // Voided orders become CANCELLED status
           setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'CANCELLED', paymentStatus: 'VOIDED', notes: actionReason, authorizedBy: managerId } : o))
-          alert(`Order voided successfully. Authorized by: ${managerName}`)
+          toast.success('Order Voided', `Order voided successfully. Authorized by: ${managerName}`)
           break
 
         case 'refund':
           await ordersApi.refundOrder(orderId, actionReason, managerId)
           // Refunded orders become COMPLETED status
           setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'COMPLETED', paymentStatus: 'REFUNDED', notes: actionReason, authorizedBy: managerId } : o))
-          alert(`Order refunded successfully. Authorized by: ${managerName}`)
+          toast.success('Order Refunded', `Order refunded successfully. Authorized by: ${managerName}`)
           break
 
         case 'complimentary':
           await ordersApi.markAsComplimentary(orderId, actionReason, managerId)
           // Complimentary orders become COMPLETED status
           setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'COMPLETED', paymentStatus: 'COMPLIMENTARY', notes: actionReason, authorizedBy: managerId } : o))
-          alert(`Order marked as complimentary. Authorized by: ${managerName}`)
+          toast.success('Complimentary Order', `Order marked as complimentary. Authorized by: ${managerName}`)
           break
 
         case 'writeOff':
           await ordersApi.writeOff(orderId, actionReason, managerId)
           // Written off orders (non-payment) become COMPLETED status
           setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'COMPLETED', paymentStatus: 'WRITTEN_OFF', notes: actionReason, authorizedBy: managerId } : o))
-          alert(`Order written off. Authorized by: ${managerName}`)
+          toast.success('Order Written Off', `Order written off. Authorized by: ${managerName}`)
           break
 
         case 'voidItem':
@@ -435,14 +439,29 @@ export const OrdersPage = () => {
                   item.id === itemId ? { ...item, status: 'VOIDED' as const } : item
                 )
                 // Recalculate total excluding voided items
-                const newTotal = updatedItems
+                const itemsTotal = updatedItems
                   .filter(item => item.status !== 'VOIDED')
                   .reduce((sum, item) => sum + item.subtotal, 0)
-                return { ...o, items: updatedItems, totalAmount: newTotal }
+                // Calculate subtotal and tax (tax is 12% of subtotal, so subtotal = itemsTotal / 1.12)
+                const newSubtotal = itemsTotal / 1.12
+                const newTax = itemsTotal - newSubtotal
+                return { ...o, items: updatedItems, totalAmount: itemsTotal, subtotal: newSubtotal, tax: newTax }
               }
               return o
             }))
-            alert(`Item "${itemName}" voided successfully. Authorized by: ${managerName}`)
+            // Also update selectedOrder if it's the same order
+            if (selectedOrder?.id === orderId) {
+              const updatedItems = selectedOrder.items.map(item => 
+                item.id === itemId ? { ...item, status: 'VOIDED' as const } : item
+              )
+              const itemsTotal = updatedItems
+                .filter(item => item.status !== 'VOIDED')
+                .reduce((sum, item) => sum + item.subtotal, 0)
+              const newSubtotal = itemsTotal / 1.12
+              const newTax = itemsTotal - newSubtotal
+              setSelectedOrder({ ...selectedOrder, items: updatedItems, totalAmount: itemsTotal, subtotal: newSubtotal, tax: newTax })
+            }
+            toast.success('Item Voided', `Item "${itemName}" voided successfully. Authorized by: ${managerName}`)
           }
           break
 
@@ -462,13 +481,13 @@ export const OrdersPage = () => {
       setPendingAction(null)
       setActionReason('')
       
-      // Close order details modal if open
-      if (selectedOrder?.id === orderId) {
+      // Close order details modal if open (except for voidItem which keeps modal open)
+      if (selectedOrder?.id === orderId && pendingAction.type !== 'voidItem') {
         setSelectedOrder(null)
       }
     } catch (error: any) {
       console.error(`Failed to execute ${pendingAction.type} action:`, error)
-      alert(`Failed to ${pendingAction.type} order: ${error.response?.data?.error || error.message}`)
+      toast.error('Action Failed', `Failed to ${pendingAction.type} order: ${error.response?.data?.error || error.message}`)
     }
   }
 
@@ -499,7 +518,7 @@ export const OrdersPage = () => {
   // Link selected orders together
   const handleLinkOrders = async () => {
     if (selectedOrdersForLink.size < 2) {
-      alert('Please select at least 2 orders to link')
+      toast.warning('Selection Required', 'Please select at least 2 orders to link')
       return
     }
 
@@ -525,10 +544,10 @@ export const OrdersPage = () => {
       setSelectedOrdersForLink(new Set())
       setLinkMode(false)
       
-      alert('Orders linked successfully!')
+      toast.success('Orders Linked', 'Orders linked successfully!')
     } catch (error: any) {
       console.error('Failed to link orders:', error)
-      alert(`Failed to link orders: ${error.response?.data?.error || error.message}`)
+      toast.error('Link Failed', `Failed to link orders: ${error.response?.data?.error || error.message}`)
     }
   }
 
@@ -551,10 +570,10 @@ export const OrdersPage = () => {
       setSelectedOrdersForLink(new Set())
       setLinkMode(false)
       
-      alert('Orders merged and paid successfully!')
+      toast.success('Payment Successful', 'Orders merged and paid successfully!')
     } catch (error: any) {
       console.error('Failed to process merged payment:', error)
-      alert(`Failed to process payment: ${error.response?.data?.error || error.message}`)
+      toast.error('Payment Failed', `Failed to process payment: ${error.response?.data?.error || error.message}`)
     }
   }
 
@@ -628,11 +647,6 @@ export const OrdersPage = () => {
     })
   }
 
-  const handleReorder = (order: Order) => {
-    // Navigate to POS with order items pre-filled and linkedOrderId (for void & reorder)
-    navigate('/admin/pos', { state: { reorderFrom: order } })
-  }
-
   // Handler for Mark Paid & Print button - shows cash modal for CASH payments if enabled
   const handleMarkPaidAndPrint = (order: Order) => {
     if (order.paymentMethod === 'CASH' && order.paymentStatus !== 'PAID' && cashChangeEnabled) {
@@ -678,7 +692,7 @@ export const OrdersPage = () => {
       await refreshOrders()
     } catch (error) {
       console.error('Failed to update order payment:', error)
-      alert('Failed to update payment status')
+      toast.error('Update Failed', 'Failed to update payment status')
     }
     
     setCashModalOrder(null)
@@ -691,6 +705,10 @@ export const OrdersPage = () => {
       await markAsPaid(order.id)
     }
 
+    // Filter out voided items for receipt
+    const validItems = order.items.filter(item => item.status !== 'VOIDED')
+    const validTotal = validItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+
     const receiptHTML = generateReceiptHTML({
       orderNumber: order.orderNumber,
       createdAt: order.createdAt,
@@ -698,12 +716,13 @@ export const OrdersPage = () => {
       tableNumber: order.tableNumber || undefined,
       orderType: order.orderType,
       paymentMethod: order.paymentMethod || undefined,
-      items: order.items.map(item => ({
+      items: validItems.map(item => ({
         name: item.name,
         quantity: item.quantity,
-        price: item.price
+        price: item.price,
+        status: item.status
       })),
-      totalAmount: order.totalAmount,
+      totalAmount: validTotal,
       deliveryFee: (order as any).deliveryFee,
       serviceFee: (order as any).serviceFee,
       discountAmount: order.discountAmount,
@@ -720,6 +739,10 @@ export const OrdersPage = () => {
       await markAsPaid(order.id)
     }
 
+    // Filter out voided items for receipt
+    const validItems = order.items.filter(item => item.status !== 'VOIDED')
+    const validTotal = validItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+
     const receiptHTML = generateReceiptHTML({
       orderNumber: order.orderNumber,
       createdAt: order.createdAt,
@@ -727,12 +750,13 @@ export const OrdersPage = () => {
       tableNumber: order.tableNumber || undefined,
       orderType: order.orderType,
       paymentMethod: order.paymentMethod || undefined,
-      items: order.items.map(item => ({
+      items: validItems.map(item => ({
         name: item.name,
         quantity: item.quantity,
-        price: item.price
+        price: item.price,
+        status: item.status
       })),
-      totalAmount: order.totalAmount,
+      totalAmount: validTotal,
       deliveryFee: (order as any).deliveryFee,
       serviceFee: (order as any).serviceFee,
       discountAmount: order.discountAmount,
@@ -759,11 +783,15 @@ export const OrdersPage = () => {
     if (!order.linkedOrderId) return null
     return orders.find(o => o.id === order.linkedOrderId) || null
   }
+  // Silence unused warning - used in template
+  void getParentOrder
 
   // Check if an order is a parent with linked orders
   const hasLinkedOrders = (orderId: string): boolean => {
     return orders.some(o => o.linkedOrderId === orderId)
   }
+  // Silence unused warning - used in template
+  void hasLinkedOrders
 
   // Calculate combined total for linked orders
   const getLinkedOrdersTotal = (parentOrderId: string): number => {
@@ -786,10 +814,10 @@ export const OrdersPage = () => {
           ? { ...order, paymentStatus: 'PAID' }
           : order
       ))
-      alert('All linked orders marked as paid!')
+      toast.success('Payment Complete', 'All linked orders marked as paid!')
     } catch (error) {
       console.error('Failed to mark linked orders as paid:', error)
-      alert('Failed to mark some orders as paid')
+      toast.error('Payment Failed', 'Failed to mark some orders as paid')
     }
   }
 
@@ -861,7 +889,7 @@ export const OrdersPage = () => {
       }
 
       const actionLabel = type === 'void' ? 'voided' : type === 'voidAndReorder' ? 'voided' : type === 'complimentary' ? 'marked as complimentary' : 'written off'
-      alert(`All ${linkedOrders.length} linked orders ${actionLabel} successfully. Authorized by: ${managerName}`)
+      toast.success('Linked Orders Updated', `All ${linkedOrders.length} linked orders ${actionLabel} successfully. Authorized by: ${managerName}`)
       
       // Reset state
       setMasterLinkedAction(null)
@@ -869,7 +897,7 @@ export const OrdersPage = () => {
       
     } catch (error: any) {
       console.error(`Failed to execute master ${masterLinkedAction.type} action:`, error)
-      alert(`Failed to ${masterLinkedAction.type} orders: ${error.response?.data?.error || error.message}`)
+      toast.error('Action Failed', `Failed to ${masterLinkedAction.type} orders: ${error.response?.data?.error || error.message}`)
     }
   }
 
@@ -879,7 +907,24 @@ export const OrdersPage = () => {
     if (group.length === 0) return
 
     const parentOrder = group[0]
-    const combinedTotal = getLinkedOrdersTotal(parentOrderId)
+    
+    // Calculate combined total excluding voided items
+    let combinedTotal = 0
+    const ordersWithValidItems = group.map(order => {
+      const validItems = order.items.filter(item => item.status !== 'VOIDED')
+      const validTotal = validItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+      combinedTotal += validTotal
+      return {
+        orderNumber: order.orderNumber,
+        items: validItems.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          status: item.status
+        })),
+        totalAmount: validTotal
+      }
+    })
 
     const receiptHTML = generateLinkedOrdersReceiptHTML({
       parentOrder: {
@@ -887,15 +932,7 @@ export const OrdersPage = () => {
         customerName: parentOrder.customerName || undefined,
         tableNumber: parentOrder.tableNumber || undefined
       },
-      orders: group.map(order => ({
-        orderNumber: order.orderNumber,
-        items: order.items.map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price
-        })),
-        totalAmount: order.totalAmount
-      })),
+      orders: ordersWithValidItems,
       combinedSubtotal: combinedTotal,
       combinedTax: 0,
       combinedTotal
@@ -1056,7 +1093,7 @@ export const OrdersPage = () => {
               <div className="text-sm text-gray-600">
                 <span className="font-medium">Items:</span>
                 <div className="mt-1 space-y-0.5">
-                  {order.items.slice(0, 5).map((item, idx) => (
+                  {order.items.map((item, idx) => (
                     <div key={idx} className={`flex items-center gap-2 ${item.status === 'VOIDED' ? 'opacity-50 line-through' : ''}`}>
                       {item.status === 'VOIDED' ? (
                         <XCircle className="h-3 w-3 text-red-500 shrink-0" />
@@ -1080,9 +1117,6 @@ export const OrdersPage = () => {
                       )}
                     </div>
                   ))}
-                  {order.items.length > 5 && (
-                    <div className="text-xs text-gray-400">+{order.items.length - 5} more items</div>
-                  )}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
@@ -2894,18 +2928,32 @@ export const OrdersPage = () => {
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Payment Method</p>
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold">{selectedOrder.paymentMethod || 'Not set'}</p>
-                      {/* Show change button only for confirmed orders and unpaid orders */}
-                      {(selectedOrder.status !== 'CANCELLED' && selectedOrder.paymentStatus === 'UNPAID') && (
-                        <button
-                          onClick={() => {
-                            setSelectedPaymentMethod(selectedOrder.paymentMethod || 'Cash')
-                            setShowPaymentMethodModal(true)
+                      {/* Show dropdown for unpaid orders */}
+                      {(selectedOrder.status !== 'CANCELLED' && selectedOrder.paymentStatus === 'UNPAID') ? (
+                        <select
+                          value={selectedOrder.paymentMethod || 'Cash'}
+                          onChange={async (e) => {
+                            const newMethod = e.target.value
+                            try {
+                              await ordersApi.update(selectedOrder.id, { paymentMethod: newMethod })
+                              setOrders(prev => prev.map(order => 
+                                order.id === selectedOrder.id ? { ...order, paymentMethod: newMethod } : order
+                              ))
+                              setSelectedOrder({ ...selectedOrder, paymentMethod: newMethod })
+                            } catch (error: any) {
+                              console.error('Failed to update payment method:', error)
+                              toast.error('Update Failed', `Failed to update payment method: ${error.response?.data?.error || error.message}`)
+                            }
                           }}
-                          className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+                          className="h-9 px-3 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-amber-500 text-sm font-semibold"
                         >
-                          Change
-                        </button>
+                          <option value="Cash">Cash</option>
+                          <option value="Card">Card</option>
+                          <option value="GCash">GCash</option>
+                          <option value="PayMaya">PayMaya</option>
+                        </select>
+                      ) : (
+                        <p className="font-semibold">{selectedOrder.paymentMethod || 'Not set'}</p>
                       )}
                     </div>
                   </div>
@@ -2915,11 +2963,11 @@ export const OrdersPage = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Subtotal</p>
-                    <p className="font-semibold">₱{selectedOrder.subtotal.toFixed(2)}</p>
+                    <p className="font-semibold">₱{(selectedOrder.totalAmount / 1.12).toFixed(2)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 mb-1">Tax (12%)</p>
-                    <p className="font-semibold">₱{selectedOrder.tax.toFixed(2)}</p>
+                    <p className="text-sm text-gray-500 mb-1">VAT (12%)</p>
+                    <p className="font-semibold">₱{(selectedOrder.totalAmount - selectedOrder.totalAmount / 1.12).toFixed(2)}</p>
                   </div>
                 </div>
 
@@ -2942,18 +2990,32 @@ export const OrdersPage = () => {
                             <p className="text-sm text-gray-500">Quantity: {item.quantity} × ₱{item.price.toFixed(2)}</p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className={`font-semibold ${item.status === 'VOIDED' ? 'line-through text-gray-400' : ''}`}>₱{item.subtotal.toFixed(2)}</p>
-                          {item.status && (
-                            <span className={`text-xs ${
-                              item.status === 'COMPLETED' ? 'text-green-600' : 
-                              item.status === 'VOIDED' ? 'text-red-600' : 
-                              'text-blue-600'
-                            }`}>
-                              {item.status === 'COMPLETED' ? '✓ Done' : 
-                               item.status === 'VOIDED' ? '✗ Voided' : 
-                               '🍳 Preparing'}
-                            </span>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className={`font-semibold ${item.status === 'VOIDED' ? 'line-through text-gray-400' : ''}`}>₱{item.subtotal.toFixed(2)}</p>
+                            {item.status && (
+                              <span className={`text-xs ${
+                                item.status === 'COMPLETED' ? 'text-green-600' : 
+                                item.status === 'VOIDED' ? 'text-red-600' : 
+                                'text-blue-600'
+                              }`}>
+                                {item.status === 'COMPLETED' ? '✓ Done' : 
+                                 item.status === 'VOIDED' ? '✗ Voided' : 
+                                 '🍳 Preparing'}
+                              </span>
+                            )}
+                          </div>
+                          {/* Void button for items that are not voided and order is not completed/paid */}
+                          {item.status !== 'VOIDED' && selectedOrder.status !== 'COMPLETED' && selectedOrder.paymentStatus === 'UNPAID' && (
+                            <button
+                              onClick={() => {
+                                startAuthorizedAction('voidItem', selectedOrder.id, selectedOrder, item.id, item.name)
+                              }}
+                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Void this item"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           )}
                         </div>
                       </div>
@@ -2966,7 +3028,7 @@ export const OrdersPage = () => {
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-600">Items Total</span>
-                      <span>₱{(selectedOrder.subtotal + selectedOrder.tax).toFixed(2)}</span>
+                      <span>₱{selectedOrder.totalAmount.toFixed(2)}</span>
                     </div>
                     {selectedOrder.deliveryFee > 0 && (
                       <div className="flex justify-between items-center text-sm">
@@ -3032,7 +3094,7 @@ export const OrdersPage = () => {
       )}
       {/* Payment Method Change Modal */}
       {showPaymentMethodModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
             <div className="flex items-center justify-between p-4 border-b">
               <h2 className="text-xl font-bold">Change Payment Method</h2>

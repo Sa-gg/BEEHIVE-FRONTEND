@@ -3,7 +3,7 @@ import { X, Plus, Trash2, AlertCircle, CheckCircle } from 'lucide-react'
 import { Button } from '../../common/ui/button'
 import { Badge } from '../../common/ui/badge'
 import { recipeApi, type MenuItemIngredient } from '../../../../infrastructure/api/recipe.api'
-import { inventoryApi, type InventoryItem } from '../../../../infrastructure/api/inventory.api'
+import { inventoryApi, type InventoryItemDTO } from '../../../../infrastructure/api/inventory.api'
 import { formatSmartStock } from '../../../../shared/utils/stockFormat'
 
 interface RecipeEditorModalProps {
@@ -15,9 +15,8 @@ interface RecipeEditorModalProps {
 
 export const RecipeEditorModal = ({ menuItemId, menuItemName, onClose, onSuccess }: RecipeEditorModalProps) => {
   const [ingredients, setIngredients] = useState<MenuItemIngredient[]>([])
-  const [availableInventory, setAvailableInventory] = useState<InventoryItem[]>([])
+  const [availableInventory, setAvailableInventory] = useState<InventoryItemDTO[]>([])
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // New ingredient form
@@ -98,10 +97,6 @@ export const RecipeEditorModal = ({ menuItemId, menuItemName, onClose, onSuccess
         return 'bg-gray-50 text-gray-700 border-gray-200'
     }
   }
-
-  const totalCost = ingredients.reduce((sum, ing) => {
-    return sum + (ing.quantity * (ing.inventory_item.currentStock || 0))
-  }, 0)
 
   return (
     <>

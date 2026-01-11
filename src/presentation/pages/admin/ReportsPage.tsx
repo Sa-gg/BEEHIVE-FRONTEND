@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
+import { AnimatedNumber } from '../../components/common/AnimatedNumber'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
 import { 
@@ -48,7 +49,7 @@ import {
   ResponsiveContainer
 } from 'recharts'
 
-const COLORS = ['#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316']
+const COLORS = ['#F9C900', '#10B981', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316']
 
 type ReportTab = 'sales' | 'inventory' | 'expenses'
 type PrintOption = 'full' | 'transactions' | 'summary' | 'stock-transactions'
@@ -530,6 +531,7 @@ export const ReportsPage = () => {
   const handlePrint = (option: PrintOption) => {
     if (!salesData && activeTab === 'sales') return
     if (!inventoryData && activeTab === 'inventory') return
+    if (!expenseData && activeTab === 'expenses') return
 
     let content = ''
     
@@ -750,17 +752,81 @@ export const ReportsPage = () => {
           </div>
         `
       }
+    } else if (activeTab === 'expenses' && expenseData) {
+      // Expense report print handling
+      if (option === 'full') {
+        content = `
+          <div class="stats-grid">
+            <div class="stat-card"><h3>₱${expenseData.totalExpenses.toLocaleString()}</h3><p>Total All-Time</p></div>
+            <div class="stat-card"><h3>₱${expenseData.monthlyExpenses.toLocaleString()}</h3><p>Period Total</p></div>
+            <div class="stat-card"><h3>${expenseData.expenseCount}</h3><p>Expense Count</p></div>
+          </div>
+          
+          <div class="section">
+            <h2>Expenses by Category</h2>
+            <table>
+              <thead><tr><th>Category</th><th style="text-align:right">Amount</th></tr></thead>
+              <tbody>
+                ${expenseData.categoryBreakdown.map(c => `<tr><td>${c.name}</td><td style="text-align:right">₱${c.value.toFixed(2)}</td></tr>`).join('')}
+              </tbody>
+              <tfoot class="totals-row">
+                <tr><td><strong>TOTAL</strong></td><td style="text-align:right"><strong>₱${expenseData.categoryBreakdown.reduce((sum, c) => sum + c.value, 0).toFixed(2)}</strong></td></tr>
+              </tfoot>
+            </table>
+          </div>
+          
+          <div class="section page-break">
+            <h2>Expense Transactions</h2>
+            <table>
+              <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Frequency</th><th style="text-align:right">Amount</th></tr></thead>
+              <tbody>
+                ${expenseData.expenses.map(e => `<tr><td>${e.date}</td><td>${e.category}</td><td>${e.description || '-'}</td><td>${e.frequency || 'One-time'}</td><td style="text-align:right">₱${e.amount.toFixed(2)}</td></tr>`).join('')}
+              </tbody>
+              <tfoot class="totals-row">
+                <tr><td colspan="4"><strong>GRAND TOTAL</strong></td><td style="text-align:right"><strong>₱${expenseData.expenses.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</strong></td></tr>
+              </tfoot>
+            </table>
+          </div>
+        `
+      } else {
+        // Summary only
+        content = `
+          <div class="summary-box">
+            <h2>Expense Summary</h2>
+            <div class="summary-grid">
+              <div><span>Total All-Time:</span><strong>₱${expenseData.totalExpenses.toLocaleString()}</strong></div>
+              <div><span>Period Total:</span><strong>₱${expenseData.monthlyExpenses.toLocaleString()}</strong></div>
+              <div><span>Expense Count:</span><strong>${expenseData.expenseCount}</strong></div>
+            </div>
+          </div>
+          
+          <div class="section">
+            <h2>Expense Transactions Detail</h2>
+            <table>
+              <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Frequency</th><th style="text-align:right">Amount</th></tr></thead>
+              <tbody>
+                ${expenseData.expenses.map(e => `<tr><td>${e.date}</td><td>${e.category}</td><td>${e.description || '-'}</td><td>${e.frequency || 'One-time'}</td><td style="text-align:right">₱${e.amount.toFixed(2)}</td></tr>`).join('')}
+              </tbody>
+              <tfoot class="totals-row">
+                <tr><td colspan="4"><strong>GRAND TOTAL</strong></td><td style="text-align:right"><strong>₱${expenseData.expenses.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</strong></td></tr>
+              </tfoot>
+            </table>
+          </div>
+        `
+      }
     }
 
     const reportTitle = activeTab === 'sales' 
       ? (option === 'full' ? 'Complete Sales Report' : 'Sales Transactions Summary')
-      : (option === 'full' ? 'Complete Inventory Report' : option === 'summary' ? 'Inventory Summary' : 'Stock Transactions Report')
+      : activeTab === 'inventory'
+      ? (option === 'full' ? 'Complete Inventory Report' : option === 'summary' ? 'Inventory Summary' : 'Stock Transactions Report')
+      : (option === 'full' ? 'Complete Expense Report' : 'Expense Summary')
 
     const printHTML = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>${activeTab === 'sales' ? 'Sales' : 'Inventory'} Report - BEEHIVE</title>
+          <title>${activeTab === 'sales' ? 'Sales' : activeTab === 'inventory' ? 'Inventory' : 'Expense'} Report - BEEHIVE</title>
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; background: #fff; color: #333; font-size: 11px; }
@@ -783,7 +849,7 @@ export const ReportsPage = () => {
             th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #eee; }
             th { background: #f8f8f8; font-weight: 600; font-size: 9px; text-transform: uppercase; }
             .totals-row { background: #FEF3C7; font-weight: bold; }
-            .totals-row td { border-top: 2px solid #F59E0B; padding: 10px 6px; }
+            .totals-row td { border-top: 2px solid #F9C900; padding: 10px 6px; }
             .text-green { color: #059669; }
             .text-red { color: #DC2626; }
             .footer { text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; font-size: 10px; color: #999; }
@@ -918,7 +984,8 @@ export const ReportsPage = () => {
             </Button>
             <Button
               onClick={() => setShowPrintModal(true)}
-              className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
+              className="gap-2 text-black"
+              style={{ backgroundColor: '#F9C900' }}
             >
               <Printer className="h-4 w-4" />
               Print Report
@@ -934,9 +1001,10 @@ export const ReportsPage = () => {
               onClick={() => setActiveTab('sales')}
               className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
                 activeTab === 'sales'
-                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30'
+                  ? 'text-black shadow-lg'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
+              style={activeTab === 'sales' ? { backgroundColor: '#F9C900', boxShadow: '0 10px 15px -3px rgba(249, 201, 0, 0.3)' } : {}}
             >
               <BarChart3 className="h-5 w-5" />
               Sales Report
@@ -945,9 +1013,10 @@ export const ReportsPage = () => {
               onClick={() => setActiveTab('inventory')}
               className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
                 activeTab === 'inventory'
-                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30'
+                  ? 'text-black shadow-lg'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
+              style={activeTab === 'inventory' ? { backgroundColor: '#F9C900', boxShadow: '0 10px 15px -3px rgba(249, 201, 0, 0.3)' } : {}}
             >
               <Package className="h-5 w-5" />
               Inventory Report
@@ -956,9 +1025,10 @@ export const ReportsPage = () => {
               onClick={() => setActiveTab('expenses')}
               className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${
                 activeTab === 'expenses'
-                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30'
+                  ? 'text-black shadow-lg'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
+              style={activeTab === 'expenses' ? { backgroundColor: '#F9C900', boxShadow: '0 10px 15px -3px rgba(249, 201, 0, 0.3)' } : {}}
             >
               <Receipt className="h-5 w-5" />
               Expenses Report
@@ -978,7 +1048,7 @@ export const ReportsPage = () => {
         {loading ? (
           <div className="flex items-center justify-center h-96">
             <div className="text-center">
-              <div className="animate-spin h-12 w-12 border-4 border-amber-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+              <div className="animate-spin h-12 w-12 border-4 border-t-transparent rounded-full mx-auto mb-4" style={{ borderColor: '#F9C900', borderTopColor: 'transparent' }}></div>
               <p className="text-gray-600">Loading report data...</p>
             </div>
           </div>
@@ -1006,14 +1076,14 @@ export const ReportsPage = () => {
               <div className="p-6 border-b bg-gradient-to-r from-amber-50 to-white flex justify-between items-center rounded-t-2xl">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Printer className="h-5 w-5 text-amber-500" />
-                  Print Options - {activeTab === 'sales' ? 'Sales Report' : 'Inventory Report'}
+                  Print Options - {activeTab === 'sales' ? 'Sales Report' : activeTab === 'inventory' ? 'Inventory Report' : 'Expense Report'}
                 </h2>
                 <button onClick={() => setShowPrintModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
               </div>
               <div className="p-6 space-y-4">
                 <p className="text-gray-600 text-sm">Choose what to include in your printed report:</p>
                 
-                {/* Full Report Option - Available for both */}
+                {/* Full Report Option - Available for all tabs */}
                 <button
                   onClick={() => handlePrint('full')}
                   className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-amber-400 hover:bg-amber-50 transition-all text-left group"
@@ -1027,7 +1097,9 @@ export const ReportsPage = () => {
                       <p className="text-sm text-gray-500">
                         {activeTab === 'sales' 
                           ? 'Charts summaries, daily breakdown, top products & all transactions'
-                          : 'Complete inventory summary, stock levels, categories & all stock transactions'}
+                          : activeTab === 'inventory'
+                          ? 'Complete inventory summary, stock levels, categories & all stock transactions'
+                          : 'Complete expense summary, category breakdown & all expense transactions'}
                       </p>
                     </div>
                   </div>
@@ -1083,6 +1155,24 @@ export const ReportsPage = () => {
                       </div>
                     </button>
                   </>
+                )}
+
+                {/* Expense-specific options */}
+                {activeTab === 'expenses' && (
+                  <button
+                    onClick={() => handlePrint('transactions')}
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-amber-400 hover:bg-amber-50 transition-all text-left group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 rounded-lg group-hover:bg-orange-200">
+                        <Receipt className="h-5 w-5 text-orange-600" />
+                      </div>
+                      <div>
+                        <p className="font-semibold">Expense Transactions Only</p>
+                        <p className="text-sm text-gray-500">Just the expense transactions with totals by category</p>
+                      </div>
+                    </div>
+                  </button>
                 )}
               </div>
             </div>
@@ -1145,50 +1235,54 @@ export const ReportsPage = () => {
 // Sales Report Content Component
 const SalesReportContent = ({ data, formatCurrency }: { data: SalesReportData; formatCurrency: (value: number) => string }) => (
   <div className="space-y-6">
-    {/* Summary Stats */}
-    <div className="stats-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div className="stat-card bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-3 bg-amber-100 rounded-xl">
-            <DollarSign className="h-6 w-6 text-amber-600" />
+    {/* Summary Stats - Updated to match InventoryPage/ExpensesPage design */}
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+      <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl shadow-sm p-5 border border-amber-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-amber-100 rounded-xl group-hover:scale-110 transition-transform">
+            <DollarSign className="h-5 w-5 text-amber-600" />
           </div>
-          <ArrowUpRight className="h-5 w-5 text-green-500" />
+          <ArrowUpRight className="h-4 w-4 text-green-500" />
         </div>
-        <h3 className="text-3xl font-bold text-gray-900">{formatCurrency(data.totalRevenue)}</h3>
-        <p className="text-sm text-gray-500 mt-1">Total Revenue</p>
+        <p className="text-sm font-medium text-gray-500 mb-1">Total Revenue</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.totalRevenue} isCurrency duration={1200} /></p>
+        <p className="text-xs text-gray-400 mt-2">for selected period</p>
       </div>
 
-      <div className="stat-card bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-3 bg-green-100 rounded-xl">
-            <BarChart3 className="h-6 w-6 text-green-600" />
+      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-sm p-5 border border-green-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-green-100 rounded-xl group-hover:scale-110 transition-transform">
+            <BarChart3 className="h-5 w-5 text-green-600" />
           </div>
-          <TrendingUp className="h-5 w-5 text-green-500" />
+          <TrendingUp className="h-4 w-4 text-green-500" />
         </div>
-        <h3 className="text-3xl font-bold text-gray-900">{data.totalOrders}</h3>
-        <p className="text-sm text-gray-500 mt-1">Total Orders</p>
+        <p className="text-sm font-medium text-gray-500 mb-1">Total Orders</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.totalOrders} duration={1000} delay={100} /></p>
+        <p className="text-xs text-gray-400 mt-2">completed orders</p>
       </div>
 
-      <div className="stat-card bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-3 bg-blue-100 rounded-xl">
-            <LineChartIcon className="h-6 w-6 text-blue-600" />
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-5 border border-blue-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-blue-100 rounded-xl group-hover:scale-110 transition-transform">
+            <LineChartIcon className="h-5 w-5 text-blue-600" />
           </div>
-          <TrendingUp className="h-5 w-5 text-blue-500" />
+          <TrendingUp className="h-4 w-4 text-blue-500" />
         </div>
-        <h3 className="text-3xl font-bold text-gray-900">{formatCurrency(data.averageOrderValue)}</h3>
-        <p className="text-sm text-gray-500 mt-1">Avg Order Value</p>
+        <p className="text-sm font-medium text-gray-500 mb-1">Avg Order Value</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.averageOrderValue} isCurrency duration={1000} delay={200} /></p>
+        <p className="text-xs text-gray-400 mt-2">per order</p>
       </div>
 
-      <div className="stat-card bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-3 bg-purple-100 rounded-xl">
-            <Package className="h-6 w-6 text-purple-600" />
+      <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl shadow-sm p-5 border border-purple-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-purple-100 rounded-xl group-hover:scale-110 transition-transform">
+            <Package className="h-5 w-5 text-purple-600" />
           </div>
-          <ArrowUpRight className="h-5 w-5 text-purple-500" />
+          <ArrowUpRight className="h-4 w-4 text-purple-500" />
         </div>
-        <h3 className="text-3xl font-bold text-gray-900">{data.totalItems.toLocaleString()}</h3>
-        <p className="text-sm text-gray-500 mt-1">Items Sold</p>
+        <p className="text-sm font-medium text-gray-500 mb-1">Items Sold</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.totalItems} duration={1000} delay={300} /></p>
+        <p className="text-xs text-gray-400 mt-2">total quantity</p>
       </div>
     </div>
 
@@ -1204,8 +1298,8 @@ const SalesReportContent = ({ data, formatCurrency }: { data: SalesReportData; f
           <AreaChart data={data.dailySales}>
             <defs>
               <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
+                <stop offset="5%" stopColor="#F9C900" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#F9C900" stopOpacity={0}/>
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -1215,7 +1309,7 @@ const SalesReportContent = ({ data, formatCurrency }: { data: SalesReportData; f
               formatter={(value: number) => [formatCurrency(value), 'Revenue']}
               contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
             />
-            <Area type="monotone" dataKey="revenue" stroke="#F59E0B" strokeWidth={3} fill="url(#colorRevenue)" />
+            <Area type="monotone" dataKey="revenue" stroke="#F9C900" strokeWidth={3} fill="url(#colorRevenue)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -1278,7 +1372,7 @@ const SalesReportContent = ({ data, formatCurrency }: { data: SalesReportData; f
               formatter={(value: number, name: string) => [name === 'revenue' ? formatCurrency(value) : value, name === 'revenue' ? 'Revenue' : 'Orders']}
               contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
             />
-            <Bar dataKey="revenue" fill="#F59E0B" radius={[8, 8, 0, 0]} />
+            <Bar dataKey="revenue" fill="#F9C900" radius={[8, 8, 0, 0]} />
             <Bar dataKey="count" fill="#10B981" radius={[8, 8, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -1299,7 +1393,7 @@ const SalesReportContent = ({ data, formatCurrency }: { data: SalesReportData; f
               formatter={(value: number, name: string) => [name === 'revenue' ? formatCurrency(value) : value, name === 'revenue' ? 'Revenue' : 'Orders']}
               contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
             />
-            <Line type="monotone" dataKey="orders" stroke="#F59E0B" strokeWidth={2} dot={{ fill: '#F59E0B' }} />
+            <Line type="monotone" dataKey="orders" stroke="#F9C900" strokeWidth={2} dot={{ fill: '#F9C900' }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -1454,50 +1548,54 @@ const SalesReportContent = ({ data, formatCurrency }: { data: SalesReportData; f
 // Inventory Report Content Component
 const InventoryReportContent = ({ data, formatCurrency }: { data: InventoryReportData; formatCurrency: (value: number) => string }) => (
   <div className="space-y-6">
-    {/* Summary Stats */}
-    <div className="stats-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div className="stat-card bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-3 bg-blue-100 rounded-xl">
-            <Package className="h-6 w-6 text-blue-600" />
+    {/* Summary Stats - Updated to match InventoryPage design */}
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-5 border border-blue-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-blue-100 rounded-xl group-hover:scale-110 transition-transform">
+            <Package className="h-5 w-5 text-blue-600" />
           </div>
-          <CheckCircle className="h-5 w-5 text-blue-500" />
+          <CheckCircle className="h-4 w-4 text-blue-500" />
         </div>
-        <h3 className="text-3xl font-bold text-gray-900">{data.totalItems}</h3>
-        <p className="text-sm text-gray-500 mt-1">Total Items</p>
+        <p className="text-sm font-medium text-gray-500 mb-1">Total Items</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.totalItems} duration={1000} /></p>
+        <p className="text-xs text-gray-400 mt-2">in inventory</p>
       </div>
 
-      <div className="stat-card bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-3 bg-green-100 rounded-xl">
-            <DollarSign className="h-6 w-6 text-green-600" />
+      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-sm p-5 border border-green-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-green-100 rounded-xl group-hover:scale-110 transition-transform">
+            <DollarSign className="h-5 w-5 text-green-600" />
           </div>
-          <TrendingUp className="h-5 w-5 text-green-500" />
+          <TrendingUp className="h-4 w-4 text-green-500" />
         </div>
-        <h3 className="text-3xl font-bold text-gray-900">{formatCurrency(data.totalValue)}</h3>
-        <p className="text-sm text-gray-500 mt-1">Total Value</p>
+        <p className="text-sm font-medium text-gray-500 mb-1">Total Value</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.totalValue} isCurrency duration={1200} delay={100} /></p>
+        <p className="text-xs text-gray-400 mt-2">inventory worth</p>
       </div>
 
-      <div className="stat-card bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-3 bg-amber-100 rounded-xl">
-            <AlertTriangle className="h-6 w-6 text-amber-600" />
+      <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl shadow-sm p-5 border border-amber-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-amber-100 rounded-xl group-hover:scale-110 transition-transform">
+            <AlertTriangle className="h-5 w-5 text-amber-600" />
           </div>
-          <ArrowDownRight className="h-5 w-5 text-amber-500" />
+          <ArrowDownRight className="h-4 w-4 text-amber-500" />
         </div>
-        <h3 className="text-3xl font-bold text-gray-900">{data.lowStockCount}</h3>
-        <p className="text-sm text-gray-500 mt-1">Low Stock Items</p>
+        <p className="text-sm font-medium text-gray-500 mb-1">Low Stock Items</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.lowStockCount} duration={1000} delay={200} /></p>
+        <p className="text-xs text-gray-400 mt-2">needs attention</p>
       </div>
 
-      <div className="stat-card bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-3 bg-red-100 rounded-xl">
-            <XCircle className="h-6 w-6 text-red-600" />
+      <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl shadow-sm p-5 border border-red-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-red-100 rounded-xl group-hover:scale-110 transition-transform">
+            <XCircle className="h-5 w-5 text-red-600" />
           </div>
-          <TrendingDown className="h-5 w-5 text-red-500" />
+          <TrendingDown className="h-4 w-4 text-red-500" />
         </div>
-        <h3 className="text-3xl font-bold text-gray-900">{data.outOfStockCount}</h3>
-        <p className="text-sm text-gray-500 mt-1">Out of Stock</p>
+        <p className="text-sm font-medium text-gray-500 mb-1">Out of Stock</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.outOfStockCount} duration={1000} delay={300} /></p>
+        <p className="text-xs text-gray-400 mt-2">restock needed</p>
       </div>
     </div>
 
@@ -1523,7 +1621,7 @@ const InventoryReportContent = ({ data, formatCurrency }: { data: InventoryRepor
                 nameKey="status"
               >
                 <Cell fill="#10B981" />
-                <Cell fill="#F59E0B" />
+                <Cell fill="#F9C900" />
                 <Cell fill="#EF4444" />
               </Pie>
               <Tooltip />
@@ -1533,7 +1631,7 @@ const InventoryReportContent = ({ data, formatCurrency }: { data: InventoryRepor
             {data.stockStatus.map((status, index) => (
               <div key={status.status} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ['#10B981', '#F59E0B', '#EF4444'][index] }} />
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ['#10B981', '#F9C900', '#EF4444'][index] }} />
                   <span className="text-sm">{status.status}</span>
                 </div>
                 <span className="text-sm font-semibold">{status.count}</span>
@@ -1558,7 +1656,7 @@ const InventoryReportContent = ({ data, formatCurrency }: { data: InventoryRepor
               formatter={(value: number) => formatCurrency(value)}
               contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
             />
-            <Bar dataKey="value" fill="#F59E0B" radius={[0, 8, 8, 0]} />
+            <Bar dataKey="value" fill="#F9C900" radius={[0, 8, 8, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -1760,40 +1858,42 @@ const InventoryReportContent = ({ data, formatCurrency }: { data: InventoryRepor
 
 const ExpensesReportContent = ({ data, formatCurrency }: { data: ExpenseReportData; formatCurrency: (value: number) => string }) => (
   <div className="space-y-6">
-    {/* Stats Overview */}
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-2xl p-6 border border-orange-100">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-3 rounded-xl bg-orange-200/80">
-            <DollarSign className="h-6 w-6 text-orange-700" />
+    {/* Stats Overview - Updated to match InventoryPage design */}
+    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+      <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl shadow-sm p-5 border border-orange-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-orange-100 rounded-xl group-hover:scale-110 transition-transform">
+            <DollarSign className="h-5 w-5 text-orange-600" />
           </div>
-          <div>
-            <p className="text-sm text-gray-600">Total All-Time</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.totalExpenses)}</p>
-          </div>
+          <TrendingDown className="h-4 w-4 text-orange-500" />
         </div>
+        <p className="text-sm font-medium text-gray-500 mb-1">Total All-Time</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.totalExpenses} isCurrency duration={1200} /></p>
+        <p className="text-xs text-gray-400 mt-2">all expenses</p>
       </div>
-      <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-2xl p-6 border border-amber-100">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-3 rounded-xl bg-amber-200/80">
-            <TrendingDown className="h-6 w-6 text-amber-700" />
+      
+      <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl shadow-sm p-5 border border-amber-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-amber-100 rounded-xl group-hover:scale-110 transition-transform">
+            <TrendingDown className="h-5 w-5 text-amber-600" />
           </div>
-          <div>
-            <p className="text-sm text-gray-600">Period Total</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.monthlyExpenses)}</p>
-          </div>
+          <ArrowDownRight className="h-4 w-4 text-amber-500" />
         </div>
+        <p className="text-sm font-medium text-gray-500 mb-1">Period Total</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.monthlyExpenses} isCurrency duration={1200} delay={100} /></p>
+        <p className="text-xs text-gray-400 mt-2">selected period</p>
       </div>
-      <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-2xl p-6 border border-blue-100">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-3 rounded-xl bg-blue-200/80">
-            <Receipt className="h-6 w-6 text-blue-700" />
+      
+      <div className="col-span-2 lg:col-span-1 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-5 border border-blue-100 hover:shadow-lg transition-all duration-300 group">
+        <div className="flex items-center justify-between mb-3">
+          <div className="p-3 bg-blue-100 rounded-xl group-hover:scale-110 transition-transform">
+            <Receipt className="h-5 w-5 text-blue-600" />
           </div>
-          <div>
-            <p className="text-sm text-gray-600">Expense Count</p>
-            <p className="text-2xl font-bold text-gray-900">{data.expenseCount}</p>
-          </div>
+          <CheckCircle className="h-4 w-4 text-blue-500" />
         </div>
+        <p className="text-sm font-medium text-gray-500 mb-1">Expense Count</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900"><AnimatedNumber value={data.expenseCount} duration={1000} delay={200} /></p>
+        <p className="text-xs text-gray-400 mt-2">total entries</p>
       </div>
     </div>
 
@@ -1860,7 +1960,7 @@ const ExpensesReportContent = ({ data, formatCurrency }: { data: ExpenseReportDa
             <BarChart data={data.dailyTrend}>
               <defs>
                 <linearGradient id="expenseBarGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#F59E0B" stopOpacity={1}/>
+                  <stop offset="0%" stopColor="#F9C900" stopOpacity={1}/>
                   <stop offset="100%" stopColor="#F97316" stopOpacity={0.8}/>
                 </linearGradient>
               </defs>

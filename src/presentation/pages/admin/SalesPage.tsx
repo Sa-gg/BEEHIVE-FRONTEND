@@ -3,7 +3,7 @@ import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
 import { Input } from '../../components/common/ui/input'
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Calendar, Eye, Receipt, Search, ChevronLeft, ChevronRight, Printer, Download } from 'lucide-react'
+import { TrendingUp, DollarSign, ShoppingCart, Calendar, Eye, Receipt, Search, ChevronLeft, ChevronRight, Printer, Download } from 'lucide-react'
 import { salesApi, type SalesReport } from '../../../infrastructure/api/sales.api'
 import { ordersApi, type OrderResponse, type PaymentStatus } from '../../../infrastructure/api/orders.api'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
@@ -11,6 +11,7 @@ import { DateFilter, type DateFilterValue, useDefaultDateFilter } from '../../co
 import { printWithIframe } from '../../../shared/utils/printUtils'
 import { ManagerPinModal } from '../../components/common/ManagerPinModal'
 import { generateReceiptHTML } from '../../../shared/utils/receiptTemplate'
+import { toast } from '../../components/common/ToastNotification'
 
 const formatOrderNumber = (orderNumber: string) => {
   const match = orderNumber.match(/^ORD-\d{8}-(\d+)$/)
@@ -120,6 +121,8 @@ export const SalesPage = () => {
   const printReceipt = (t: OrderResponse) => {
     // Filter out voided items from print
     const validItems = t.order_items.filter(i => i.status !== 'VOIDED')
+    // Recalculate total excluding voided items
+    const validTotal = validItems.reduce((sum, i) => sum + (i.price * i.quantity), 0)
     const receiptHTML = generateReceiptHTML({
       orderNumber: t.orderNumber,
       createdAt: t.completedAt || t.createdAt,
@@ -129,9 +132,10 @@ export const SalesPage = () => {
       items: validItems.map(i => ({
         name: menuItems.get(i.menuItemId) || i.menuItemId,
         quantity: i.quantity,
-        price: i.price
+        price: i.price,
+        status: i.status
       })),
-      totalAmount: t.totalAmount,
+      totalAmount: validTotal,
       deliveryFee: (t as any).deliveryFee,
       serviceFee: (t as any).serviceFee,
       discountAmount: t.discountAmount,
@@ -333,7 +337,7 @@ export const SalesPage = () => {
       setStatusChangeReason('')
     } catch (error) {
       console.error('Failed to change payment status:', error)
-      alert('Failed to change payment status. Please try again.')
+      toast.error('Update Failed', 'Failed to change payment status. Please try again.')
     }
   }
 
@@ -424,7 +428,9 @@ export const SalesPage = () => {
               </div>
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Total Revenue</p>
-            <p className="text-2xl lg:text-3xl font-bold text-gray-900">₱{metrics.totalRevenue.toLocaleString()}</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">
+              ₱{metrics.totalRevenue.toLocaleString()}
+            </p>
             <p className="text-xs text-gray-400 mt-2">all completed sales</p>
           </div>
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-5 border border-blue-100 hover:shadow-lg transition-all duration-300 group">
@@ -434,7 +440,9 @@ export const SalesPage = () => {
               </div>
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Total Orders</p>
-            <p className="text-2xl lg:text-3xl font-bold text-gray-900">{metrics.totalOrders}</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">
+              {metrics.totalOrders.toLocaleString()}
+            </p>
             <p className="text-xs text-gray-400 mt-2">orders processed</p>
           </div>
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-sm p-5 border border-green-100 hover:shadow-lg transition-all duration-300 group">
@@ -444,7 +452,9 @@ export const SalesPage = () => {
               </div>
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Avg Order Value</p>
-            <p className="text-2xl lg:text-3xl font-bold text-gray-900">₱{metrics.averageOrderValue.toFixed(0)}</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">
+              ₱{Math.round(metrics.averageOrderValue).toLocaleString()}
+            </p>
             <p className="text-xs text-gray-400 mt-2">per transaction</p>
           </div>
           <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl shadow-sm p-5 border border-purple-100 hover:shadow-lg transition-all duration-300 group">
@@ -454,7 +464,9 @@ export const SalesPage = () => {
               </div>
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Daily Average</p>
-            <p className="text-2xl lg:text-3xl font-bold text-gray-900">₱{metrics.dailyAverage.toFixed(0)}</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">
+              ₱{Math.round(metrics.dailyAverage).toLocaleString()}
+            </p>
             <p className="text-xs text-gray-400 mt-2">revenue per day</p>
           </div>
         </div>
