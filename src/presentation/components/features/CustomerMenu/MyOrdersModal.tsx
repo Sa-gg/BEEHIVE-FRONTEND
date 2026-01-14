@@ -429,7 +429,10 @@ export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrd
           {!isExpanded && order.order_items.length > 0 && (
             <div className="mt-2 text-xs text-gray-400 truncate">
               {order.order_items.slice(0, 2).map((item, i) => (
-                <span key={item.id}>{i > 0 && ', '}{item.quantity}x {(item as any).menu_items?.name || 'Item'}</span>
+                <span key={item.id}>
+                  {i > 0 && ', '}{item.quantity}x {(item as any).menu_items?.name || 'Item'}
+                  {(item as any).variant?.name && ` (${(item as any).variant.name})`}
+                </span>
               ))}
               {order.order_items.length > 2 && <span> +{order.order_items.length - 2} more</span>}
             </div>
@@ -445,14 +448,31 @@ export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrd
               </div>
               <div className="space-y-2">
                 {order.order_items.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between bg-white rounded-lg p-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="flex items-center justify-center w-7 h-7 bg-yellow-50 text-yellow-700 rounded-full text-sm font-semibold">
-                        {item.quantity}
-                      </span>
-                      <span className="text-gray-800 text-sm">{(item as any).menu_items?.name || 'Item'}</span>
+                  <div key={item.id} className="bg-white rounded-lg p-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center justify-center w-7 h-7 bg-yellow-50 text-yellow-700 rounded-full text-sm font-semibold">
+                          {item.quantity}
+                        </span>
+                        <span className="text-gray-800 text-sm">
+                          {(item as any).menu_items?.name || 'Item'}
+                          {(item as any).variant?.name && <span className="text-amber-600 ml-1">({(item as any).variant.name})</span>}
+                        </span>
+                      </div>
+                      <span className="font-medium text-sm">₱{item.subtotal.toFixed(0)}</span>
                     </div>
-                    <span className="font-medium text-sm">₱{item.subtotal.toFixed(0)}</span>
+                    {/* Addons */}
+                    {(item as any).order_item_addons && (item as any).order_item_addons.length > 0 && (
+                      <div className="ml-9 mt-1 text-xs text-gray-500">
+                        {(item as any).order_item_addons.map((addon: any, idx: number) => (
+                          <div key={idx}>+ {addon.addonName || 'Add-on'} ×{addon.quantity}</div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Notes */}
+                    {(item as any).notes && (
+                      <div className="ml-9 mt-1 text-xs text-gray-400 italic">Note: {(item as any).notes}</div>
+                    )}
                   </div>
                 ))}
               </div>

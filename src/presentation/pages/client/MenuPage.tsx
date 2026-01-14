@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { ClientLayout } from '../../components/layout/ClientLayout'
 import type { MenuItem } from '../../../core/domain/entities/MenuItem.entity'
-import type { OrderItem } from '../../../core/domain/entities/Order.entity'
+import type { OrderItem, OrderItemAddon } from '../../../core/domain/entities/Order.entity'
 import type { CustomerOrder } from '../../../core/domain/entities/CustomerOrder.entity'
 import type { MoodType, MoodOption } from '../../../shared/utils/moodSystem'
 import { getMoodByValue, setDynamicMoodSettings } from '../../../shared/utils/moodSystem'
@@ -15,10 +15,11 @@ import { MoodSelector } from '../../components/features/CustomerMenu/MoodSelecto
 import { MoodReflectionModal } from '../../components/features/CustomerMenu/MoodReflectionModal'
 import { CustomerDropdown } from '../../components/features/CustomerMenu/CustomerDropdown'
 import { MyOrdersModal } from '../../components/features/CustomerMenu/MyOrdersModal'
+import { AddonsVariantsModal } from '../../components/features/shared/AddonsVariantsModal'
 import { Button } from '../../components/common/ui/button'
 import { ShoppingBag, Sparkles, Loader2, Bell } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
+import { addonsApi } from '../../../infrastructure/api/addons.api'
 import { categoriesApi, type CategoryDTO } from '../../../infrastructure/api/categories.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
 import { moodSettingsApi } from '../../../infrastructure/api/moodSettings.api'
@@ -55,6 +56,11 @@ export const MenuPage = () => {
   const [flyingItem, setFlyingItem] = useState<{ id: string; x: number; y: number } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showMyOrders, setShowMyOrders] = useState(false)
+  
+  // Addons/Variants modal state
+  const [showAddonsModal, setShowAddonsModal] = useState(false)
+  const [selectedMenuItemForAddons, setSelectedMenuItemForAddons] = useState<MenuItem | null>(null)
+  const [menuItemsWithAddons, setMenuItemsWithAddons] = useState<Set<string>>(new Set())
   
   // Order notifications state
   const [orderNotifications, setOrderNotifications] = useState(0)
@@ -156,15 +162,23 @@ export const MenuPage = () => {
     excludeCategories: (setting.excludeCategories || []).map((c: string) => c.toLowerCase().replace('_', ' '))
   })
 
+  // Helper function to get full image URL from backend
+  const getImageUrl = (imagePath: string | null) => {
+    if (!imagePath) return null
+    if (imagePath.startsWith('http')) return imagePath
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+    return `${API_BASE_URL}${imagePath}`
+  }
+
   // Fetch menu items and mood settings on mount
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true)
         
-        // Fetch menu items, categories, mood settings, and feedback config in parallel
-        const [menuResponse, categoriesResponse, moodSettings, config] = await Promise.all([
-          menuItemsApi.getAll(),
+        // Fetch menu items using browse API (handles showInMenu for ADDONs), categories, mood settings
+        const [browseData, categoriesResponse, moodSettings, config] = await Promise.all([
+          addonsApi.getMenuItemsForBrowsing({ available: true }),
           categoriesApi.getAll(),
           moodSettingsApi.getActiveMoodSettings().catch(() => null),
           moodSettingsApi.getFeedbackConfig().catch(() => null)
@@ -173,12 +187,21 @@ export const MenuPage = () => {
         // Set categories
         setCategories(categoriesResponse.data)
         
-        // Process menu items
-        const items = Array.isArray(menuResponse) ? menuResponse : menuResponse.data || []
-        const transformedItems = items.map((item: any) => ({
+        // Build set of menu items that have variants or add-ons
+        const itemsWithAddons = new Set<string>()
+        browseData.forEach((item: any) => {
+          if ((item.variants && item.variants.length > 0) || (item.allowed_addons && item.allowed_addons.length > 0)) {
+            itemsWithAddons.add(item.id)
+          }
+        })
+        setMenuItemsWithAddons(itemsWithAddons)
+        
+        // Process menu items - browseData already respects showInMenu flag for ADDONs
+        const transformedItems = browseData.map((item: any) => ({
           ...item,
           categoryId: item.categoryId,
-          category: (item.category?.displayName || item.category?.name || '').toLowerCase().replace('_', ' ')
+          category: (item.category?.displayName || item.category?.name || '').toLowerCase().replace('_', ' '),
+          image: getImageUrl(item.image)
         }))
         setMenuItems(transformedItems)
         
@@ -313,15 +336,21 @@ export const MenuPage = () => {
     return 'evening'
   }
 
-  // Helper function to get full image URL from backend
-  const getImageUrl = (imagePath: string | null) => {
-    if (!imagePath) return null
-    if (imagePath.startsWith('http')) return imagePath
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-    return `${API_BASE_URL}${imagePath}`
-  }
-
   const addToCart = (menuItem: MenuItem, event?: React.MouseEvent) => {
+    // Check if this item has variants or add-ons
+    if (menuItemsWithAddons.has(menuItem.id)) {
+      // Open addons/variants modal
+      setSelectedMenuItemForAddons(menuItem)
+      setShowAddonsModal(true)
+      return
+    }
+    
+    // Simple item without variants/add-ons - add directly
+    addSimpleItemToCart(menuItem, event)
+  }
+  
+  // Add a simple item without variants/add-ons
+  const addSimpleItemToCart = (menuItem: MenuItem, event?: React.MouseEvent) => {
     // Get click position for animation
     if (event) {
       const rect = (event.target as HTMLElement).getBoundingClientRect()
@@ -335,11 +364,16 @@ export const MenuPage = () => {
     }
 
     setCartItems((prev) => {
-      const existingItem = prev.find((item) => item.menuItemId === menuItem.id)
+      // For simple items without variants/addons, aggregate by menuItemId
+      const existingItem = prev.find((item) => 
+        item.menuItemId === menuItem.id && 
+        !item.variantId && 
+        (!item.addons || item.addons.length === 0)
+      )
       
       if (existingItem) {
         return prev.map((item) =>
-          item.menuItemId === menuItem.id
+          item.menuItemId === menuItem.id && !item.variantId && (!item.addons || item.addons.length === 0)
             ? {
                 ...item,
                 quantity: item.quantity + 1,
@@ -361,16 +395,67 @@ export const MenuPage = () => {
       ]
     })
   }
+  
+  // Add item with variants/add-ons from the modal
+  const addItemWithAddonsToCart = (data: {
+    variantId: string | null
+    variantName: string | null
+    variantPriceDelta: number
+    addons: OrderItemAddon[]
+    notes: string
+    finalPrice: number
+  }) => {
+    if (!selectedMenuItemForAddons) return
+    
+    const orderItem: OrderItem = {
+      menuItemId: selectedMenuItemForAddons.id,
+      name: selectedMenuItemForAddons.name,
+      price: selectedMenuItemForAddons.price,
+      quantity: 1,
+      subtotal: data.finalPrice,
+      variantId: data.variantId || undefined,
+      variantName: data.variantName || undefined,
+      variantPriceDelta: data.variantPriceDelta || undefined,
+      notes: data.notes || undefined,
+      addons: data.addons.length > 0 ? data.addons.map(a => ({
+        addonItemId: a.addonItemId,
+        addonName: a.addonName,
+        unitPrice: a.unitPrice,
+        quantity: a.quantity,
+        subtotal: a.unitPrice * a.quantity
+      })) : undefined
+    }
+    
+    setCartItems(prev => [...prev, orderItem])
+    setShowAddonsModal(false)
+    setSelectedMenuItemForAddons(null)
+  }
 
-  const updateQuantity = (menuItemId: string, quantity: number) => {
+  const updateQuantity = (menuItemId: string, quantity: number, itemIndex?: number) => {
     if (quantity <= 0) {
-      removeItem(menuItemId)
+      removeItem(menuItemId, itemIndex)
       return
     }
     
-    setCartItems((prev) =>
-      prev.map((item) =>
-        item.menuItemId === menuItemId
+    setCartItems((prev) => {
+      // For items with variants/add-ons, use itemIndex to identify the specific item
+      if (itemIndex !== undefined) {
+        return prev.map((item, idx) =>
+          idx === itemIndex
+            ? {
+                ...item,
+                quantity,
+                // Recalculate subtotal with variant delta and addons
+                subtotal: quantity * (item.price + (item.variantPriceDelta || 0) + 
+                  (item.addons?.reduce((sum, a) => sum + a.unitPrice * a.quantity, 0) || 0)),
+              }
+            : item
+        )
+      }
+      
+      // For simple items, use menuItemId
+      return prev.map((item) =>
+        item.menuItemId === menuItemId && !item.variantId && (!item.addons || item.addons.length === 0)
           ? {
               ...item,
               quantity,
@@ -378,11 +463,20 @@ export const MenuPage = () => {
             }
           : item
       )
-    )
+    })
   }
 
-  const removeItem = (menuItemId: string) => {
-    setCartItems((prev) => prev.filter((item) => item.menuItemId !== menuItemId))
+  const removeItem = (menuItemId: string, itemIndex?: number) => {
+    setCartItems((prev) => {
+      // For items with variants/add-ons, use itemIndex
+      if (itemIndex !== undefined) {
+        return prev.filter((_, idx) => idx !== itemIndex)
+      }
+      // For simple items, match by menuItemId (and ensure it's a simple item)
+      return prev.filter((item) => 
+        item.menuItemId !== menuItemId || item.variantId || (item.addons && item.addons.length > 0)
+      )
+    })
   }
 
   const clearAllItems = () => {
@@ -398,11 +492,19 @@ export const MenuPage = () => {
     try {
       setIsSubmitting(true)
       
-      // Prepare order items for API
+      // Prepare order items for API - include variant and addon data
       const orderItems = cartItems.map(item => ({
         menuItemId: item.menuItemId,
         quantity: item.quantity,
-        price: item.price
+        price: item.price,
+        variantId: item.variantId || undefined,
+        variantPriceDelta: item.variantPriceDelta || undefined,
+        notes: item.notes || undefined,
+        addons: item.addons?.map(a => ({
+          addonItemId: a.addonItemId,
+          quantity: a.quantity,
+          unitPrice: a.unitPrice
+        })) || undefined
       }))
 
       // Create order via API
@@ -578,9 +680,12 @@ export const MenuPage = () => {
     const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
     
     // Start with all available items from API
+    // CRITICAL: Exclude ADDON items from mood recommendations - they are extras, not main items
     // Excluded categories: if penalty=0, filter out; otherwise apply penalty in scoring
     const useExcludedCategoryPenalty = scoringWeights.excludedCategoryPenalty > 0
     const recommended = safeMenuItems.filter(item => {
+      // Exclude ADDON items from mood recommendations - they are not main menu items
+      if ((item as any).itemType === 'ADDON') return false
       // Only filter out excluded categories if penalty is 0 (default behavior)
       // Now uses categoryId for matching
       if (!useExcludedCategoryPenalty && moodConfig.excludeCategories?.includes(item.categoryId)) return false
@@ -1273,6 +1378,21 @@ export const MenuPage = () => {
           onOpenChange={setShowMyOrders}
           onFeedbackSubmitted={refreshOrderNotifications}
         />
+
+        {/* Addons & Variants Modal */}
+        {showAddonsModal && selectedMenuItemForAddons && (
+          <AddonsVariantsModal
+            menuItem={selectedMenuItemForAddons as any}
+            isOpen={showAddonsModal}
+            onClose={() => {
+              setShowAddonsModal(false)
+              setSelectedMenuItemForAddons(null)
+            }}
+            onConfirm={(data) => {
+              addItemWithAddonsToCart(data)
+            }}
+          />
+        )}
       </div>
     </ClientLayout>
   )

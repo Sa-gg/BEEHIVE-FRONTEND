@@ -7,7 +7,6 @@ import { MenuItemCard } from '../../components/features/POS/MenuItemCard'
 import { OrderSummary } from '../../components/features/POS/OrderSummary'
 import { Button } from '../../components/common/ui/button'
 import { ShoppingCart, Search, Loader2 } from 'lucide-react'
-import { menuItemsApi, type MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
 import { categoriesApi, type CategoryDTO } from '../../../infrastructure/api/categories.api'
 import { ordersApi } from '../../../infrastructure/api/orders.api'
 import { useAuthStore } from '../../store/authStore'
@@ -18,6 +17,8 @@ import { generateReceiptHTML, generateKitchenReceiptHTML } from '../../../shared
 import { CashCalculatorModal } from '../../components/common/CashCalculatorModal'
 import { FeeInputModal, type FeeType } from '../../components/common/FeeInputModal'
 import { toast } from '../../components/common/ToastNotification'
+import { AddonsVariantsModal, type AddonSelection, type VariantSelection } from '../../components/features/shared/AddonsVariantsModal'
+import { addonsApi } from '../../../infrastructure/api/addons.api'
 
 // Helper to format order number - removes date prefix for cleaner display
 const formatOrderNumber = (orderNumber: string): string => {
@@ -93,6 +94,11 @@ export const POSPage = () => {
   const [showFeeModal, setShowFeeModal] = useState(false)
   const [currentFeeType, setCurrentFeeType] = useState<FeeType>('delivery')
   const [pendingAction, setPendingAction] = useState<'confirm' | 'print' | null>(null)
+  
+  // Variants/Add-ons modal state
+  const [showAddonsModal, setShowAddonsModal] = useState(false)
+  const [selectedMenuItemForAddons, setSelectedMenuItemForAddons] = useState<MenuItem | null>(null)
+  const [menuItemsWithAddons, setMenuItemsWithAddons] = useState<Set<string>>(new Set())
 
   // Helper function to get full image URL
   const getImageUrl = (imagePath: string | null) => {
@@ -136,17 +142,27 @@ export const POSPage = () => {
     const fetchData = async () => {
       try {
         setLoading(true)
-        const [menuResponse, categoriesResponse, servingsData] = await Promise.all([
-          menuItemsApi.getAll({ available: true }),
+        const [categoriesResponse, servingsData, browseData] = await Promise.all([
           categoriesApi.getAll(),
-          recipeApi.getAllMaxServings()
+          recipeApi.getAllMaxServings(),
+          addonsApi.getMenuItemsForBrowsing({ available: true })
         ])
         
         // Set categories
         setCategories(categoriesResponse.data)
         
+        // Build set of menu items that have variants or add-ons
+        const itemsWithAddons = new Set<string>()
+        browseData.forEach((item: any) => {
+          if ((item.variants && item.variants.length > 0) || (item.allowed_addons && item.allowed_addons.length > 0)) {
+            itemsWithAddons.add(item.id)
+          }
+        })
+        setMenuItemsWithAddons(itemsWithAddons)
+        
         // Convert API DTOs to MenuItem format
-        const items: MenuItem[] = menuResponse.data.map((item: MenuItemDTO) => ({
+        // Use browseData which already handles showInMenu logic for ADDON items
+        const items: MenuItem[] = browseData.map((item: any) => ({
           id: item.id,
           name: item.name,
           // Use categoryId for filtering, but display category name
@@ -178,12 +194,31 @@ export const POSPage = () => {
   }, [])
 
   const addToOrder = (menuItem: MenuItem) => {
+    // Check if this item has variants or add-ons
+    if (menuItemsWithAddons.has(menuItem.id)) {
+      // Open addons/variants modal
+      setSelectedMenuItemForAddons(menuItem)
+      setShowAddonsModal(true)
+      return
+    }
+    
+    // Simple item without variants/add-ons - add directly
+    addSimpleItemToOrder(menuItem)
+  }
+  
+  // Add a simple item without variants/add-ons
+  const addSimpleItemToOrder = (menuItem: MenuItem) => {
     setOrderItems((prev) => {
-      const existingItem = prev.find((item) => item.menuItemId === menuItem.id)
+      // For simple items without variants/addons, aggregate by menuItemId
+      const existingItem = prev.find((item) => 
+        item.menuItemId === menuItem.id && 
+        !item.variantId && 
+        (!item.addons || item.addons.length === 0)
+      )
       
       if (existingItem) {
         return prev.map((item) =>
-          item.menuItemId === menuItem.id
+          item === existingItem
             ? {
                 ...item,
                 quantity: item.quantity + 1,
@@ -205,16 +240,67 @@ export const POSPage = () => {
       ]
     })
   }
+  
+  // Add item with variants/add-ons from the modal
+  const addItemWithAddonsToOrder = (
+    menuItem: MenuItem,
+    variant: VariantSelection | null,
+    addons: AddonSelection[],
+    notes: string,
+    finalPrice: number
+  ) => {
+    const orderItem: OrderItem = {
+      menuItemId: menuItem.id,
+      name: menuItem.name,
+      price: menuItem.price,
+      quantity: 1,
+      subtotal: finalPrice,
+      variantId: variant?.id,
+      variantName: variant?.name,
+      variantPriceDelta: variant?.priceDelta,
+      notes: notes || undefined,
+      addons: addons.length > 0 ? addons.map(a => ({
+        addonItemId: a.addonItemId,
+        addonName: a.addonName,
+        unitPrice: a.addonPrice,
+        quantity: a.quantity,
+        subtotal: a.addonPrice * a.quantity
+      })) : undefined
+    }
+    
+    setOrderItems(prev => [...prev, orderItem])
+    setShowAddonsModal(false)
+    setSelectedMenuItemForAddons(null)
+  }
 
-  const updateQuantity = (menuItemId: string, quantity: number) => {
+  const updateQuantity = (menuItemId: string, quantity: number, itemIndex?: number) => {
     if (quantity <= 0) {
-      removeItem(menuItemId)
+      removeItem(menuItemId, itemIndex)
       return
     }
     
-    setOrderItems((prev) =>
-      prev.map((item) =>
-        item.menuItemId === menuItemId
+    setOrderItems((prev) => {
+      // For items with variants/add-ons, use itemIndex to identify the specific item
+      if (itemIndex !== undefined) {
+        return prev.map((item, index) => {
+          if (index !== itemIndex) return item
+          
+          // Recalculate subtotal including variant delta and addons
+          const basePrice = item.price + (item.variantPriceDelta || 0)
+          const addonsTotal = item.addons?.reduce((sum, a) => sum + (a.unitPrice * a.quantity), 0) || 0
+          const newSubtotal = (basePrice + addonsTotal) * quantity
+          
+          return {
+            ...item,
+            quantity,
+            subtotal: newSubtotal,
+          }
+        })
+      }
+      
+      // For simple items, use menuItemId
+      return prev.map((item) =>
+        item.menuItemId === menuItemId && !item.variantId && (!item.addons || item.addons.length === 0)
           ? {
               ...item,
               quantity,
@@ -222,11 +308,20 @@ export const POSPage = () => {
             }
           : item
       )
-    )
+    })
   }
 
-  const removeItem = (menuItemId: string) => {
-    setOrderItems((prev) => prev.filter((item) => item.menuItemId !== menuItemId))
+  const removeItem = (menuItemId: string, itemIndex?: number) => {
+    setOrderItems((prev) => {
+      // For items with variants/add-ons, use itemIndex
+      if (itemIndex !== undefined) {
+        return prev.filter((_, index) => index !== itemIndex)
+      }
+      // For simple items, match by menuItemId (and ensure it's a simple item)
+      return prev.filter((item) => 
+        item.menuItemId !== menuItemId || item.variantId || (item.addons && item.addons.length > 0)
+      )
+    })
   }
 
   const clearOrder = () => {
@@ -321,7 +416,17 @@ export const POSPage = () => {
       items: items.map((item: any) => ({
         name: item.name,
         quantity: item.quantity,
-        price: item.price
+        price: item.price,
+        subtotal: item.subtotal,
+        variantName: item.variantName,
+        variantPriceDelta: item.variantPriceDelta,
+        notes: item.notes,
+        addons: item.addons?.map((a: any) => ({
+          addonName: a.addonName,
+          quantity: a.quantity,
+          addonPrice: a.unitPrice,
+          subtotal: a.subtotal || a.unitPrice * a.quantity
+        }))
       })),
       totalAmount: order.totalAmount,
       deliveryFee: order.deliveryFee || deliveryFee,
@@ -392,7 +497,15 @@ export const POSPage = () => {
         items: orderItems.map(item => ({
           menuItemId: item.menuItemId,
           quantity: item.quantity,
-          price: item.price
+          price: item.price,
+          variantId: item.variantId || undefined,
+          variantPriceDelta: item.variantPriceDelta || undefined,
+          notes: item.notes || undefined,
+          addons: item.addons?.map(a => ({
+            addonItemId: a.addonItemId,
+            quantity: a.quantity,
+            unitPrice: a.unitPrice
+          })) || undefined
         }))
       }
       
@@ -413,7 +526,17 @@ export const POSPage = () => {
       const itemsForReceipt = orderItems.map(item => ({
         name: item.name,
         quantity: item.quantity,
-        price: item.price
+        price: item.price,
+        subtotal: item.subtotal,
+        variantName: item.variantName || undefined,
+        variantPriceDelta: item.variantPriceDelta,
+        notes: item.notes || undefined,
+        addons: item.addons?.map(a => ({
+          addonName: a.addonName,
+          quantity: a.quantity,
+          addonPrice: a.unitPrice,
+          subtotal: a.subtotal || a.unitPrice * a.quantity
+        }))
       }))
       const total = calculateGrandTotal()
       
@@ -449,7 +572,15 @@ export const POSPage = () => {
             items: itemsForReceipt.map(item => ({
               name: item.name,
               quantity: item.quantity,
-              price: 0 // Kitchen copy doesn't need price but type requires it
+              price: 0, // Kitchen copy doesn't need price but type requires it
+              variantName: item.variantName || undefined,
+              notes: item.notes || undefined,
+              addons: item.addons?.map(a => ({
+                addonName: a.addonName,
+                quantity: a.quantity,
+                addonPrice: 0,
+                subtotal: 0
+              }))
             })),
             orderNumber: createdOrder.orderNumber,
             totalAmount: 0
@@ -482,7 +613,15 @@ export const POSPage = () => {
         const items = orderItems.map(item => ({
           menuItemId: item.menuItemId,
           quantity: item.quantity,
-          price: item.price
+          price: item.price,
+          variantId: item.variantId || undefined,
+          variantPriceDelta: item.variantPriceDelta || undefined,
+          notes: item.notes || undefined,
+          addons: item.addons?.map(a => ({
+            addonItemId: a.addonItemId,
+            quantity: a.quantity,
+            unitPrice: a.unitPrice
+          })) || undefined
         }))
         
         const updatedOrder = await ordersApi.addItemsToTab(tabOrderId, items)
@@ -530,7 +669,15 @@ export const POSPage = () => {
             items: orderItems.map(item => ({
               name: item.name,
               quantity: item.quantity,
-              price: item.price
+              price: item.price,
+              variantName: item.variantName || undefined,
+              notes: item.notes || undefined,
+              addons: item.addons?.map(a => ({
+                addonName: a.addonName,
+                quantity: a.quantity,
+                addonPrice: 0,
+                subtotal: 0
+              }))
             })),
             totalAmount: calculateGrandTotal()
           })
@@ -567,7 +714,15 @@ export const POSPage = () => {
           items: orderItems.map(item => ({
             menuItemId: item.menuItemId,
             quantity: item.quantity,
-            price: item.price
+            price: item.price,
+            variantId: item.variantId || undefined,
+            variantPriceDelta: item.variantPriceDelta || undefined,
+            notes: item.notes || undefined,
+            addons: item.addons?.map(a => ({
+              addonItemId: a.addonItemId,
+              quantity: a.quantity,
+              unitPrice: a.unitPrice
+            })) || undefined
           }))
         }
         
@@ -589,7 +744,15 @@ export const POSPage = () => {
             items: orderItems.map(item => ({
               name: item.name,
               quantity: item.quantity,
-              price: item.price
+              price: item.price,
+              variantName: item.variantName || undefined,
+              notes: item.notes || undefined,
+              addons: item.addons?.map(a => ({
+                addonName: a.addonName,
+                quantity: a.quantity,
+                addonPrice: 0,
+                subtotal: 0
+              }))
             })),
             totalAmount: calculateGrandTotal()
           })
@@ -928,6 +1091,36 @@ export const POSPage = () => {
         }
         subtotal={orderItems.reduce((sum, item) => sum + item.subtotal, 0)}
       />
+      
+      {/* Add-ons & Variants Modal */}
+      {selectedMenuItemForAddons && (
+        <AddonsVariantsModal
+          isOpen={showAddonsModal}
+          onClose={() => {
+            setShowAddonsModal(false)
+            setSelectedMenuItemForAddons(null)
+          }}
+          menuItem={{
+            id: selectedMenuItemForAddons.id,
+            name: selectedMenuItemForAddons.name,
+            price: selectedMenuItemForAddons.price
+          }}
+          onConfirm={(data) => {
+            addItemWithAddonsToOrder(
+              selectedMenuItemForAddons,
+              data.variantId ? { id: data.variantId, name: data.variantName || '', priceDelta: data.variantPriceDelta } : null,
+              data.addons.map(a => ({
+                addonItemId: a.addonItemId,
+                addonName: a.addonName,
+                addonPrice: a.unitPrice,
+                quantity: a.quantity
+              })),
+              data.notes,
+              data.finalPrice
+            )
+          }}
+        />
+      )}
     </AdminLayout>
   )
 }

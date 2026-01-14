@@ -121,8 +121,8 @@ export const SalesPage = () => {
   const printReceipt = (t: OrderResponse) => {
     // Filter out voided items from print
     const validItems = t.order_items.filter(i => i.status !== 'VOIDED')
-    // Recalculate total excluding voided items
-    const validTotal = validItems.reduce((sum, i) => sum + (i.price * i.quantity), 0)
+    // Use item.subtotal which already includes addon prices
+    const validTotal = validItems.reduce((sum, i) => sum + i.subtotal, 0)
     const receiptHTML = generateReceiptHTML({
       orderNumber: t.orderNumber,
       createdAt: t.completedAt || t.createdAt,
@@ -133,7 +133,16 @@ export const SalesPage = () => {
         name: menuItems.get(i.menuItemId) || i.menuItemId,
         quantity: i.quantity,
         price: i.price,
-        status: i.status
+        status: i.status,
+        variantName: i.variant?.name,
+        variantPriceDelta: i.variant?.priceDelta,
+        notes: i.notes || undefined,
+        addons: i.order_item_addons?.map(a => ({
+          addonName: menuItems.get(a.addonItemId) || 'Add-on',
+          quantity: a.quantity,
+          addonPrice: a.unitPrice,
+          subtotal: a.subtotal
+        }))
       })),
       totalAmount: validTotal,
       deliveryFee: (t as any).deliveryFee,
@@ -774,12 +783,28 @@ export const SalesPage = () => {
                   {selectedTransaction.order_items.map(i => {
                     const isVoided = i.status === 'VOIDED'
                     return (
-                      <div key={i.id} className={`flex justify-between py-2 border-b last:border-0 ${isVoided ? 'opacity-60' : ''}`}>
-                        <span className={isVoided ? 'line-through text-red-500' : ''}>
-                          {menuItems.get(i.menuItemId) || i.menuItemId} × {i.quantity}
-                          {isVoided && <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">VOIDED</span>}
-                        </span>
-                        <span className={`font-medium ${isVoided ? 'line-through text-red-400' : ''}`}>₱{i.subtotal.toFixed(2)}</span>
+                      <div key={i.id} className={`py-2 border-b last:border-0 ${isVoided ? 'opacity-60' : ''}`}>
+                        <div className="flex justify-between">
+                          <span className={isVoided ? 'line-through text-red-500' : ''}>
+                            {menuItems.get(i.menuItemId) || i.menuItemId}
+                            {i.variant?.name && <span className="text-amber-600 ml-1">({i.variant.name})</span>}
+                            {' '}× {i.quantity}
+                            {isVoided && <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">VOIDED</span>}
+                          </span>
+                          <span className={`font-medium ${isVoided ? 'line-through text-red-400' : ''}`}>₱{i.subtotal.toFixed(2)}</span>
+                        </div>
+                        {/* Display addons */}
+                        {i.order_item_addons && i.order_item_addons.length > 0 && (
+                          <div className="ml-4 text-sm text-gray-500 mt-1">
+                            {i.order_item_addons.map((addon, idx) => (
+                              <div key={idx}>+ {menuItems.get(addon.addonItemId) || 'Add-on'} ×{addon.quantity} (₱{addon.subtotal.toFixed(2)})</div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Display notes */}
+                        {i.notes && (
+                          <div className="ml-4 text-xs text-gray-400 italic mt-1">Note: {i.notes}</div>
+                        )}
                       </div>
                     )
                   })}

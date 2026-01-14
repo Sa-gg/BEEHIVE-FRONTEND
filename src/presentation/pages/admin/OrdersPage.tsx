@@ -10,7 +10,7 @@ import { printWithIframe } from '../../../shared/utils/printUtils'
 import { useOrderEvents } from '../../../shared/hooks/useOrderEvents'
 import { ManagerPinModal } from '../../components/common/ManagerPinModal'
 import { CashCalculatorModal } from '../../components/common/CashCalculatorModal'
-import { generateReceiptHTML, generateMergedReceiptHTML, generateLinkedOrdersReceiptHTML } from '../../../shared/utils/receiptTemplate'
+import { generateReceiptHTML, generateMergedReceiptHTML, generateLinkedOrdersReceiptHTML, type ReceiptItem } from '../../../shared/utils/receiptTemplate'
 import { useSettingsStore } from '../../store/settingsStore'
 import { toast } from '../../components/common/ToastNotification'
 
@@ -24,6 +24,14 @@ const formatOrderNumber = (orderNumber: string): string => {
   return orderNumber
 }
 
+interface OrderItemAddon {
+  addonItemId: string
+  addonName: string
+  quantity: number
+  unitPrice: number
+  subtotal: number
+}
+
 interface OrderItem {
   id: string
   name: string
@@ -32,6 +40,11 @@ interface OrderItem {
   subtotal: number
   menuItemId: string
   status?: 'PREPARING' | 'COMPLETED' | 'VOIDED'
+  variantId?: string | null
+  variantName?: string | null
+  variantPriceDelta?: number
+  addons?: OrderItemAddon[]
+  notes?: string | null
 }
 
 interface Order {
@@ -142,7 +155,18 @@ export const OrdersPage = () => {
           quantity: item.quantity,
           price: item.price,
           subtotal: item.subtotal,
-          status: item.status
+          status: item.status,
+          variantId: (item as any).variantId,
+          variantName: (item as any).variant?.name || (item as any).variantName,
+          variantPriceDelta: (item as any).variant?.priceDelta || (item as any).variantPriceDelta,
+          notes: (item as any).notes,
+          addons: (item as any).order_item_addons?.map((a: any) => ({
+            addonItemId: a.addonItemId,
+            addonName: a.addon_item?.name || a.addonName || 'Add-on',
+            quantity: a.quantity,
+            unitPrice: a.unitPrice,
+            subtotal: a.subtotal
+          }))
         }))
       }))
       const activeOrders = ordersWithNames.filter(
@@ -227,7 +251,18 @@ export const OrdersPage = () => {
               quantity: item.quantity,
               price: item.price,
               subtotal: item.subtotal,
-              status: item.status // Include item status (PREPARING, COMPLETED, VOIDED)
+              status: item.status, // Include item status (PREPARING, COMPLETED, VOIDED)
+              variantId: (item as any).variantId,
+              variantName: (item as any).variant?.name || (item as any).variantName,
+              variantPriceDelta: (item as any).variant?.priceDelta || (item as any).variantPriceDelta,
+              notes: (item as any).notes,
+              addons: (item as any).order_item_addons?.map((a: any) => ({
+                addonItemId: a.addonItemId,
+                addonName: a.addon_item?.name || a.addonName || 'Add-on',
+                quantity: a.quantity,
+                unitPrice: a.unitPrice,
+                subtotal: a.subtotal
+              }))
             }
           })
         }))
@@ -707,7 +742,8 @@ export const OrdersPage = () => {
 
     // Filter out voided items for receipt
     const validItems = order.items.filter(item => item.status !== 'VOIDED')
-    const validTotal = validItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+    // Use item.subtotal which includes addon prices
+    const validTotal = validItems.reduce((sum, item) => sum + item.subtotal, 0)
 
     const receiptHTML = generateReceiptHTML({
       orderNumber: order.orderNumber,
@@ -720,7 +756,16 @@ export const OrdersPage = () => {
         name: item.name,
         quantity: item.quantity,
         price: item.price,
-        status: item.status
+        status: item.status,
+        variantName: item.variantName || undefined,
+        variantPriceDelta: item.variantPriceDelta,
+        notes: item.notes || undefined,
+        addons: item.addons?.map(a => ({
+          addonName: a.addonName,
+          quantity: a.quantity,
+          addonPrice: a.unitPrice,
+          subtotal: a.subtotal
+        }))
       })),
       totalAmount: validTotal,
       deliveryFee: (order as any).deliveryFee,
@@ -741,7 +786,8 @@ export const OrdersPage = () => {
 
     // Filter out voided items for receipt
     const validItems = order.items.filter(item => item.status !== 'VOIDED')
-    const validTotal = validItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+    // Use item.subtotal which includes addon prices
+    const validTotal = validItems.reduce((sum, item) => sum + item.subtotal, 0)
 
     const receiptHTML = generateReceiptHTML({
       orderNumber: order.orderNumber,
@@ -754,7 +800,16 @@ export const OrdersPage = () => {
         name: item.name,
         quantity: item.quantity,
         price: item.price,
-        status: item.status
+        status: item.status,
+        variantName: item.variantName || undefined,
+        variantPriceDelta: item.variantPriceDelta,
+        notes: item.notes || undefined,
+        addons: item.addons?.map(a => ({
+          addonName: a.addonName,
+          quantity: a.quantity,
+          addonPrice: a.unitPrice,
+          subtotal: a.subtotal
+        }))
       })),
       totalAmount: validTotal,
       deliveryFee: (order as any).deliveryFee,
@@ -910,9 +965,10 @@ export const OrdersPage = () => {
     
     // Calculate combined total excluding voided items
     let combinedTotal = 0
-    const ordersWithValidItems = group.map(order => {
+    const ordersWithValidItems: { orderNumber: string; items: ReceiptItem[]; totalAmount: number }[] = group.map(order => {
       const validItems = order.items.filter(item => item.status !== 'VOIDED')
-      const validTotal = validItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+      // Use item.subtotal which includes addon prices
+      const validTotal = validItems.reduce((sum, item) => sum + item.subtotal, 0)
       combinedTotal += validTotal
       return {
         orderNumber: order.orderNumber,
@@ -920,8 +976,17 @@ export const OrdersPage = () => {
           name: item.name,
           quantity: item.quantity,
           price: item.price,
-          status: item.status
-        })),
+          status: item.status,
+          variantName: item.variantName || undefined,
+          variantPriceDelta: item.variantPriceDelta,
+          notes: item.notes || undefined,
+          addons: item.addons?.map(a => ({
+            addonName: a.addonName,
+            quantity: a.quantity,
+            addonPrice: a.unitPrice,
+            subtotal: a.subtotal
+          }))
+        })) as ReceiptItem[],
         totalAmount: validTotal
       }
     })
@@ -1092,18 +1157,23 @@ export const OrdersPage = () => {
               {/* Items with status icons */}
               <div className="text-sm text-gray-600">
                 <span className="font-medium">Items:</span>
-                <div className="mt-1 space-y-0.5">
-                  {order.items.map((item, idx) => (
-                    <div key={idx} className={`flex items-center gap-2 ${item.status === 'VOIDED' ? 'opacity-50 line-through' : ''}`}>
-                      {item.status === 'VOIDED' ? (
-                        <XCircle className="h-3 w-3 text-red-500 shrink-0" />
-                      ) : item.status === 'COMPLETED' ? (
-                        <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
-                      ) : (
-                        <ChefHat className="h-3 w-3 text-blue-500 shrink-0" />
-                      )}
-                      <span className="flex-1 truncate">{item.name} (x{item.quantity})</span>
-                      {item.status !== 'VOIDED' && order.status !== 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
+                <div className="mt-1 space-y-1">
+                  {order.items.map((item) => (
+                    <div key={item.id} className={`${item.status === 'VOIDED' ? 'opacity-50' : ''}`}>
+                      <div className="flex items-center gap-2">
+                        {item.status === 'VOIDED' ? (
+                          <XCircle className="h-3 w-3 text-red-500 shrink-0" />
+                        ) : item.status === 'COMPLETED' ? (
+                          <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+                        ) : (
+                          <ChefHat className="h-3 w-3 text-blue-500 shrink-0" />
+                        )}
+                        <span className={`flex-1 truncate ${item.status === 'VOIDED' ? 'line-through' : ''}`}>
+                          {item.name}
+                          {item.variantName && <span className="text-amber-600 ml-1">({item.variantName})</span>}
+                          {' '}(x{item.quantity})
+                        </span>
+                        {item.status !== 'VOIDED' && order.status !== 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -1114,6 +1184,19 @@ export const OrdersPage = () => {
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
+                      )}
+                      </div>
+                      {/* Addons */}
+                      {item.addons && item.addons.length > 0 && (
+                        <div className="ml-6 text-xs text-gray-500">
+                          {item.addons.map((addon, addonIdx) => (
+                            <div key={addonIdx}>+ {addon.addonName} x{addon.quantity}</div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Notes */}
+                      {item.notes && (
+                        <div className="ml-6 text-xs text-gray-400 italic">Note: {item.notes}</div>
                       )}
                     </div>
                   ))}
@@ -2398,28 +2481,46 @@ export const OrdersPage = () => {
                           {/* Items with status icons */}
                           <div className="text-sm text-gray-600">
                             <span className="font-medium">Items:</span>
-                            <div className="mt-1 space-y-0.5">
-                              {order.items.map((item, idx) => (
-                                <div key={idx} className={`flex items-center gap-2 ${item.status === 'VOIDED' ? 'opacity-50 line-through' : ''}`}>
-                                  {item.status === 'VOIDED' ? (
-                                    <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />
-                                  ) : item.status === 'COMPLETED' ? (
-                                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
-                                  ) : (
-                                    <ChefHat className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                            <div className="mt-1 space-y-1">
+                              {order.items.map((item) => (
+                                <div key={item.id} className={`${item.status === 'VOIDED' ? 'opacity-50' : ''}`}>
+                                  <div className="flex items-center gap-2">
+                                    {item.status === 'VOIDED' ? (
+                                      <XCircle className="h-3 w-3 text-red-500 shrink-0" />
+                                    ) : item.status === 'COMPLETED' ? (
+                                      <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+                                    ) : (
+                                      <ChefHat className="h-3 w-3 text-blue-500 shrink-0" />
+                                    )}
+                                    <span className={`flex-1 ${item.status === 'VOIDED' ? 'line-through' : ''}`}>
+                                      {item.name}
+                                      {item.variantName && <span className="text-amber-600 ml-1">({item.variantName})</span>}
+                                      {' '}(x{item.quantity})
+                                    </span>
+                                    {item.status !== 'VOIDED' && order.status !== 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          startAuthorizedAction('voidItem', order.id, order, item.id, item.name)
+                                        }}
+                                        className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                                        title="Void this item"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  {/* Addons */}
+                                  {item.addons && item.addons.length > 0 && (
+                                    <div className="ml-5 text-xs text-gray-500">
+                                      {item.addons.map((addon, addonIdx) => (
+                                        <div key={addonIdx}>+ {addon.addonName} x{addon.quantity}</div>
+                                      ))}
+                                    </div>
                                   )}
-                                  <span className="flex-1">{item.name} (x{item.quantity})</span>
-                                  {item.status !== 'VOIDED' && order.status !== 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        startAuthorizedAction('voidItem', order.id, order, item.id, item.name)
-                                      }}
-                                      className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
-                                      title="Void this item"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </button>
+                                  {/* Notes */}
+                                  {item.notes && (
+                                    <div className="ml-5 text-xs text-gray-400 italic">Note: {item.notes}</div>
                                   )}
                                 </div>
                               ))}
@@ -2975,26 +3076,42 @@ export const OrdersPage = () => {
                   <h3 className="font-semibold mb-3">Order Items</h3>
                   <div className="space-y-2">
                     {selectedOrder.items.map(item => (
-                      <div key={item.id} className={`flex justify-between items-center p-3 bg-gray-50 rounded-lg ${item.status === 'VOIDED' ? 'opacity-50' : ''}`}>
-                        <div className="flex items-center gap-3">
-                          {/* Item status icon */}
-                          {item.status === 'VOIDED' ? (
-                            <XCircle className="h-4 w-4 text-red-500 shrink-0" />
-                          ) : item.status === 'COMPLETED' ? (
-                            <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                          ) : (
-                            <ChefHat className="h-4 w-4 text-blue-500 shrink-0" />
-                          )}
-                          <div>
-                            <p className={`font-medium ${item.status === 'VOIDED' ? 'line-through' : ''}`}>{item.name}</p>
-                            <p className="text-sm text-gray-500">Quantity: {item.quantity} × ₱{item.price.toFixed(2)}</p>
+                      <div key={item.id} className={`p-3 bg-gray-50 rounded-lg ${item.status === 'VOIDED' ? 'opacity-50' : ''}`}>
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-start gap-3">
+                            {/* Item status icon */}
+                            {item.status === 'VOIDED' ? (
+                              <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-1" />
+                            ) : item.status === 'COMPLETED' ? (
+                              <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-1" />
+                            ) : (
+                              <ChefHat className="h-4 w-4 text-blue-500 shrink-0 mt-1" />
+                            )}
+                            <div>
+                              <p className={`font-medium ${item.status === 'VOIDED' ? 'line-through' : ''}`}>
+                                {item.name}
+                                {item.variantName && <span className="text-amber-600 ml-1">({item.variantName})</span>}
+                              </p>
+                              <p className="text-sm text-gray-500">Quantity: {item.quantity} × ₱{item.price.toFixed(2)}</p>
+                              {/* Addons */}
+                              {item.addons && item.addons.length > 0 && (
+                                <div className="mt-1 text-sm text-gray-500">
+                                  {item.addons.map((addon, addonIdx) => (
+                                    <div key={addonIdx}>+ {addon.addonName} ×{addon.quantity} (₱{addon.subtotal.toFixed(2)})</div>
+                                  ))}
+                                </div>
+                              )}
+                              {/* Notes */}
+                              {item.notes && (
+                                <div className="mt-1 text-xs text-gray-400 italic">Note: {item.notes}</div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <p className={`font-semibold ${item.status === 'VOIDED' ? 'line-through text-gray-400' : ''}`}>₱{item.subtotal.toFixed(2)}</p>
-                            {item.status && (
-                              <span className={`text-xs ${
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className={`font-semibold ${item.status === 'VOIDED' ? 'line-through text-gray-400' : ''}`}>₱{item.subtotal.toFixed(2)}</p>
+                              {item.status && (
+                                <span className={`text-xs ${
                                 item.status === 'COMPLETED' ? 'text-green-600' : 
                                 item.status === 'VOIDED' ? 'text-red-600' : 
                                 'text-blue-600'
@@ -3004,19 +3121,20 @@ export const OrdersPage = () => {
                                  '🍳 Preparing'}
                               </span>
                             )}
+                            </div>
+                            {/* Void button for items that are not voided and order is not completed/paid */}
+                            {item.status !== 'VOIDED' && selectedOrder.status !== 'COMPLETED' && selectedOrder.paymentStatus === 'UNPAID' && (
+                              <button
+                                onClick={() => {
+                                  startAuthorizedAction('voidItem', selectedOrder.id, selectedOrder, item.id, item.name)
+                                }}
+                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Void this item"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
-                          {/* Void button for items that are not voided and order is not completed/paid */}
-                          {item.status !== 'VOIDED' && selectedOrder.status !== 'COMPLETED' && selectedOrder.paymentStatus === 'UNPAID' && (
-                            <button
-                              onClick={() => {
-                                startAuthorizedAction('voidItem', selectedOrder.id, selectedOrder, item.id, item.name)
-                              }}
-                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Void this item"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
                         </div>
                       </div>
                     ))}

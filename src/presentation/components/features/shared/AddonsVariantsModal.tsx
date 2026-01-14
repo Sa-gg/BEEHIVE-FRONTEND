@@ -1,0 +1,340 @@
+import { useState, useEffect } from 'react'
+import { X, Plus, Minus, Loader2 } from 'lucide-react'
+import { Button } from '../../common/ui/button'
+import { addonsApi, type VariantDTO, type MenuItemAddonLinkDTO, calculateOrderItemSubtotal } from '../../../../infrastructure/api/addons.api'
+import type { OrderItemAddon } from '../../../../core/domain/entities/Order.entity'
+
+// Export types for consumers
+export interface VariantSelection {
+  id: string
+  name: string
+  priceDelta: number
+}
+
+export interface AddonSelection {
+  addonItemId: string
+  addonName: string
+  addonPrice: number
+  quantity: number
+}
+
+export interface AddonsVariantsResult {
+  variantId: string | null
+  variantName: string | null
+  variantPriceDelta: number
+  addons: OrderItemAddon[]
+  notes: string
+  finalPrice: number
+}
+
+interface AddonsVariantsModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onConfirm: (data: AddonsVariantsResult) => void
+  menuItem: {
+    id: string
+    name: string
+    price: number
+    image?: string | null
+  }
+  initialQuantity?: number
+}
+
+export const AddonsVariantsModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  menuItem,
+  initialQuantity = 1
+}: AddonsVariantsModalProps) => {
+  const [loading, setLoading] = useState(true)
+  const [variants, setVariants] = useState<VariantDTO[]>([])
+  const [addonLinks, setAddonLinks] = useState<MenuItemAddonLinkDTO[]>([])
+  
+  // Selection state
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
+  const [selectedAddons, setSelectedAddons] = useState<Map<string, { quantity: number; unitPrice: number; name: string }>>(new Map())
+  const [notes, setNotes] = useState('')
+
+  // Helper function to get full image URL
+  const getImageUrl = (imagePath: string | null | undefined) => {
+    if (!imagePath) return null
+    if (imagePath.startsWith('http')) return imagePath
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+    return `${API_BASE_URL}${imagePath}`
+  }
+
+  // Fetch variants and add-ons when modal opens
+  useEffect(() => {
+    const doFetch = async () => {
+      try {
+        setLoading(true)
+        const [variantsData, addonsData] = await Promise.all([
+          addonsApi.getVariantsByMenuItem(menuItem.id),
+          addonsApi.getAddonsForBaseItem(menuItem.id)
+        ])
+        
+        setVariants(variantsData)
+        setAddonLinks(addonsData)
+        
+        // Set default variant if available
+        const defaultVariant = variantsData.find(v => v.isDefault)
+        if (defaultVariant) {
+          setSelectedVariantId(defaultVariant.id)
+        }
+      } catch (error) {
+        console.error('Failed to fetch addons data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    if (isOpen && menuItem.id) {
+      doFetch()
+    }
+  }, [isOpen, menuItem.id])
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedVariantId(null)
+      setSelectedAddons(new Map())
+      setNotes('')
+    }
+  }, [isOpen])
+
+  // Calculate current price
+  const calculatePrice = () => {
+    const selectedVariant = variants.find(v => v.id === selectedVariantId)
+    const variantDelta = selectedVariant?.priceDelta || 0
+    
+    const addonsArray = Array.from(selectedAddons.values()).map(data => ({
+      unitPrice: data.unitPrice,
+      quantity: data.quantity
+    }))
+    
+    return calculateOrderItemSubtotal({
+      basePrice: menuItem.price,
+      variantPriceDelta: variantDelta,
+      addons: addonsArray,
+      quantity: initialQuantity
+    })
+  }
+
+  // Handle addon quantity change
+  const updateAddonQuantity = (addonLink: MenuItemAddonLinkDTO, delta: number) => {
+    const addonItem = addonLink.addon_item
+    if (!addonItem) return
+    
+    const current = selectedAddons.get(addonLink.addonItemId)?.quantity || 0
+    const newQty = Math.max(0, Math.min(current + delta, addonLink.maxQuantity))
+    
+    setSelectedAddons(prev => {
+      const newMap = new Map(prev)
+      if (newQty === 0) {
+        newMap.delete(addonLink.addonItemId)
+      } else {
+        newMap.set(addonLink.addonItemId, {
+          quantity: newQty,
+          unitPrice: addonItem.price,
+          name: addonItem.name
+        })
+      }
+      return newMap
+    })
+  }
+
+  // Handle confirm
+  const handleConfirm = () => {
+    const selectedVariant = variants.find(v => v.id === selectedVariantId)
+    
+    const addonsArray: OrderItemAddon[] = Array.from(selectedAddons.entries()).map(([id, data]) => ({
+      addonItemId: id,
+      addonName: data.name,
+      quantity: data.quantity,
+      unitPrice: data.unitPrice,
+      subtotal: data.unitPrice * data.quantity
+    }))
+    
+    onConfirm({
+      variantId: selectedVariantId,
+      variantName: selectedVariant?.name || null,
+      variantPriceDelta: selectedVariant?.priceDelta || 0,
+      addons: addonsArray,
+      notes,
+      finalPrice: calculatePrice()
+    })
+  }
+
+  if (!isOpen) return null
+
+  const hasVariants = variants.length > 0
+  const hasAddons = addonLinks.length > 0
+  const finalPrice = calculatePrice()
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-3">
+            {menuItem.image && (
+              <img
+                src={getImageUrl(menuItem.image) || undefined}
+                alt={menuItem.name}
+                className="w-12 h-12 rounded-lg object-cover"
+              />
+            )}
+            <div>
+              <h3 className="font-semibold text-gray-900">{menuItem.name}</h3>
+              <p className="text-sm text-gray-500">₱{menuItem.price.toFixed(2)}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
+            </div>
+          ) : (
+            <>
+              {/* No options available */}
+              {!hasVariants && !hasAddons && (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No variants or add-ons available for this item.</p>
+                </div>
+              )}
+
+              {/* Variants Section */}
+              {hasVariants && (
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-3">Select Size/Option</h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    {variants.map(variant => (
+                      <button
+                        key={variant.id}
+                        onClick={() => setSelectedVariantId(variant.id)}
+                        className={`p-3 rounded-lg border-2 transition-all ${
+                          selectedVariantId === variant.id
+                            ? 'border-amber-500 bg-amber-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-medium text-sm">{variant.name}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {variant.priceDelta > 0 && `+₱${variant.priceDelta.toFixed(2)}`}
+                          {variant.priceDelta < 0 && `-₱${Math.abs(variant.priceDelta).toFixed(2)}`}
+                          {variant.priceDelta === 0 && 'Base price'}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Add-ons Section */}
+              {hasAddons && (
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-3">Add Extras</h4>
+                  <div className="space-y-2">
+                    {addonLinks.map(link => {
+                      const addon = link.addon_item
+                      if (!addon || !addon.available) return null
+                      
+                      const currentQty = selectedAddons.get(link.addonItemId)?.quantity || 0
+                      
+                      return (
+                        <div
+                          key={link.id}
+                          className={`flex items-center justify-between p-3 rounded-lg border transition-all ${
+                            currentQty > 0 ? 'border-amber-500 bg-amber-50' : 'border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            {addon.image && (
+                              <img
+                                src={getImageUrl(addon.image) || undefined}
+                                alt={addon.name}
+                                className="w-10 h-10 rounded object-cover"
+                              />
+                            )}
+                            <div>
+                              <div className="font-medium text-sm">{addon.name}</div>
+                              <div className="text-xs text-gray-500">+₱{addon.price.toFixed(2)}</div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => updateAddonQuantity(link, -1)}
+                              disabled={currentQty === 0}
+                              className="p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                              <Minus className="w-4 h-4" />
+                            </button>
+                            <span className="w-8 text-center font-medium">{currentQty}</span>
+                            <button
+                              onClick={() => updateAddonQuantity(link, 1)}
+                              disabled={currentQty >= link.maxQuantity}
+                              className="p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Special Instructions */}
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">Special Instructions</h4>
+                <textarea
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  placeholder="Any special requests? (optional)"
+                  className="w-full p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                  rows={2}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-gray-600">Total ({initialQuantity}×)</span>
+            <span className="text-xl font-bold text-amber-600">₱{finalPrice.toFixed(2)}</span>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
+              disabled={loading}
+            >
+              Add to Order
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

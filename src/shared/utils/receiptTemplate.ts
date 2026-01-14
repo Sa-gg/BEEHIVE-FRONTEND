@@ -3,12 +3,24 @@
  * Compact design with Arial font to save paper
  */
 
+export interface ReceiptItemAddon {
+  addonName: string
+  quantity: number
+  addonPrice: number
+  subtotal: number
+}
+
 export interface ReceiptItem {
   name: string
   quantity: number
   price: number
   subtotal?: number
   status?: 'PREPARING' | 'COMPLETED' | 'VOIDED'
+  // NEW: Variant and add-ons support
+  variantName?: string
+  variantPriceDelta?: number
+  addons?: ReceiptItemAddon[]
+  notes?: string
 }
 
 export interface ReceiptData {
@@ -165,6 +177,33 @@ const getBaseStyles = () => `
     word-break: break-word;
     padding-right: 4px;
     font-weight: bold;
+  }
+  .item-variant {
+    font-size: 10px;
+    font-weight: normal;
+    color: #333;
+    margin-left: 8px;
+  }
+  .item-addon {
+    display: flex;
+    font-size: 10px;
+    font-weight: normal;
+    margin: 2px 0 2px 8px;
+    color: #333;
+  }
+  .item-addon-name {
+    flex: 1;
+    padding-right: 4px;
+  }
+  .item-addon-price {
+    width: 55px;
+    text-align: right;
+  }
+  .item-notes {
+    font-size: 9px;
+    font-style: italic;
+    margin: 2px 0 2px 8px;
+    color: #555;
   }
   .item-qty {
     width: 28px;
@@ -387,10 +426,19 @@ export const generateReceiptHTML = (data: ReceiptData): string => {
         </div>
         ${activeItems.map(item => `
           <div class="item-row">
-            <span class="item-name">${item.name}</span>
+            <span class="item-name">
+              ${item.name}${item.variantName ? `<span class="item-variant">(${item.variantName})</span>` : ''}
+            </span>
             <span class="item-qty">${item.quantity}</span>
             <span class="item-price">${formatCurrency(item.subtotal || (item.price * item.quantity))}</span>
           </div>
+          ${item.addons && item.addons.length > 0 ? item.addons.map(addon => `
+            <div class="item-addon">
+              <span class="item-addon-name">+ ${addon.addonName}${addon.quantity > 1 ? ` ×${addon.quantity}` : ''}</span>
+              <span class="item-addon-price">${formatCurrency(addon.subtotal)}</span>
+            </div>
+          `).join('') : ''}
+          ${item.notes ? `<div class="item-notes">Note: ${item.notes}</div>` : ''}
         `).join('')}
       </div>
 
@@ -647,6 +695,25 @@ export const generateKitchenReceiptHTML = (data: ReceiptData): string => {
           padding: 4px 0;
           border-bottom: 1px dashed #000;
         }
+        .kitchen-variant {
+          font-size: 12px;
+          font-weight: normal;
+          margin-left: 4px;
+        }
+        .kitchen-addon {
+          font-size: 12px;
+          font-weight: normal;
+          margin: 2px 0 2px 20px;
+          color: #333;
+        }
+        .kitchen-notes {
+          font-size: 11px;
+          font-style: italic;
+          margin: 4px 0 4px 20px;
+          padding: 4px;
+          background: #f0f0f0;
+          border-left: 3px solid #000;
+        }
       </style>
     </head>
     <body>
@@ -682,8 +749,12 @@ export const generateKitchenReceiptHTML = (data: ReceiptData): string => {
       <div style="margin: 10px 0;">
         ${activeItems.map(item => `
           <div class="kitchen-item">
-            <span style="font-size: 16px;">${item.quantity}x</span> ${item.name}
+            <span style="font-size: 16px;">${item.quantity}x</span> ${item.name}${item.variantName ? `<span class="kitchen-variant">(${item.variantName})</span>` : ''}
           </div>
+          ${item.addons && item.addons.length > 0 ? item.addons.map(addon => `
+            <div class="kitchen-addon">+ ${addon.addonName}${addon.quantity > 1 ? ` ×${addon.quantity}` : ''}</div>
+          `).join('') : ''}
+          ${item.notes ? `<div class="kitchen-notes">📝 ${item.notes}</div>` : ''}
         `).join('')}
       </div>
     </body>

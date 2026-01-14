@@ -26,13 +26,16 @@ import {
   Copy,
   Wand2,
   FolderPlus,
-  Settings
+  Settings,
+  Layers
 } from 'lucide-react'
+import { VariantsAddonsManager } from '../../components/features/Admin/VariantsAddonsManager'
 import { menuItemsApi, uploadApi } from '../../../infrastructure/api/menuItems.api'
 import type { MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
 import { categoriesApi } from '../../../infrastructure/api/categories.api'
 import type { CategoryDTO } from '../../../infrastructure/api/categories.api'
 import { toast } from '../../components/common/ToastNotification'
+import type { MenuItemType } from '../../../infrastructure/api/menuItems.api'
 
 interface Product {
   id: string
@@ -52,9 +55,18 @@ interface Product {
   prepTime: number | null
   nutrients: string | null
   moodBenefits: string | null
+  itemType: MenuItemType
+  showInMenu: boolean
   createdAt: string
   updatedAt: string
 }
+
+// Item type options
+const ITEM_TYPES = [
+  { value: 'BASE', label: 'Base Item', description: 'Regular menu item that can have variants and add-ons' },
+  { value: 'ADDON', label: 'Add-on', description: 'Can be added to other items (e.g., Extra Rice, Egg)' },
+  { value: 'DRINK', label: 'Drink', description: 'Beverage item' }
+] as const
 
 // Mood types for the recommendation system
 const MOOD_TYPES = [
@@ -84,6 +96,7 @@ export const ProductsPage = () => {
   const [promptCopied, setPromptCopied] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'out-of-stock'>('all')
+  const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'BASE' | 'ADDON' | 'DRINK'>('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
   // Form state
@@ -98,7 +111,9 @@ export const ProductsPage = () => {
     available: true,
     featured: false,
     nutrients: '',
-    moodBenefits: {} as Record<string, string>
+    moodBenefits: {} as Record<string, string>,
+    itemType: 'BASE' as MenuItemType,
+    showInMenu: false
   })
   
   // Category management modal state
@@ -113,6 +128,9 @@ export const ProductsPage = () => {
   
   // Mood benefits section expanded state
   const [moodSectionExpanded, setMoodSectionExpanded] = useState(false)
+  
+  // Variants & Add-ons modal state
+  const [variantsAddonsProduct, setVariantsAddonsProduct] = useState<Product | null>(null)
 
   // Helper function to get category display name
   const getCategoryDisplayName = (categoryId: string) => {
@@ -184,7 +202,9 @@ export const ProductsPage = () => {
       available: true,
       featured: false,
       nutrients: '',
-      moodBenefits: {}
+      moodBenefits: {},
+      itemType: 'BASE',
+      showInMenu: false
     })
     setMoodSectionExpanded(false)
   }
@@ -345,7 +365,9 @@ export const ProductsPage = () => {
       available: product.available,
       featured: product.featured,
       nutrients: product.nutrients || '',
-      moodBenefits: parsedMoodBenefits
+      moodBenefits: parsedMoodBenefits,
+      itemType: product.itemType || 'BASE',
+      showInMenu: product.showInMenu || false
     })
     
     // Expand mood section if there are any mood benefits
@@ -382,7 +404,9 @@ export const ProductsPage = () => {
         nutrients: formData.nutrients || undefined,
         moodBenefits: Object.keys(filteredMoodBenefits).length > 0 
           ? JSON.stringify(filteredMoodBenefits) 
-          : undefined
+          : undefined,
+        itemType: formData.itemType,
+        showInMenu: formData.itemType === 'ADDON' ? formData.showInMenu : false
       }
 
       if (editingProduct) {
@@ -452,7 +476,8 @@ export const ProductsPage = () => {
     const matchesAvailability = availabilityFilter === 'all' || 
                                 (availabilityFilter === 'available' && product.available) ||
                                 (availabilityFilter === 'out-of-stock' && !product.available)
-    return matchesSearch && matchesCategory && matchesAvailability
+    const matchesItemType = itemTypeFilter === 'all' || product.itemType === itemTypeFilter
+    return matchesSearch && matchesCategory && matchesAvailability && matchesItemType
   })
 
   // Calculate statistics
@@ -574,6 +599,18 @@ export const ProductsPage = () => {
                 ))}
               </select>
 
+              {/* Item Type Filter */}
+              <select
+                value={itemTypeFilter}
+                onChange={(e) => setItemTypeFilter(e.target.value as 'all' | 'BASE' | 'ADDON' | 'DRINK')}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+              >
+                <option value="all">All Types</option>
+                <option value="BASE">Base Items</option>
+                <option value="ADDON">Add-ons</option>
+                <option value="DRINK">Drinks</option>
+              </select>
+
               {/* Availability Quick Filters */}
               <div className="flex items-center gap-2">
                 <Button
@@ -649,7 +686,16 @@ export const ProductsPage = () => {
                         <Package className="h-8 w-8 text-gray-300" />
                       </div>
                     )}
-                    <div className="absolute top-1.5 right-1.5 flex gap-1">
+                    <div className="absolute top-1.5 right-1.5 flex gap-1 flex-wrap justify-end">
+                      {product.itemType === 'ADDON' && (
+                        <Badge className="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5">Add-on</Badge>
+                      )}
+                      {product.itemType === 'DRINK' && (
+                        <Badge className="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.5">Drink</Badge>
+                      )}
+                      {product.itemType === 'ADDON' && product.showInMenu && (
+                        <Badge className="bg-green-100 text-green-800 text-[10px] px-1.5 py-0.5">In Menu</Badge>
+                      )}
                       {product.featured && (
                         <Badge className="bg-yellow-100 text-yellow-800 text-[10px] px-1.5 py-0.5">Featured</Badge>
                       )}
@@ -708,6 +754,15 @@ export const ProductsPage = () => {
                       >
                         <Pencil className="h-3 w-3 mr-1" />
                         Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setVariantsAddonsProduct(product)}
+                        className="w-full text-xs h-7 text-purple-600 border-purple-200 hover:bg-purple-50"
+                      >
+                        <Layers className="h-3 w-3 mr-1" />
+                        Variants
                       </Button>
                     </div>
                   </div>
@@ -793,6 +848,13 @@ export const ProductsPage = () => {
                               title="Edit"
                             >
                               <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => setVariantsAddonsProduct(product)}
+                              className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-md transition-colors"
+                              title="Variants & Add-ons"
+                            >
+                              <Layers className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => toggleFeatured(product.id)}
@@ -899,6 +961,47 @@ export const ProductsPage = () => {
                       ))}
                     </select>
                   </div>
+
+                  {/* Item Type */}
+                  <div>
+                    <Label htmlFor="itemType" className="text-sm font-semibold text-gray-700 mb-2 block">
+                      Item Type
+                    </Label>
+                    <select
+                      id="itemType"
+                      value={formData.itemType}
+                      onChange={(e) => setFormData({ ...formData, itemType: e.target.value as MenuItemType })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {ITEM_TYPES.map(type => (
+                        <option key={type.value} value={type.value}>{type.label}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {ITEM_TYPES.find(t => t.value === formData.itemType)?.description}
+                    </p>
+                  </div>
+
+                  {/* Show in Menu (for ADDON type) */}
+                  {formData.itemType === 'ADDON' && (
+                    <div className="md:col-span-2">
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.showInMenu}
+                          onChange={(e) => setFormData({ ...formData, showInMenu: e.target.checked })}
+                          className="w-5 h-5 rounded border-gray-300 text-amber-500 focus:ring-amber-500"
+                        />
+                        <div>
+                          <span className="text-sm font-semibold text-gray-700">Show in Menu</span>
+                          <p className="text-xs text-gray-500">
+                            When enabled, this add-on will also appear in the regular menu as a standalone item.
+                            Otherwise, it will only appear as an option when ordering other products.
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  )}
 
                   {/* Price */}
                   <div>
@@ -1472,6 +1575,20 @@ MOOD BENEFITS:
               </div>
             </div>
           </div>
+        )}
+        
+        {/* Variants & Add-ons Manager Modal */}
+        {variantsAddonsProduct && (
+          <VariantsAddonsManager
+            isOpen={true}
+            onClose={() => setVariantsAddonsProduct(null)}
+            menuItem={{
+              id: variantsAddonsProduct.id,
+              name: variantsAddonsProduct.name,
+              price: variantsAddonsProduct.price
+            }}
+            onUpdate={fetchProducts}
+          />
         )}
       </div>
     </AdminLayout>

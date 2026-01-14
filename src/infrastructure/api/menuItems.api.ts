@@ -1,5 +1,7 @@
 import { api } from './axiosConfig';
 
+export type MenuItemType = 'BASE' | 'ADDON' | 'DRINK';
+
 export interface CategoryInfo {
   id: string;
   name: string;
@@ -20,6 +22,8 @@ export interface MenuItemDTO {
   prepTime: number | null;
   nutrients: string | null;
   moodBenefits: string | null;
+  itemType: MenuItemType;  // Type of menu item
+  showInMenu?: boolean;     // For ADDON items: whether to show in regular menu
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +40,8 @@ export interface CreateMenuItemDTO {
   prepTime?: number;
   nutrients?: string;
   moodBenefits?: string;
+  itemType?: MenuItemType;  // Type of menu item (defaults to BASE)
+  showInMenu?: boolean;     // For ADDON items: whether to show in regular menu
 }
 
 export interface UpdateMenuItemDTO {
@@ -50,6 +56,8 @@ export interface UpdateMenuItemDTO {
   prepTime?: number;
   nutrients?: string;
   moodBenefits?: string;
+  itemType?: MenuItemType;
+  showInMenu?: boolean;
 }
 
 export interface MenuItemFilters {

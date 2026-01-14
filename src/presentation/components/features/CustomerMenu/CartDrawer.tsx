@@ -4,8 +4,8 @@ import { Minus, Plus, ShoppingBag, X, ArrowRight } from 'lucide-react'
 
 interface CartDrawerProps {
   items: OrderItem[]
-  onUpdateQuantity: (menuItemId: string, quantity: number) => void
-  onRemove: (menuItemId: string) => void
+  onUpdateQuantity: (menuItemId: string, quantity: number, itemIndex?: number) => void
+  onRemove: (menuItemId: string, itemIndex?: number) => void
   onClearAll: () => void
   onCheckout: () => void
   isOpen: boolean
@@ -27,6 +27,11 @@ export const CartDrawer = ({
   const vat = total * (12 / 112)
   // Subtotal is total minus VAT
   const subtotal = total - vat
+  
+  // Helper to check if item has variants or addons
+  const hasVariantOrAddons = (item: OrderItem) => {
+    return item.variantId || (item.addons && item.addons.length > 0)
+  }
 
   return (
     <>
@@ -83,41 +88,75 @@ export const CartDrawer = ({
             </div>
           ) : (
             <div className="space-y-3">
-              {items.map((item) => (
-                <div key={item.menuItemId} className="bg-gray-50 rounded-xl p-3">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex-1 min-w-0 pr-2">
-                      <h4 className="font-semibold text-sm text-gray-800 truncate">{item.name}</h4>
-                      <p className="text-xs text-gray-500">₱{item.price.toFixed(2)} each</p>
-                    </div>
-                    <button
-                      onClick={() => onRemove(item.menuItemId)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 bg-white rounded-full border border-gray-200 p-0.5">
+              {items.map((item, index) => {
+                const itemKey = hasVariantOrAddons(item) ? `${item.menuItemId}-${index}` : item.menuItemId
+                const useIndex = hasVariantOrAddons(item) ? index : undefined
+                
+                // Calculate effective unit price including variant delta and addons
+                const addonTotal = item.addons?.reduce((sum, a) => sum + (a.unitPrice * a.quantity), 0) || 0
+                const unitPrice = item.price + (item.variantPriceDelta || 0) + addonTotal
+                
+                return (
+                  <div key={itemKey} className="bg-gray-50 rounded-xl p-3">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <h4 className="font-semibold text-sm text-gray-800 truncate">{item.name}</h4>
+                        {/* Show variant if present */}
+                        {item.variantName && (
+                          <p className="text-xs text-amber-600 font-medium">
+                            {item.variantName}
+                            {item.variantPriceDelta && item.variantPriceDelta !== 0 && (
+                              <span className="ml-1">
+                                ({item.variantPriceDelta > 0 ? '+' : ''}₱{item.variantPriceDelta.toFixed(2)})
+                              </span>
+                            )}
+                          </p>
+                        )}
+                        {/* Show add-ons if present */}
+                        {item.addons && item.addons.length > 0 && (
+                          <div className="mt-1 space-y-0.5">
+                            {item.addons.map((addon, addonIdx) => (
+                              <p key={addonIdx} className="text-xs text-gray-500">
+                              + {addon.addonName} x{addon.quantity} (₱{(addon.unitPrice * addon.quantity).toFixed(2)})
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                        {/* Show notes if present */}
+                        {item.notes && (
+                          <p className="text-xs text-gray-400 italic mt-1">Note: {item.notes}</p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">₱{unitPrice.toFixed(2)} each</p>
+                      </div>
                       <button
-                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors"
-                        onClick={() => onUpdateQuantity(item.menuItemId, item.quantity - 1)}
+                        onClick={() => onRemove(item.menuItemId, useIndex)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
                       >
-                        <Minus className="h-3.5 w-3.5 text-gray-600" />
-                      </button>
-                      <span className="w-8 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
-                      <button
-                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-amber-100 transition-colors bg-amber-50"
-                        onClick={() => onUpdateQuantity(item.menuItemId, item.quantity + 1)}
-                      >
-                        <Plus className="h-3.5 w-3.5 text-amber-600" />
+                        <X className="h-4 w-4" />
                       </button>
                     </div>
-                    <span className="font-bold text-amber-600">₱{item.subtotal.toFixed(2)}</span>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1 bg-white rounded-full border border-gray-200 p-0.5">
+                        <button
+                          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors"
+                          onClick={() => onUpdateQuantity(item.menuItemId, item.quantity - 1, useIndex)}
+                        >
+                          <Minus className="h-3.5 w-3.5 text-gray-600" />
+                        </button>
+                        <span className="w-8 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
+                        <button
+                          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-amber-100 transition-colors bg-amber-50"
+                          onClick={() => onUpdateQuantity(item.menuItemId, item.quantity + 1, useIndex)}
+                        >
+                          <Plus className="h-3.5 w-3.5 text-amber-600" />
+                        </button>
+                      </div>
+                      <span className="font-bold text-amber-600">₱{item.subtotal.toFixed(2)}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

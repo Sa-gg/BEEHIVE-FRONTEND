@@ -170,15 +170,32 @@ export const CheckoutForm = ({ items, onSubmit, onBack, isSubmitting = false }: 
             Your Order
           </h2>
           <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
-            {items.map((item) => (
-              <div key={item.menuItemId} className="flex justify-between items-center py-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-xs font-bold">
-                    {item.quantity}
-                  </span>
-                  <span className="text-sm text-gray-700">{item.name}</span>
+            {items.map((item, idx) => (
+              <div key={`${item.menuItemId}-${idx}`} className="py-1.5 border-b border-gray-50 last:border-0">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-xs font-bold">
+                      {item.quantity}
+                    </span>
+                    <span className="text-sm text-gray-700">
+                      {item.name}
+                      {item.variantName && <span className="text-amber-600 ml-1">({item.variantName})</span>}
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium">₱{item.subtotal.toFixed(2)}</span>
                 </div>
-                <span className="text-sm font-medium">₱{item.subtotal.toFixed(2)}</span>
+                {/* Addons */}
+                {item.addons && item.addons.length > 0 && (
+                  <div className="ml-7 mt-1 text-xs text-gray-500">
+                    {item.addons.map((addon, addonIdx) => (
+                      <div key={addonIdx}>+ {addon.addonName} ×{addon.quantity}</div>
+                    ))}
+                  </div>
+                )}
+                {/* Notes */}
+                {item.notes && (
+                  <div className="ml-7 mt-1 text-xs text-gray-400 italic">Note: {item.notes}</div>
+                )}
               </div>
             ))}
           </div>

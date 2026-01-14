@@ -6,10 +6,21 @@ export type PaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED' | 'COMPLIMENTARY' | '
 export type OrderStatus = 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
 export type OrderItemStatus = 'PREPARING' | 'COMPLETED' | 'VOIDED';
 
+// NEW: Order item add-on for creating orders
+export interface OrderItemAddonRequest {
+  addonItemId: string;
+  quantity: number;
+  unitPrice: number;
+}
+
 export interface OrderItem {
   menuItemId: string;
   quantity: number;
   price: number;
+  // NEW: Variant and add-ons support
+  variantId?: string;
+  notes?: string;
+  addons?: OrderItemAddonRequest[];
 }
 
 export interface CreateOrderRequest {
@@ -46,6 +57,15 @@ export interface UpdateOrderRequest {
   authorizedBy?: string | null;
   paidAt?: string | null;
   linkedOrderId?: string | null;
+}
+
+// NEW: Order item add-on in response
+export interface OrderItemAddonResponse {
+  id: string;
+  addonItemId: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
 }
 
 export interface OrderResponse {
@@ -85,6 +105,14 @@ export interface OrderResponse {
     price: number;
     subtotal: number;
     status: OrderItemStatus;
+    variantId?: string | null;       // NEW: Selected variant
+    notes?: string | null;           // NEW: Special instructions
+    variant?: {                       // NEW: Variant details
+      id: string;
+      name: string;
+      priceDelta: number;
+    } | null;
+    order_item_addons?: OrderItemAddonResponse[];  // NEW: Selected add-ons
     createdAt: string;
     updatedAt: string;
   }>;

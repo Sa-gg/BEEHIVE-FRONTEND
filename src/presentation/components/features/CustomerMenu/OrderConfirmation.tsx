@@ -309,14 +309,31 @@ export const OrderConfirmation = ({ order: initialOrder, onNewOrder }: OrderConf
           <h2 className="font-bold text-gray-800 mb-3">Order Summary</h2>
           <div className="space-y-2 mb-4">
             {order.items.map((item, index) => (
-              <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-xs font-bold">
-                    {item.quantity}
-                  </span>
-                  <span className="text-gray-700">{item.name}</span>
+              <div key={index} className="py-2 border-b border-gray-100 last:border-0">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-xs font-bold">
+                      {item.quantity}
+                    </span>
+                    <span className="text-gray-700">
+                      {item.name}
+                      {item.variantName && <span className="text-amber-600 ml-1">({item.variantName})</span>}
+                    </span>
+                  </div>
+                  <span className="font-medium text-gray-800">₱{item.subtotal.toFixed(2)}</span>
                 </div>
-                <span className="font-medium text-gray-800">₱{item.subtotal.toFixed(2)}</span>
+                {/* Addons */}
+                {item.addons && item.addons.length > 0 && (
+                  <div className="ml-8 mt-1 text-xs text-gray-500">
+                    {item.addons.map((addon, addonIdx) => (
+                      <div key={addonIdx}>+ {addon.addonName} ×{addon.quantity}</div>
+                    ))}
+                  </div>
+                )}
+                {/* Notes */}
+                {item.notes && (
+                  <div className="ml-8 mt-1 text-xs text-gray-400 italic">Note: {item.notes}</div>
+                )}
               </div>
             ))}
           </div>

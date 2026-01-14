@@ -21,8 +21,8 @@ interface OrderSummaryProps {
   onDeliveryFeeClick: () => void
   onServiceFeeClick: () => void
   onDiscountClick: () => void
-  onUpdateQuantity: (menuItemId: string, quantity: number) => void
-  onRemove: (menuItemId: string) => void
+  onUpdateQuantity: (menuItemId: string, quantity: number, itemIndex?: number) => void
+  onRemove: (menuItemId: string, itemIndex?: number) => void
   onClearOrder: () => void
   onConfirmOrder: () => void
   onPrintReceipt?: () => void
@@ -161,12 +161,13 @@ export const OrderSummary = ({
           </div>
         ) : (
           <div className="space-y-1">
-            {items.map((item) => (
+            {items.map((item, index) => (
               <OrderItemRow
-                key={item.menuItemId}
+                key={`${item.menuItemId}-${item.variantId || 'base'}-${index}`}
                 item={item}
                 onUpdateQuantity={onUpdateQuantity}
                 onRemove={onRemove}
+                itemIndex={item.variantId || item.addons?.length ? index : undefined}
               />
             ))}
           </div>
