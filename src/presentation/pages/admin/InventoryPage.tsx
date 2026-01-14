@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Search, Plus, Package, AlertTriangle, CheckCircle, TrendingUp, ArrowUpDown, Trash2, Pencil, ChevronLeft, ChevronRight, History, Printer, Eye } from 'lucide-react'
+import { Search, Plus, Package, AlertTriangle, CheckCircle, TrendingUp, ArrowUpDown, Trash2, Pencil, ChevronLeft, ChevronRight, History, Printer, Eye, X, AlertOctagon } from 'lucide-react'
 import { inventoryApi, type CreateInventoryItemRequest, type InventoryStats, type UpdateInventoryItemRequest, type InventoryItemDTO } from '../../../infrastructure/api/inventory.api'
 import { StockManagementModal } from '../../components/features/Admin/StockManagementModal'
 import { formatSmartStock } from '../../../shared/utils/stockFormat'
@@ -34,6 +34,29 @@ export const InventoryPage = () => {
   const [error, setError] = useState<string | null>(null)
   const [showStockModal, setShowStockModal] = useState(false)
   const [selectedItemForStock, setSelectedItemForStock] = useState<InventoryItem | null>(null)
+  
+  // Form validation error states
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [minStockError, setMinStockError] = useState<string | null>(null)
+  const [maxStockError, setMaxStockError] = useState<string | null>(null)
+  const [currentStockError, setCurrentStockError] = useState<string | null>(null)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
+  const [unitError, setUnitError] = useState<string | null>(null)
+  const [costError, setCostError] = useState<string | null>(null)
+  
+  // Edit form validation error states
+  const [editNameError, setEditNameError] = useState<string | null>(null)
+  const [editMinStockError, setEditMinStockError] = useState<string | null>(null)
+  const [editMaxStockError, setEditMaxStockError] = useState<string | null>(null)
+  const [editCategoryError, setEditCategoryError] = useState<string | null>(null)
+  const [editUnitError, setEditUnitError] = useState<string | null>(null)
+  const [editCostError, setEditCostError] = useState<string | null>(null)
+  
+  // Delete confirmation modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null)
+  const [deleteReason, setDeleteReason] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -104,57 +127,248 @@ export const InventoryPage = () => {
     'IN_STOCK': { label: 'In Stock', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle },
     'LOW_STOCK': { label: 'Low Stock', color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: AlertTriangle },
     'OUT_OF_STOCK': { label: 'Out of Stock', color: 'bg-red-100 text-red-800 border-red-200', icon: Package },
+    'DISCREPANCY': { label: 'Discrepancy', color: 'bg-purple-100 text-purple-800 border-purple-200', icon: AlertOctagon },
   }
 
   // Search triggers on text change; no explicit search handler needed
 
+  // Clear all validation errors
+  const clearValidationErrors = () => {
+    setNameError(null)
+    setMinStockError(null)
+    setMaxStockError(null)
+    setCurrentStockError(null)
+    setCategoryError(null)
+    setUnitError(null)
+    setCostError(null)
+  }
+
+  // Validate form before submission
+  const validateForm = (): boolean => {
+    clearValidationErrors()
+    let isValid = true
+
+    // Name validation
+    if (!newItem.name || newItem.name.trim() === '') {
+      setNameError('Item name is required')
+      isValid = false
+    } else if (inventory.some(item => item.name.toLowerCase() === newItem.name!.toLowerCase())) {
+      setNameError(`An item with the name "${newItem.name}" already exists in inventory`)
+      isValid = false
+    }
+
+    // Category validation
+    if (!newItem.category) {
+      setCategoryError('Please select a category')
+      isValid = false
+    }
+
+    // Unit validation
+    if (!newItem.unit) {
+      setUnitError('Please select a unit')
+      isValid = false
+    }
+
+    // Current stock validation
+    if (newItem.currentStock === undefined || newItem.currentStock === null) {
+      setCurrentStockError('Current stock is required')
+      isValid = false
+    } else if (newItem.currentStock < 0) {
+      setCurrentStockError('Current stock cannot be negative')
+      isValid = false
+    }
+
+    // Min stock validation
+    if (newItem.minStock === undefined || newItem.minStock === null) {
+      setMinStockError('Minimum stock is required')
+      isValid = false
+    } else if (newItem.minStock < 0) {
+      setMinStockError('Minimum stock cannot be negative')
+      isValid = false
+    }
+
+    // Max stock validation
+    if (newItem.maxStock === undefined || newItem.maxStock === null) {
+      setMaxStockError('Maximum stock is required')
+      isValid = false
+    } else if (newItem.maxStock < 0) {
+      setMaxStockError('Maximum stock cannot be negative')
+      isValid = false
+    } else if (newItem.minStock !== undefined && newItem.maxStock <= newItem.minStock) {
+      setMaxStockError('Maximum stock must be greater than minimum stock')
+      isValid = false
+    }
+
+    // Cost validation
+    if (newItem.costPerUnit === undefined || newItem.costPerUnit === null) {
+      setCostError('Cost per unit is required')
+      isValid = false
+    } else if (newItem.costPerUnit < 0) {
+      setCostError('Cost cannot be negative')
+      isValid = false
+    }
+
+    return isValid
+  }
+
+  // Clear all edit validation errors
+  const clearEditValidationErrors = () => {
+    setEditNameError(null)
+    setEditMinStockError(null)
+    setEditMaxStockError(null)
+    setEditCategoryError(null)
+    setEditUnitError(null)
+    setEditCostError(null)
+  }
+
+  // Validate edit form before submission
+  const validateEditForm = (): boolean => {
+    clearEditValidationErrors()
+    let isValid = true
+
+    if (!editingItem) return false
+
+    // Name validation
+    if (!editingItem.name || editingItem.name.trim() === '') {
+      setEditNameError('Item name is required')
+      isValid = false
+    } else if (inventory.some(item => item.id !== editingItem.id && item.name.toLowerCase() === editingItem.name.toLowerCase())) {
+      setEditNameError(`An item with the name "${editingItem.name}" already exists in inventory`)
+      isValid = false
+    }
+
+    // Category validation
+    if (!editingItem.category) {
+      setEditCategoryError('Please select a category')
+      isValid = false
+    }
+
+    // Unit validation
+    if (!editingItem.unit) {
+      setEditUnitError('Please select a unit')
+      isValid = false
+    }
+
+    // Min stock validation
+    if (editingItem.minStock === undefined || editingItem.minStock === null) {
+      setEditMinStockError('Minimum stock is required')
+      isValid = false
+    } else if (editingItem.minStock < 0) {
+      setEditMinStockError('Minimum stock cannot be negative')
+      isValid = false
+    }
+
+    // Max stock validation
+    if (editingItem.maxStock === undefined || editingItem.maxStock === null) {
+      setEditMaxStockError('Maximum stock is required')
+      isValid = false
+    } else if (editingItem.maxStock < 0) {
+      setEditMaxStockError('Maximum stock cannot be negative')
+      isValid = false
+    } else if (editingItem.minStock !== undefined && editingItem.maxStock <= editingItem.minStock) {
+      setEditMaxStockError('Maximum stock must be greater than minimum stock')
+      isValid = false
+    }
+
+    // Cost validation
+    if (editingItem.costPerUnit === undefined || editingItem.costPerUnit === null) {
+      setEditCostError('Cost per unit is required')
+      isValid = false
+    } else if (editingItem.costPerUnit < 0) {
+      setEditCostError('Cost cannot be negative')
+      isValid = false
+    }
+
+    return isValid
+  }
+
   const addNewItem = async () => {
-    if (!newItem.name || !newItem.category || newItem.currentStock === undefined || 
-        newItem.minStock === undefined || newItem.maxStock === undefined || 
-        !newItem.unit || newItem.costPerUnit === undefined) {
-      toast.warning('Validation Error', 'Please fill in all required fields')
+    // Validate form
+    if (!validateForm()) {
       return
     }
 
     try {
       const itemData: CreateInventoryItemRequest = {
-        name: newItem.name,
-        category: newItem.category,
-        currentStock: newItem.currentStock,
-        minStock: newItem.minStock,
-        maxStock: newItem.maxStock,
-        unit: newItem.unit,
-        costPerUnit: newItem.costPerUnit,
+        name: newItem.name!,
+        category: newItem.category!,
+        currentStock: newItem.currentStock!,
+        minStock: newItem.minStock!,
+        maxStock: newItem.maxStock!,
+        unit: newItem.unit!,
+        costPerUnit: newItem.costPerUnit!,
         supplier: newItem.supplier || ''
       }
       await inventoryApi.create(itemData)
       setIsAdding(false)
       setNewItem({})
+      clearValidationErrors()
       await loadInventory()
+      toast.success('Item Added', 'Inventory item has been added successfully')
     } catch (err) {
-      toast.error('Add Failed', err instanceof Error ? err.message : 'Failed to add item')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to add item'
+      // Check if it's a duplicate name error from backend
+      if (errorMessage.toLowerCase().includes('already exists') || errorMessage.toLowerCase().includes('duplicate')) {
+        setNameError(`An item with the name "${newItem.name}" already exists in inventory`)
+      } else if (errorMessage.toLowerCase().includes('max') && errorMessage.toLowerCase().includes('min')) {
+        setMaxStockError('Maximum stock must be greater than minimum stock')
+      } else {
+        toast.error('Add Failed', errorMessage)
+      }
       console.error('Error adding item:', err)
     }
   }
 
-  const deleteItem = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this item?')) return
+  // Open delete confirmation modal
+  const openDeleteModal = (item: InventoryItem) => {
+    setItemToDelete(item)
+    setDeleteReason('')
+    setDeleteModalOpen(true)
+  }
+
+  // Close delete confirmation modal
+  const closeDeleteModal = () => {
+    setDeleteModalOpen(false)
+    setItemToDelete(null)
+    setDeleteReason('')
+    setIsDeleting(false)
+  }
+
+  // Confirm delete with reason
+  const confirmDelete = async () => {
+    if (!itemToDelete) return
+    if (!deleteReason.trim()) {
+      toast.warning('Reason Required', 'Please provide a reason for archiving this item')
+      return
+    }
+    
+    setIsDeleting(true)
     try {
-      await inventoryApi.delete(id)
+      await inventoryApi.delete(itemToDelete.id, deleteReason.trim())
+      toast.success('Item Archived', `${itemToDelete.name} has been archived successfully`)
+      closeDeleteModal()
       await loadInventory()
     } catch (err) {
-      toast.error('Delete Failed', err instanceof Error ? err.message : 'Failed to delete item')
-      console.error('Error deleting item:', err)
+      toast.error('Archive Failed', err instanceof Error ? err.message : 'Failed to archive item')
+      console.error('Error archiving item:', err)
+    } finally {
+      setIsDeleting(false)
     }
   }
 
   const openEditModal = (item: InventoryItem) => {
     setEditingItem(item)
+    clearEditValidationErrors()
     setIsEditing(true)
   }
 
   const updateItem = async () => {
     if (!editingItem) return
+    
+    // Validate form
+    if (!validateEditForm()) {
+      return
+    }
     
     try {
       const updateData: UpdateInventoryItemRequest = {
@@ -169,16 +383,31 @@ export const InventoryPage = () => {
       await inventoryApi.update(editingItem.id, updateData)
       setIsEditing(false)
       setEditingItem(null)
+      clearEditValidationErrors()
       await loadInventory()
+      toast.success('Item Updated', 'Inventory item has been updated successfully')
     } catch (err) {
-      toast.error('Update Failed', err instanceof Error ? err.message : 'Failed to update item')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update item'
+      // Check if it's a duplicate name error from backend
+      if (errorMessage.toLowerCase().includes('already exists') || errorMessage.toLowerCase().includes('duplicate')) {
+        setEditNameError(`An item with the name "${editingItem.name}" already exists in inventory`)
+      } else if (errorMessage.toLowerCase().includes('max') && errorMessage.toLowerCase().includes('min')) {
+        setEditMaxStockError('Maximum stock must be greater than minimum stock')
+      } else {
+        toast.error('Update Failed', errorMessage)
+      }
       console.error('Error updating item:', err)
     }
   }
 
   const getStockPercentage = (item: InventoryItem) => {
+    // Handle negative stock - return 0% (or could return negative for visual effect)
+    if (item.currentStock < 0) return 0
     return Math.round((item.currentStock / item.maxStock) * 100)
   }
+
+  // Check if item has negative stock (discrepancy)
+  const hasNegativeStock = (item: InventoryItem) => item.currentStock < 0
 
   const getDaysAgo = (date: Date | null) => {
     if (!date) return 'Never'
@@ -392,8 +621,12 @@ export const InventoryPage = () => {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        {/* Stats Cards - Dynamic grid based on whether discrepancy card is shown */}
+        <div className={`grid gap-4 lg:gap-6 ${
+          (stats.discrepancy ?? 0) > 0 
+            ? 'grid-cols-2 lg:grid-cols-5' 
+            : 'grid-cols-2 lg:grid-cols-4'
+        }`}>
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-5 border border-blue-100 hover:shadow-lg transition-all duration-300 group">
             <div className="flex items-center justify-between mb-3">
               <div className="p-3 bg-blue-100 rounded-xl group-hover:scale-110 transition-transform">
@@ -440,6 +673,24 @@ export const InventoryPage = () => {
             </p>
             <p className="text-xs text-gray-400 mt-2">{stats.outOfStock > 0 ? 'urgent attention' : 'all stocked'}</p>
           </div>
+          {/* Discrepancy Card - Only show if there are discrepancies */}
+          {(stats.discrepancy ?? 0) > 0 && (
+            <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl shadow-sm p-5 border border-purple-100 hover:shadow-lg transition-all duration-300 group">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-3 bg-purple-100 rounded-xl group-hover:scale-110 transition-transform">
+                  <AlertOctagon className="h-5 w-5 text-purple-600" />
+                </div>
+                <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 animate-pulse">
+                  Review
+                </div>
+              </div>
+              <p className="text-sm font-medium text-gray-500 mb-1">Discrepancy</p>
+              <p className="text-2xl lg:text-3xl font-bold text-gray-900">
+                {(stats.discrepancy ?? 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-gray-400 mt-2">negative stock</p>
+            </div>
+          )}
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-sm p-5 border border-green-100 hover:shadow-lg transition-all duration-300 group">
             <div className="flex items-center justify-between mb-3">
               <div className="p-3 bg-green-100 rounded-xl group-hover:scale-110 transition-transform">
@@ -542,6 +793,22 @@ export const InventoryPage = () => {
                   </span>
                 )}
               </Button>
+              {/* Discrepancy Filter - Only show if there are discrepancies */}
+              {(stats.discrepancy ?? 0) > 0 && (
+                <Button
+                  variant={selectedStockStatus === 'DISCREPANCY' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setSelectedStockStatus('DISCREPANCY')}
+                  className="whitespace-nowrap text-purple-600 relative"
+                >
+                  ⚠️ Discrepancy
+                  {(stats.discrepancy ?? 0) > 0 && selectedStockStatus !== 'DISCREPANCY' && (
+                    <span className="absolute -top-1 -right-1 h-4 w-4 bg-purple-500 text-white text-xs rounded-full flex items-center justify-center">
+                      {stats.discrepancy}
+                    </span>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -606,19 +873,30 @@ export const InventoryPage = () => {
                         </td>
                         <td className="px-5 py-4 text-center">
                           <div className="space-y-1 flex flex-col items-center">
-                            <p className="font-semibold text-sm">
+                            <p className={`font-semibold text-sm ${hasNegativeStock(item) ? 'text-purple-600' : ''}`}>
                               {formatSmartStock(item.currentStock, item.unit)}
                             </p>
-                            <div className="w-24 bg-gray-200 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full transition-all ${
-                                  percentage > 50 ? 'bg-green-500' :
-                                  percentage > 20 ? 'bg-yellow-500' : 'bg-red-500'
-                                }`}
-                                style={{ width: `${Math.min(percentage, 100)}%` }}
-                              />
-                            </div>
-                            <p className="text-xs text-gray-500">{percentage}% of max</p>
+                            {hasNegativeStock(item) ? (
+                              <>
+                                <div className="w-24 bg-purple-200 rounded-full h-2">
+                                  <div className="h-2 rounded-full bg-purple-500 w-full animate-pulse" />
+                                </div>
+                                <p className="text-xs text-purple-600 font-medium">Discrepancy</p>
+                              </>
+                            ) : (
+                              <>
+                                <div className="w-24 bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full transition-all ${
+                                      percentage > 50 ? 'bg-green-500' :
+                                      percentage > 20 ? 'bg-yellow-500' : 'bg-red-500'
+                                    }`}
+                                    style={{ width: `${Math.min(percentage, 100)}%` }}
+                                  />
+                                </div>
+                                <p className="text-xs text-gray-500">{percentage}% of max</p>
+                              </>
+                            )}
                           </div>
                         </td>
                         <td className="px-5 py-4 hidden lg:table-cell text-center">
@@ -659,7 +937,7 @@ export const InventoryPage = () => {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => deleteItem(item.id)}
+                                onClick={() => openDeleteModal(item)}
                                 className="h-8 w-8 p-0 text-red-600 hover:bg-red-50 border-red-200"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -763,6 +1041,7 @@ export const InventoryPage = () => {
             onClick={() => {
               setIsAdding(false)
               setNewItem({})
+              clearValidationErrors()
             }}
           />
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
@@ -774,6 +1053,7 @@ export const InventoryPage = () => {
                     onClick={() => {
                       setIsAdding(false)
                       setNewItem({})
+                      clearValidationErrors()
                     }}
                     className="text-gray-400 hover:text-gray-600 text-2xl"
                   >
@@ -791,10 +1071,25 @@ export const InventoryPage = () => {
                     <input
                       type="text"
                       value={newItem.name || ''}
-                      onChange={(e) => setNewItem(prev => ({ ...prev, name: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      onChange={(e) => {
+                        setNewItem(prev => ({ ...prev, name: e.target.value }))
+                        setNameError(null) // Clear error when user types
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                        nameError 
+                          ? 'border-red-500 focus:ring-red-400 bg-red-50' 
+                          : 'border-gray-300 focus:ring-yellow-400'
+                      }`}
                       placeholder="e.g., Pizza Dough"
                     />
+                    {nameError && (
+                      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        {nameError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -803,8 +1098,15 @@ export const InventoryPage = () => {
                     </label>
                     <select
                       value={newItem.category || ''}
-                      onChange={(e) => setNewItem(prev => ({ ...prev, category: e.target.value as 'INGREDIENTS' | 'BEVERAGES' | 'PACKAGING' | 'SUPPLIES' }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      onChange={(e) => {
+                        setNewItem(prev => ({ ...prev, category: e.target.value as 'INGREDIENTS' | 'BEVERAGES' | 'PACKAGING' | 'SUPPLIES' }))
+                        setCategoryError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                        categoryError 
+                          ? 'border-red-500 focus:ring-red-400 bg-red-50' 
+                          : 'border-gray-300 focus:ring-yellow-400'
+                      }`}
                     >
                       <option value="">Select category</option>
                       <option value="INGREDIENTS">Ingredients</option>
@@ -812,6 +1114,14 @@ export const InventoryPage = () => {
                       <option value="PACKAGING">Packaging</option>
                       <option value="SUPPLIES">Supplies</option>
                     </select>
+                    {categoryError && (
+                      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        {categoryError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -820,12 +1130,31 @@ export const InventoryPage = () => {
                     </label>
                     <input
                       type="number"
-                      value={newItem.currentStock || ''}
-                      onChange={(e) => setNewItem(prev => ({ ...prev, currentStock: parseInt(e.target.value) || 0 }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      value={newItem.currentStock ?? ''}
+                      onChange={(e) => {
+                        setNewItem(prev => ({ 
+                          ...prev, 
+                          currentStock: e.target.value === '' ? undefined : Math.round(parseFloat(e.target.value) * 1000) / 1000 
+                        }))
+                        setCurrentStockError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                        currentStockError 
+                          ? 'border-red-500 focus:ring-red-400 bg-red-50' 
+                          : 'border-gray-300 focus:ring-yellow-400'
+                      }`}
                       placeholder="0"
                       min={0}
+                      step="0.001"
                     />
+                    {currentStockError && (
+                      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        {currentStockError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -834,8 +1163,15 @@ export const InventoryPage = () => {
                     </label>
                     <select
                       value={newItem.unit || ''}
-                      onChange={(e) => setNewItem(prev => ({ ...prev, unit: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white"
+                      onChange={(e) => {
+                        setNewItem(prev => ({ ...prev, unit: e.target.value }))
+                        setUnitError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white ${
+                        unitError 
+                          ? 'border-red-500 focus:ring-red-400 bg-red-50' 
+                          : 'border-gray-300 focus:ring-yellow-400'
+                      }`}
                     >
                       <option value="">Select unit...</option>
                       <option value="kg">kg (Kilogram)</option>
@@ -849,6 +1185,14 @@ export const InventoryPage = () => {
                       <option value="can">can (Can)</option>
                       <option value="bag">bag (Bag)</option>
                     </select>
+                    {unitError && (
+                      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        {unitError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -857,12 +1201,33 @@ export const InventoryPage = () => {
                     </label>
                     <input
                       type="number"
-                      value={newItem.minStock || ''}
-                      onChange={(e) => setNewItem(prev => ({ ...prev, minStock: parseInt(e.target.value) || 0 }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      value={newItem.minStock ?? ''}
+                      onChange={(e) => {
+                        setNewItem(prev => ({ 
+                          ...prev, 
+                          minStock: e.target.value === '' ? undefined : Math.round(parseFloat(e.target.value) * 1000) / 1000 
+                        }))
+                        setMinStockError(null)
+                        // Also clear max stock error when min changes
+                        setMaxStockError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                        minStockError 
+                          ? 'border-red-500 focus:ring-red-400 bg-red-50' 
+                          : 'border-gray-300 focus:ring-yellow-400'
+                      }`}
                       placeholder="0"
                       min={0}
+                      step="0.001"
                     />
+                    {minStockError && (
+                      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        {minStockError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -871,12 +1236,31 @@ export const InventoryPage = () => {
                     </label>
                     <input
                       type="number"
-                      value={newItem.maxStock || ''}
-                      onChange={(e) => setNewItem(prev => ({ ...prev, maxStock: parseInt(e.target.value) || 0 }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      value={newItem.maxStock ?? ''}
+                      onChange={(e) => {
+                        setNewItem(prev => ({ 
+                          ...prev, 
+                          maxStock: e.target.value === '' ? undefined : Math.round(parseFloat(e.target.value) * 1000) / 1000 
+                        }))
+                        setMaxStockError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                        maxStockError 
+                          ? 'border-red-500 focus:ring-red-400 bg-red-50' 
+                          : 'border-gray-300 focus:ring-yellow-400'
+                      }`}
                       placeholder="0"
                       min={0}
+                      step="0.001"
                     />
+                    {maxStockError && (
+                      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        {maxStockError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -885,13 +1269,31 @@ export const InventoryPage = () => {
                     </label>
                     <input
                       type="number"
-                      value={newItem.costPerUnit || ''}
-                      onChange={(e) => setNewItem(prev => ({ ...prev, costPerUnit: parseFloat(e.target.value) || 0 }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      value={newItem.costPerUnit ?? ''}
+                      onChange={(e) => {
+                        setNewItem(prev => ({ 
+                          ...prev, 
+                          costPerUnit: e.target.value === '' ? undefined : Math.round(parseFloat(e.target.value) * 100) / 100 
+                        }))
+                        setCostError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                        costError 
+                          ? 'border-red-500 focus:ring-red-400 bg-red-50' 
+                          : 'border-gray-300 focus:ring-yellow-400'
+                      }`}
                       placeholder="0.00"
                       min={0}
                       step="0.01"
                     />
+                    {costError && (
+                      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        {costError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -915,6 +1317,7 @@ export const InventoryPage = () => {
                     onClick={() => {
                       setIsAdding(false)
                       setNewItem({})
+                      clearValidationErrors()
                     }}
                   >
                     Cancel
@@ -956,6 +1359,7 @@ export const InventoryPage = () => {
             onClick={() => {
               setIsEditing(false)
               setEditingItem(null)
+              clearEditValidationErrors()
             }}
           />
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
@@ -967,6 +1371,7 @@ export const InventoryPage = () => {
                     onClick={() => {
                       setIsEditing(false)
                       setEditingItem(null)
+                      clearEditValidationErrors()
                     }}
                     className="text-gray-400 hover:text-gray-600 text-2xl"
                   >
@@ -984,10 +1389,21 @@ export const InventoryPage = () => {
                     <input
                       type="text"
                       value={editingItem.name}
-                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, name: e.target.value } : null)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      onChange={(e) => {
+                        setEditingItem(prev => prev ? { ...prev, name: e.target.value } : null)
+                        if (editNameError) setEditNameError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 ${
+                        editNameError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                      }`}
                       placeholder="e.g., Pizza Dough"
                     />
+                    {editNameError && (
+                      <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {editNameError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -996,8 +1412,13 @@ export const InventoryPage = () => {
                     </label>
                     <select
                       value={editingItem.category}
-                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, category: e.target.value as 'INGREDIENTS' | 'BEVERAGES' | 'PACKAGING' | 'SUPPLIES' } : null)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      onChange={(e) => {
+                        setEditingItem(prev => prev ? { ...prev, category: e.target.value as 'INGREDIENTS' | 'BEVERAGES' | 'PACKAGING' | 'SUPPLIES' } : null)
+                        if (editCategoryError) setEditCategoryError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 ${
+                        editCategoryError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                      }`}
                     >
                       <option value="">Select category</option>
                       <option value="INGREDIENTS">Ingredients</option>
@@ -1005,6 +1426,12 @@ export const InventoryPage = () => {
                       <option value="PACKAGING">Packaging</option>
                       <option value="SUPPLIES">Supplies</option>
                     </select>
+                    {editCategoryError && (
+                      <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {editCategoryError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -1023,8 +1450,13 @@ export const InventoryPage = () => {
                     </label>
                     <select
                       value={editingItem.unit}
-                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, unit: e.target.value } : null)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white"
+                      onChange={(e) => {
+                        setEditingItem(prev => prev ? { ...prev, unit: e.target.value } : null)
+                        if (editUnitError) setEditUnitError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white ${
+                        editUnitError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                      }`}
                     >
                       <option value="">Select unit...</option>
                       <option value="kg">kg (Kilogram)</option>
@@ -1038,6 +1470,12 @@ export const InventoryPage = () => {
                       <option value="can">can (Can)</option>
                       <option value="bag">bag (Bag)</option>
                     </select>
+                    {editUnitError && (
+                      <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {editUnitError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -1046,12 +1484,27 @@ export const InventoryPage = () => {
                     </label>
                     <input
                       type="number"
-                      value={editingItem.minStock}
-                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, minStock: parseInt(e.target.value) || 0 } : null)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      value={editingItem.minStock ?? ''}
+                      onChange={(e) => {
+                        setEditingItem(prev => prev ? { 
+                          ...prev, 
+                          minStock: e.target.value === '' ? 0 : Math.round(parseFloat(e.target.value) * 1000) / 1000 
+                        } : null)
+                        if (editMinStockError) setEditMinStockError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 ${
+                        editMinStockError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                      }`}
                       placeholder="0"
                       min={0}
+                      step="0.001"
                     />
+                    {editMinStockError && (
+                      <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {editMinStockError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -1060,12 +1513,27 @@ export const InventoryPage = () => {
                     </label>
                     <input
                       type="number"
-                      value={editingItem.maxStock}
-                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, maxStock: parseInt(e.target.value) || 0 } : null)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      value={editingItem.maxStock ?? ''}
+                      onChange={(e) => {
+                        setEditingItem(prev => prev ? { 
+                          ...prev, 
+                          maxStock: e.target.value === '' ? 0 : Math.round(parseFloat(e.target.value) * 1000) / 1000 
+                        } : null)
+                        if (editMaxStockError) setEditMaxStockError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 ${
+                        editMaxStockError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                      }`}
                       placeholder="0"
                       min={0}
+                      step="0.001"
                     />
+                    {editMaxStockError && (
+                      <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {editMaxStockError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -1074,13 +1542,27 @@ export const InventoryPage = () => {
                     </label>
                     <input
                       type="number"
-                      value={editingItem.costPerUnit}
-                      onChange={(e) => setEditingItem(prev => prev ? { ...prev, costPerUnit: parseFloat(e.target.value) || 0 } : null)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      value={editingItem.costPerUnit ?? ''}
+                      onChange={(e) => {
+                        setEditingItem(prev => prev ? { 
+                          ...prev, 
+                          costPerUnit: e.target.value === '' ? 0 : Math.round(parseFloat(e.target.value) * 100) / 100 
+                        } : null)
+                        if (editCostError) setEditCostError(null)
+                      }}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 ${
+                        editCostError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                      }`}
                       placeholder="0.00"
                       min={0}
                       step="0.01"
                     />
+                    {editCostError && (
+                      <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {editCostError}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -1104,6 +1586,7 @@ export const InventoryPage = () => {
                     onClick={() => {
                       setIsEditing(false)
                       setEditingItem(null)
+                      clearEditValidationErrors()
                     }}
                   >
                     Cancel
@@ -1116,6 +1599,97 @@ export const InventoryPage = () => {
                     Save Changes
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModalOpen && itemToDelete && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={closeDeleteModal}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+              {/* Header */}
+              <div className="p-6 border-b border-gray-200 bg-red-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                      <AlertTriangle className="h-5 w-5 text-red-600" />
+                    </div>
+                    <h2 className="text-xl font-bold text-red-800">Archive Item</h2>
+                  </div>
+                  <button
+                    onClick={closeDeleteModal}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-600 mb-1">You are about to archive:</p>
+                  <p className="font-semibold text-lg text-gray-900">{itemToDelete.name}</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Category: {itemToDelete.category} • Current Stock: {formatSmartStock(itemToDelete.currentStock, itemToDelete.unit)}
+                  </p>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Note:</strong> This action will archive the item and create an audit record. 
+                    The item will no longer appear in active inventory but can be reviewed in stock transactions.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Reason for archiving <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={deleteReason}
+                    onChange={(e) => setDeleteReason(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+                    placeholder="e.g., Item discontinued, Duplicate entry, No longer used..."
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 border-t border-gray-200 bg-gray-50 flex gap-3">
+                <Button
+                  className="flex-1"
+                  variant="outline"
+                  onClick={closeDeleteModal}
+                  disabled={isDeleting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                  onClick={confirmDelete}
+                  disabled={isDeleting || !deleteReason.trim()}
+                >
+                  {isDeleting ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Archiving...
+                    </div>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Archive Item
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           </div>

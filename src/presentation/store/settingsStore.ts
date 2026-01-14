@@ -22,6 +22,7 @@ interface SettingsState {
   
   // Inventory settings
   autoOutOfStockWhenIngredientsRunOut: boolean
+  autoMarkInStockWhenAvailable: boolean // Auto mark products as in-stock when stock >= 1
   showCurrentStockInPOS: boolean
   
   // UI settings - Orders Page
@@ -59,6 +60,7 @@ interface SettingsState {
   setToastDurationSeconds: (value: number) => void
   setMaxToastNotifications: (value: number) => void
   setAutoOutOfStockWhenIngredientsRunOut: (value: boolean) => void
+  setAutoMarkInStockWhenAvailable: (value: boolean) => void
   setShowCurrentStockInPOS: (value: boolean) => void
   setShowHeaderInOrdersPage: (value: boolean) => void
   setShowOverviewCardsInOrdersPage: (value: boolean) => void
@@ -98,6 +100,7 @@ export const useSettingsStore = create<SettingsState>()(
       
       // Default settings - Inventory
       autoOutOfStockWhenIngredientsRunOut: false, // Default OFF - don't auto mark out of stock
+      autoMarkInStockWhenAvailable: false, // Default OFF - don't auto mark in stock
       showCurrentStockInPOS: true, // Default ON - show stock in POS
       
       // Default settings - UI Orders Page
@@ -150,6 +153,9 @@ export const useSettingsStore = create<SettingsState>()(
         
       setAutoOutOfStockWhenIngredientsRunOut: (value: boolean) =>
         set({ autoOutOfStockWhenIngredientsRunOut: value }),
+        
+      setAutoMarkInStockWhenAvailable: (value: boolean) =>
+        set({ autoMarkInStockWhenAvailable: value }),
         
       setShowCurrentStockInPOS: (value: boolean) =>
         set({ showCurrentStockInPOS: value }),

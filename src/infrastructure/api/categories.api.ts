@@ -87,8 +87,10 @@ export const categoriesApi = {
 
   // Reorder categories
   reorder: async (categoryOrders: Array<{ id: string; sortOrder: number }>) => {
+    // Backend expects categoryIds array, not categoryOrders object array
+    const categoryIds = categoryOrders.map(c => c.id);
     const response = await api.post<ApiResponse<CategoryDTO[]>>('/api/categories/reorder', { 
-      categoryOrders 
+      categoryIds 
     });
     return response.data;
   },

@@ -24,6 +24,8 @@ export interface MenuItemDTO {
   moodBenefits: string | null;
   itemType: MenuItemType;  // Type of menu item
   showInMenu?: boolean;     // For ADDON items: whether to show in regular menu
+  outOfStock?: boolean;     // Whether product is out of stock (ingredients ran out)
+  archived?: boolean;       // Whether product is archived (soft deleted)
   createdAt: string;
   updatedAt: string;
 }
@@ -111,15 +113,30 @@ export const menuItemsApi = {
     return response.data;
   },
 
-  // Toggle availability
+  // Toggle availability (manager excludes from menu)
   toggleAvailability: async (id: string) => {
     const response = await api.patch<ApiResponse<MenuItemDTO>>(`/api/menu-items/${id}/availability`);
+    return response.data;
+  },
+
+  // Toggle out of stock (ingredients ran out)
+  toggleOutOfStock: async (id: string) => {
+    const response = await api.patch<ApiResponse<MenuItemDTO>>(`/api/menu-items/${id}/out-of-stock`);
     return response.data;
   },
 
   // Toggle featured
   toggleFeatured: async (id: string) => {
     const response = await api.patch<ApiResponse<MenuItemDTO>>(`/api/menu-items/${id}/featured`);
+    return response.data;
+  },
+
+  // Bulk update out of stock
+  bulkUpdateOutOfStock: async (ids: string[], outOfStock: boolean) => {
+    const response = await api.post<ApiResponse<{ count: number }>>('/api/menu-items/bulk/out-of-stock', {
+      ids,
+      outOfStock
+    });
     return response.data;
   },
 

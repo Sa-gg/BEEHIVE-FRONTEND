@@ -24,7 +24,13 @@ export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact =
   // Get full image URL from backend
   const imageUrl = getImageUrl ? getImageUrl(item.image || null) : item.image
 
+  // Check if item is marked as out of stock (manually by manager)
+  const isOutOfStock = (item as any).outOfStock === true
+  // Item is effectively unavailable if not available OR marked out of stock
+  const isUnavailable = !item.available || isOutOfStock
+
   const handleAddToCart = (e: React.MouseEvent) => {
+    if (isUnavailable) return
     onAddToCart(item, e)
   }
 
@@ -43,9 +49,9 @@ export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact =
             No Image
           </div>
         )}
-        {!item.available && (
+        {isUnavailable && (
           <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-            <Badge variant="destructive" className="text-xs">Unavailable</Badge>
+            <Badge variant="destructive" className="text-xs">{isOutOfStock ? 'Out of Stock' : 'Unavailable'}</Badge>
           </div>
         )}
         {hasScience && (
@@ -66,7 +72,7 @@ export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact =
             <span className="text-sm font-bold" style={{ color: '#F9C900' }}>₱{item.price.toFixed(2)}</span>
             <button
               onClick={handleAddToCart}
-              disabled={!item.available}
+              disabled={isUnavailable}
               className="h-12 w-12 flex items-center justify-center transition-all hover:scale-105 active:scale-95 shrink-0"
               style={{ 
                 backgroundColor: '#F9C900',
@@ -86,7 +92,7 @@ export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact =
             <span className="text-xs sm:text-sm font-bold" style={{ color: '#F9C900' }}>₱{item.price.toFixed(2)}</span>
             <button
               onClick={handleAddToCart}
-              disabled={!item.available}
+              disabled={isUnavailable}
               className="h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center transition-all hover:scale-105 active:scale-95 shrink-0"
               style={{ 
                 backgroundColor: '#F9C900',

@@ -20,11 +20,16 @@ export const MenuItemCard = ({ item, onAddToOrder, maxServings, mobileSize = 'me
   // Use maxServings directly (backend already accounts for cart and preparing orders)
   const availableStock = maxServings
 
+  // Check if item is manually marked as out of stock
+  const isManuallyOutOfStock = (item as any).outOfStock === true
+
   const handleAddToOrder = (e?: React.MouseEvent) => {
     if (e) {
       e.stopPropagation()
     }
     if (!item.available) return
+    // Check manual out of stock flag (set by manager in Products page)
+    if (isManuallyOutOfStock) return
     // Only prevent adding if autoOutOfStock is enabled AND out of stock based on recipe
     if (autoOutOfStock && availableStock !== undefined && availableStock !== -1 && availableStock <= 0) return
     
@@ -42,9 +47,13 @@ export const MenuItemCard = ({ item, onAddToOrder, maxServings, mobileSize = 'me
 
   // Determine stock status (using available stock after cart deduction)
   const hasRecipe = availableStock !== undefined && availableStock !== -1
-  // Only mark as out of stock if autoOutOfStock setting is enabled
-  const isOutOfStock = autoOutOfStock && hasRecipe && availableStock <= 0
+  // Mark as out of stock if:
+  // 1. Manual outOfStock flag is set by manager, OR
+  // 2. autoOutOfStock setting is enabled AND recipe-based stock is 0
+  const isOutOfStock = isManuallyOutOfStock || (autoOutOfStock && hasRecipe && availableStock <= 0)
   const isLowStock = hasRecipe && availableStock > 0 && availableStock <= 5
+  // Stock is 0 or negative - show red badge (not out of stock if autoOutOfStock is off, but still 0)
+  const isZeroStock = hasRecipe && availableStock <= 0
 
   // Mobile size classes
   const mobileSizeClasses = {
@@ -107,12 +116,14 @@ export const MenuItemCard = ({ item, onAddToOrder, maxServings, mobileSize = 'me
         {/* Stock indicator badge */}
         {hasRecipe && !isOutOfStock && (
           <div className={`absolute top-1 right-1 rounded font-bold flex items-center gap-0.5 ${sizeClasses.stockBadge} ${
-            isLowStock 
-              ? 'bg-red-100 text-red-700 border border-red-300' 
-              : 'bg-green-100 text-green-700 border border-green-300'
+            isZeroStock
+              ? 'bg-red-100 text-red-700 border border-red-300'
+              : isLowStock 
+                ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' 
+                : 'bg-green-100 text-green-700 border border-green-300'
           }`}>
             <Package className="h-3 w-3" />
-            {availableStock}
+            {Math.max(0, availableStock)}
           </div>
         )}
       </div>

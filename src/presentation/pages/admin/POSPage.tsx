@@ -171,7 +171,8 @@ export const POSPage = () => {
           price: item.price,
           image: getImageUrl(item.image) || undefined,
           available: item.available,
-          featured: item.featured
+          featured: item.featured,
+          outOfStock: item.outOfStock // Include the manual out of stock flag
         }))
         setMenuItems(items)
         setMaxServings(servingsData)
@@ -241,34 +242,80 @@ export const POSPage = () => {
     })
   }
   
+  // Helper to check if two addon arrays are equivalent
+  const areAddonsEqual = (addons1: OrderItem['addons'], addons2: OrderItem['addons']): boolean => {
+    if (!addons1 && !addons2) return true
+    if (!addons1 || !addons2) return false
+    if (addons1.length !== addons2.length) return false
+    
+    // Sort by addonItemId for comparison
+    const sorted1 = [...addons1].sort((a, b) => a.addonItemId.localeCompare(b.addonItemId))
+    const sorted2 = [...addons2].sort((a, b) => a.addonItemId.localeCompare(b.addonItemId))
+    
+    return sorted1.every((addon, idx) => 
+      addon.addonItemId === sorted2[idx].addonItemId && 
+      addon.quantity === sorted2[idx].quantity
+    )
+  }
+
   // Add item with variants/add-ons from the modal
   const addItemWithAddonsToOrder = (
     menuItem: MenuItem,
     variant: VariantSelection | null,
     addons: AddonSelection[],
     notes: string,
-    finalPrice: number
+    finalPrice: number,
+    quantity: number = 1 // Support quantity from modal
   ) => {
-    const orderItem: OrderItem = {
-      menuItemId: menuItem.id,
-      name: menuItem.name,
-      price: menuItem.price,
-      quantity: 1,
-      subtotal: finalPrice,
-      variantId: variant?.id,
-      variantName: variant?.name,
-      variantPriceDelta: variant?.priceDelta,
-      notes: notes || undefined,
-      addons: addons.length > 0 ? addons.map(a => ({
-        addonItemId: a.addonItemId,
-        addonName: a.addonName,
-        unitPrice: a.addonPrice,
-        quantity: a.quantity,
-        subtotal: a.addonPrice * a.quantity
-      })) : undefined
-    }
+    const newAddons = addons.length > 0 ? addons.map(a => ({
+      addonItemId: a.addonItemId,
+      addonName: a.addonName,
+      unitPrice: a.addonPrice,
+      quantity: a.quantity,
+      subtotal: a.addonPrice * a.quantity
+    })) : undefined
     
-    setOrderItems(prev => [...prev, orderItem])
+    setOrderItems((prev) => {
+      // Try to find an existing item with same menuItemId, variant, addons, and notes
+      const existingIndex = prev.findIndex((item) => 
+        item.menuItemId === menuItem.id && 
+        item.variantId === (variant?.id || undefined) &&
+        areAddonsEqual(item.addons, newAddons) &&
+        (item.notes || '') === (notes || '')
+      )
+      
+      if (existingIndex !== -1) {
+        // Item with same config exists - increment quantity
+        const existingItem = prev[existingIndex]
+        const newQuantity = existingItem.quantity + quantity
+        // Recalculate subtotal: unitPrice * newQuantity
+        const unitPrice = finalPrice / quantity // Get unit price from finalPrice
+        const newSubtotal = unitPrice * newQuantity
+        
+        return prev.map((item, idx) =>
+          idx === existingIndex
+            ? { ...item, quantity: newQuantity, subtotal: newSubtotal }
+            : item
+        )
+      }
+      
+      // No matching item - add new order item
+      const orderItem: OrderItem = {
+        menuItemId: menuItem.id,
+        name: menuItem.name,
+        price: menuItem.price,
+        quantity: quantity,
+        subtotal: finalPrice,
+        variantId: variant?.id,
+        variantName: variant?.name,
+        variantPriceDelta: variant?.priceDelta,
+        notes: notes || undefined,
+        addons: newAddons
+      }
+      
+      return [...prev, orderItem]
+    })
+    
     setShowAddonsModal(false)
     setSelectedMenuItemForAddons(null)
   }
@@ -276,6 +323,31 @@ export const POSPage = () => {
   const updateQuantity = (menuItemId: string, quantity: number, itemIndex?: number) => {
     if (quantity <= 0) {
       removeItem(menuItemId, itemIndex)
+      return
+    }
+    
+    // Check stock limits if auto out of stock is enabled
+    if (autoOutOfStockWhenIngredientsRunOut) {
+      const availableStock = maxServings[menuItemId]
+      // If we have recipe-based stock tracking (not unlimited)
+      if (availableStock !== undefined && availableStock !== -1) {
+        // The maxServings already accounts for cart + preparing orders from the API
+        // So we need to check if the new quantity exceeds available stock
+        const maxAllowedQuantity = Math.max(0, availableStock)
+        if (quantity > maxAllowedQuantity) {
+          toast.warning('Stock Limit', `Only ${maxAllowedQuantity} available in stock`)
+          quantity = maxAllowedQuantity
+          if (quantity <= 0) {
+            return // Can't add any more
+          }
+        }
+      }
+    }
+    
+    // Also check if item is manually marked as out of stock
+    const menuItem = menuItems.find(item => item.id === menuItemId)
+    if (menuItem && (menuItem as any).outOfStock === true) {
+      toast.warning('Out of Stock', 'This item has been marked as out of stock')
       return
     }
     
@@ -386,6 +458,16 @@ export const POSPage = () => {
       toast.warning('No items to print', 'Please add items to the order first.')
       return
     }
+    
+    // Validate stock availability (only if auto out of stock is enabled)
+    if (autoOutOfStockWhenIngredientsRunOut) {
+      const { valid, warnings } = validateStockAvailability()
+      if (!valid) {
+        const proceed = confirm(`Stock Warning:\n\n${warnings.join('\n')}\n\nDo you want to proceed anyway?`)
+        if (!proceed) return
+      }
+    }
+    
     if (paymentMethod === 'CASH' && cashChangeEnabled) {
       setPendingAction('print')
       setShowCashModal(true)
@@ -394,12 +476,46 @@ export const POSPage = () => {
     }
   }
 
+  // Validate stock for all items in the order
+  const validateStockAvailability = (): { valid: boolean; warnings: string[] } => {
+    const warnings: string[] = []
+    
+    // Group items by menuItemId and sum quantities
+    const itemQuantities = orderItems.reduce((acc, item) => {
+      acc[item.menuItemId] = (acc[item.menuItemId] || 0) + item.quantity
+      return acc
+    }, {} as Record<string, number>)
+    
+    // Check each item against available stock
+    for (const [menuItemId, quantity] of Object.entries(itemQuantities)) {
+      const availableStock = maxServings[menuItemId]
+      if (availableStock !== undefined && quantity > availableStock) {
+        const item = orderItems.find(i => i.menuItemId === menuItemId)
+        if (item) {
+          warnings.push(`${item.name}: ordered ${quantity}, only ${availableStock} available`)
+        }
+      }
+    }
+    
+    return { valid: warnings.length === 0, warnings }
+  }
+
   // Confirm Order - NEVER shows cash modal, just creates order (unpaid or paid based on setting)
   const handleConfirmOrder = () => {
     if (orderItems.length === 0) {
       toast.warning('No items', 'Please add items to the order first.')
       return
     }
+    
+    // Validate stock availability (only if auto out of stock is enabled)
+    if (autoOutOfStockWhenIngredientsRunOut) {
+      const { valid, warnings } = validateStockAvailability()
+      if (!valid) {
+        const proceed = confirm(`Stock Warning:\n\n${warnings.join('\n')}\n\nDo you want to proceed anyway?`)
+        if (!proceed) return
+      }
+    }
+    
     executeConfirmOrder(0, 0)
   }
 
@@ -798,11 +914,17 @@ export const POSPage = () => {
       )
     : filteredItems
 
-  // Sort items: available items first, out-of-stock at the bottom (only if autoOutOfStock is enabled)
+  // Sort items: out-of-stock items at the bottom
   const sortedItems = [...searchFilteredItems].sort((a, b) => {
-    // Only consider ingredient-based out-of-stock if auto setting is enabled
-    const aOutOfStock = autoOutOfStockWhenIngredientsRunOut && maxServings[a.id] === 0
-    const bOutOfStock = autoOutOfStockWhenIngredientsRunOut && maxServings[b.id] === 0
+    // Check manual out of stock flag first (set by manager in Products page)
+    const aManualOutOfStock = (a as any).outOfStock === true
+    const bManualOutOfStock = (b as any).outOfStock === true
+    // Also consider ingredient-based out-of-stock if auto setting is enabled
+    const aIngredientOutOfStock = autoOutOfStockWhenIngredientsRunOut && maxServings[a.id] === 0
+    const bIngredientOutOfStock = autoOutOfStockWhenIngredientsRunOut && maxServings[b.id] === 0
+    // Item is out of stock if manually marked OR (auto enabled AND ingredients out)
+    const aOutOfStock = aManualOutOfStock || aIngredientOutOfStock
+    const bOutOfStock = bManualOutOfStock || bIngredientOutOfStock
     if (aOutOfStock && !bOutOfStock) return 1  // a goes to bottom
     if (!aOutOfStock && bOutOfStock) return -1 // b goes to bottom
     return 0 // maintain original order
@@ -1116,7 +1238,8 @@ export const POSPage = () => {
                 quantity: a.quantity
               })),
               data.notes,
-              data.finalPrice
+              data.finalPrice,
+              data.quantity // Pass quantity from modal
             )
           }}
         />

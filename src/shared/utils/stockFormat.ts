@@ -48,9 +48,13 @@ export function formatSmartStock(value: number, unit: string, maxDecimals: numbe
     return `${formatted} ${unit}`
   }
 
+  // Handle negative values - use absolute value for formatting, then prepend minus sign
+  const isNegative = value < 0
+  const absValue = Math.abs(value)
+
   // Calculate whole and fractional parts
-  const wholePart = Math.floor(value)
-  const fractionalPart = value - wholePart
+  const wholePart = Math.floor(absValue)
+  const fractionalPart = absValue - wholePart
   
   // Convert fractional part to sub-units
   const subUnitValue = Math.round(fractionalPart * conversion.conversionFactor)
@@ -58,16 +62,16 @@ export function formatSmartStock(value: number, unit: string, maxDecimals: numbe
   // If fractional part is negligible, just return whole units
   if (subUnitValue === 0 || subUnitValue >= conversion.conversionFactor) {
     const adjustedWhole = subUnitValue >= conversion.conversionFactor ? wholePart + 1 : wholePart
-    return `${adjustedWhole}${conversion.baseUnit}`
+    return `${isNegative ? '-' : ''}${adjustedWhole}${conversion.baseUnit}`
   }
   
   // If no whole part, just return sub-units
   if (wholePart === 0) {
-    return `${subUnitValue}${conversion.subUnit}`
+    return `${isNegative ? '-' : ''}${subUnitValue}${conversion.subUnit}`
   }
   
   // Return compound format
-  return `${wholePart}${conversion.baseUnit} & ${subUnitValue}${conversion.subUnit}`
+  return `${isNegative ? '-' : ''}${wholePart}${conversion.baseUnit} & ${subUnitValue}${conversion.subUnit}`
 }
 
 /**

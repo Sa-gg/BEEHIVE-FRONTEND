@@ -120,6 +120,7 @@ export const SettingsPage = () => {
     toastDurationSeconds,
     maxToastNotifications,
     autoOutOfStockWhenIngredientsRunOut,
+    autoMarkInStockWhenAvailable,
     showCurrentStockInPOS,
     showHeaderInOrdersPage,
     showOverviewCardsInOrdersPage,
@@ -143,6 +144,7 @@ export const SettingsPage = () => {
     setToastDurationSeconds,
     setMaxToastNotifications,
     setAutoOutOfStockWhenIngredientsRunOut,
+    setAutoMarkInStockWhenAvailable,
     setShowCurrentStockInPOS,
     setShowHeaderInOrdersPage,
     setShowOverviewCardsInOrdersPage,
@@ -360,6 +362,12 @@ export const SettingsPage = () => {
                 enabled={autoOutOfStockWhenIngredientsRunOut}
                 onChange={() => setAutoOutOfStockWhenIngredientsRunOut(!autoOutOfStockWhenIngredientsRunOut)}
                 warning={autoOutOfStockWhenIngredientsRunOut}
+              />
+              <SettingItem
+                title="Auto Mark In-Stock When Available"
+                description="Automatically mark products as in-stock when their ingredient stock becomes ≥1 after restocking"
+                enabled={autoMarkInStockWhenAvailable}
+                onChange={() => setAutoMarkInStockWhenAvailable(!autoMarkInStockWhenAvailable)}
               />
               <SettingItem
                 title="Show Current Stock in POS"

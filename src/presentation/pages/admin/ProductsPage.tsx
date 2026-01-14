@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Button } from '../../components/common/ui/button'
 import { Input } from '../../components/common/ui/input'
@@ -27,13 +28,19 @@ import {
   Wand2,
   FolderPlus,
   Settings,
-  Layers
+  Layers,
+  ArrowUp,
+  ArrowDown,
+  AlertTriangle
 } from 'lucide-react'
 import { VariantsAddonsManager } from '../../components/features/Admin/VariantsAddonsManager'
 import { menuItemsApi, uploadApi } from '../../../infrastructure/api/menuItems.api'
 import type { MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
 import { categoriesApi } from '../../../infrastructure/api/categories.api'
 import type { CategoryDTO } from '../../../infrastructure/api/categories.api'
+import { recipeApi } from '../../../infrastructure/api/recipe.api'
+import { inventoryApi } from '../../../infrastructure/api/inventory.api'
+import type { InventoryItemDTO } from '../../../infrastructure/api/inventory.api'
 import { toast } from '../../components/common/ToastNotification'
 import type { MenuItemType } from '../../../infrastructure/api/menuItems.api'
 
@@ -57,6 +64,8 @@ interface Product {
   moodBenefits: string | null
   itemType: MenuItemType
   showInMenu: boolean
+  outOfStock: boolean  // Ingredients ran out
+  archived: boolean    // Soft deleted
   createdAt: string
   updatedAt: string
 }
@@ -85,6 +94,7 @@ const MOOD_TYPES = [
 export const ProductsPage = () => {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<CategoryDTO[]>([])
+  const [maxServings, setMaxServings] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -95,9 +105,21 @@ export const ProductsPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [promptCopied, setPromptCopied] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
-  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'out-of-stock'>('all')
+  const [stockFilter, setStockFilter] = useState<'all' | 'in-stock' | 'out-of-stock' | 'needs-attention'>('all')
+  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'unavailable'>('all')
   const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'BASE' | 'ADDON' | 'DRINK'>('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  
+  // Batch selection state
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [inventoryItems, setInventoryItems] = useState<InventoryItemDTO[]>([])
+  const [selectedIngredient, setSelectedIngredient] = useState<string>('')
+  const [loadingIngredientProducts, setLoadingIngredientProducts] = useState(false)
+  const [ingredientSearchQuery, setIngredientSearchQuery] = useState('')
+  const [ingredientStatusFilter, setIngredientStatusFilter] = useState<'all' | 'DISCREPANCY' | 'OUT_OF_STOCK' | 'LOW_STOCK'>('all')
+  const [selectedIngredientProducts, setSelectedIngredientProducts] = useState<Product[]>([])
+  const [ingredientDropdownOpen, setIngredientDropdownOpen] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -153,11 +175,34 @@ export const ProductsPage = () => {
     return `${API_BASE_URL}${imagePath}`
   }
 
-  // Fetch products and categories on mount
+  // Handle URL query parameter for filter
+  const [searchParams, setSearchParams] = useSearchParams()
+  
+  // Set filter from URL on mount
+  useEffect(() => {
+    const filterParam = searchParams.get('filter')
+    if (filterParam === 'needs-attention') {
+      setStockFilter('needs-attention')
+      // Clear the query param after reading
+      setSearchParams({})
+    }
+  }, [searchParams, setSearchParams])
+
+  // Fetch products, categories and max servings on mount
   useEffect(() => {
     fetchProducts()
     fetchCategories()
+    fetchMaxServings()
   }, [])
+
+  const fetchMaxServings = async () => {
+    try {
+      const servingsData = await recipeApi.getAllMaxServings()
+      setMaxServings(servingsData)
+    } catch (error) {
+      console.error('Failed to fetch max servings:', error)
+    }
+  }
 
   const fetchCategories = async () => {
     try {
@@ -179,7 +224,10 @@ export const ProductsPage = () => {
       const mappedProducts: Product[] = response.data.map((item: MenuItemDTO) => ({
         ...item,
         categoryId: item.categoryId,
-        category: item.category
+        category: item.category,
+        showInMenu: item.showInMenu ?? false,
+        outOfStock: item.outOfStock ?? false,
+        archived: item.archived ?? false
       }))
       setProducts(mappedProducts)
     } catch (error) {
@@ -270,6 +318,39 @@ export const ProductsPage = () => {
       console.error('Failed to delete category:', error)
       const err = error as { response?: { data?: { message?: string } } }
       toast.error('Failed to delete category', err.response?.data?.message || 'Please try again.')
+    }
+  }
+
+  // Move category up or down
+  const handleMoveCategoryPosition = async (id: string, direction: 'up' | 'down') => {
+    // Sort categories by sortOrder first
+    const sortedCategories = [...categories].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    const currentIndex = sortedCategories.findIndex(c => c.id === id)
+    
+    if (direction === 'up' && currentIndex === 0) return
+    if (direction === 'down' && currentIndex === sortedCategories.length - 1) return
+    
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    
+    // Swap positions
+    const newCategories = [...sortedCategories]
+    const temp = newCategories[currentIndex]
+    newCategories[currentIndex] = newCategories[newIndex]
+    newCategories[newIndex] = temp
+    
+    // Build new order array
+    const categoryOrders = newCategories.map((cat, index) => ({
+      id: cat.id,
+      sortOrder: index
+    }))
+    
+    try {
+      await categoriesApi.reorder(categoryOrders)
+      await fetchCategories()
+      toast.success('Category order updated')
+    } catch (error) {
+      console.error('Failed to reorder categories:', error)
+      toast.error('Failed to update order')
     }
   }
 
@@ -394,8 +475,8 @@ export const ProductsPage = () => {
       const payload = {
         name: formData.name,
         categoryId: formData.categoryId,
-        price: parseFloat(formData.price),
-        cost: formData.cost ? parseFloat(formData.cost) : undefined,
+        price: Math.round(parseFloat(formData.price) * 100) / 100,
+        cost: formData.cost ? Math.round(parseFloat(formData.cost) * 100) / 100 : undefined,
         prepTime: parseInt(formData.prepTime),
         image: formData.image || undefined,
         description: formData.description || undefined,
@@ -448,8 +529,13 @@ export const ProductsPage = () => {
 
   const toggleAvailability = async (id: string) => {
     try {
-      await menuItemsApi.toggleAvailability(id)
-      await fetchProducts()
+      const response = await menuItemsApi.toggleAvailability(id)
+      const product = response.data
+      // Update local state instead of re-fetching to prevent animation
+      setProducts(prev => prev.map(p => 
+        p.id === id ? { ...p, available: product.available } : p
+      ))
+      toast.success(product.available ? 'Product added to sale' : 'Product removed from sale')
     } catch (error) {
       console.error('Failed to toggle availability:', error)
       const err = error as { response?: { data?: { message?: string } } }
@@ -457,14 +543,193 @@ export const ProductsPage = () => {
     }
   }
 
+  const toggleOutOfStock = async (id: string) => {
+    try {
+      const response = await menuItemsApi.toggleOutOfStock(id)
+      const product = response.data
+      // Update local state instead of re-fetching to prevent animation
+      setProducts(prev => prev.map(p => 
+        p.id === id ? { ...p, outOfStock: product.outOfStock ?? false } : p
+      ))
+      toast.success(product.outOfStock ? 'Product marked as out of stock' : 'Product marked as in stock')
+    } catch (error) {
+      console.error('Failed to toggle out of stock:', error)
+      const err = error as { response?: { data?: { message?: string } } }
+      toast.error('Failed to update product', err.response?.data?.message || 'Please try again.')
+    }
+  }
+
   const toggleFeatured = async (id: string) => {
     try {
-      await menuItemsApi.toggleFeatured(id)
-      await fetchProducts()
+      const response = await menuItemsApi.toggleFeatured(id)
+      const product = response.data
+      // Update local state instead of re-fetching to prevent animation
+      setProducts(prev => prev.map(p => 
+        p.id === id ? { ...p, featured: product.featured } : p
+      ))
     } catch (error) {
       console.error('Failed to toggle featured:', error)
       const err = error as { response?: { data?: { message?: string } } }
       toast.error('Failed to update product', err.response?.data?.message || 'Please try again.')
+    }
+  }
+
+  // Batch selection handlers
+  const toggleProductSelection = (id: string) => {
+    setSelectedProducts(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(id)) {
+        newSet.delete(id)
+      } else {
+        newSet.add(id)
+      }
+      return newSet
+    })
+  }
+
+  const selectAllProducts = () => {
+    if (selectedProducts.size === filteredProducts.length) {
+      setSelectedProducts(new Set())
+    } else {
+      setSelectedProducts(new Set(filteredProducts.map(p => p.id)))
+    }
+  }
+
+  const clearSelection = () => {
+    setSelectedProducts(new Set())
+    setSelectedIngredient('')
+    setSelectedIngredientProducts([])
+    setIsSelectionMode(false)
+    setIngredientSearchQuery('')
+  }
+
+  // Ref for dropdown click outside handling
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIngredientDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Fetch inventory items when selection mode is enabled
+  useEffect(() => {
+    if (isSelectionMode && inventoryItems.length === 0) {
+      inventoryApi.getAll({ category: 'INGREDIENTS' }).then(items => {
+        setInventoryItems(items)
+      }).catch(err => {
+        console.error('Failed to fetch inventory items:', err)
+      })
+    }
+  }, [isSelectionMode, inventoryItems.length])
+
+  // Memoized filter inventory items based on search and status filter
+  // Sort: OUT_OF_STOCK items first, then LOW_STOCK, then IN_STOCK
+  const filteredInventoryItems = useMemo(() => {
+    const searchLower = ingredientSearchQuery.toLowerCase()
+    const filtered = inventoryItems.filter(item => {
+      const matchesSearch = !searchLower || item.name.toLowerCase().includes(searchLower)
+      const matchesStatus = ingredientStatusFilter === 'all' || item.status === ingredientStatusFilter
+      return matchesSearch && matchesStatus
+    })
+    
+    // Sort: DISCREPANCY first, then OUT_OF_STOCK, then LOW_STOCK, then IN_STOCK
+    return filtered.sort((a, b) => {
+      const statusOrder: Record<string, number> = {
+        'DISCREPANCY': 0,
+        'OUT_OF_STOCK': 1,
+        'LOW_STOCK': 2,
+        'IN_STOCK': 3
+      }
+      return (statusOrder[a.status] ?? 4) - (statusOrder[b.status] ?? 4)
+    })
+  }, [inventoryItems, ingredientSearchQuery, ingredientStatusFilter])
+
+  // Handle ingredient selection to auto-select products using that ingredient
+  const handleIngredientSelect = async (inventoryItemId: string) => {
+    setSelectedIngredient(inventoryItemId)
+    if (!inventoryItemId) {
+      setSelectedIngredientProducts([])
+      return
+    }
+    
+    try {
+      setLoadingIngredientProducts(true)
+      const menuItems = await recipeApi.getMenuItemsUsingIngredient(inventoryItemId)
+      if (menuItems && menuItems.length > 0) {
+        const menuItemIds = menuItems.map((item: { id: string }) => item.id)
+        setSelectedProducts(new Set(menuItemIds))
+        // Store the product details for display
+        const matchingProducts = products.filter(p => menuItemIds.includes(p.id))
+        setSelectedIngredientProducts(matchingProducts)
+        const ingredientName = inventoryItems.find(i => i.id === inventoryItemId)?.name || 'ingredient'
+        toast.success(
+          `Selected ${menuItems.length} products using ${ingredientName}`,
+          'Ready to mark as out of stock'
+        )
+      } else {
+        setSelectedIngredientProducts([])
+        toast.info('No products found', 'No products use this ingredient in their recipe')
+      }
+    } catch (error) {
+      console.error('Failed to find products by ingredient:', error)
+      toast.error('Failed to find products', 'Could not find products using this ingredient')
+    } finally {
+      setLoadingIngredientProducts(false)
+    }
+  }
+
+  const handleBatchOutOfStock = async (outOfStock: boolean) => {
+    if (selectedProducts.size === 0) return
+    
+    try {
+      await menuItemsApi.bulkUpdateOutOfStock(Array.from(selectedProducts), outOfStock)
+      // Update local state
+      setProducts(prev => prev.map(p => 
+        selectedProducts.has(p.id) ? { ...p, outOfStock } : p
+      ))
+      toast.success(
+        outOfStock 
+          ? `${selectedProducts.size} products marked as out of stock` 
+          : `${selectedProducts.size} products marked as in stock`
+      )
+      clearSelection()
+    } catch (error) {
+      console.error('Failed to batch update:', error)
+      const err = error as { response?: { data?: { message?: string } } }
+      toast.error('Failed to update products', err.response?.data?.message || 'Please try again.')
+    }
+  }
+
+  const handleBatchAvailability = async (available: boolean) => {
+    if (selectedProducts.size === 0) return
+    
+    try {
+      // Update each product's availability
+      await Promise.all(
+        Array.from(selectedProducts).map(id => 
+          menuItemsApi.update(id, { available })
+        )
+      )
+      // Update local state
+      setProducts(prev => prev.map(p => 
+        selectedProducts.has(p.id) ? { ...p, available } : p
+      ))
+      toast.success(
+        available 
+          ? `${selectedProducts.size} products marked as available` 
+          : `${selectedProducts.size} products marked as unavailable`
+      )
+      clearSelection()
+    } catch (error) {
+      console.error('Failed to batch update:', error)
+      const err = error as { response?: { data?: { message?: string } } }
+      toast.error('Failed to update products', err.response?.data?.message || 'Please try again.')
     }
   }
 
@@ -473,18 +738,42 @@ export const ProductsPage = () => {
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          (product.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
     const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory
+    
+    // Stock filter logic - includes needs-attention (marked out of stock but has available stock)
+    let matchesStock = true
+    if (stockFilter === 'in-stock') {
+      matchesStock = !product.outOfStock
+    } else if (stockFilter === 'out-of-stock') {
+      matchesStock = product.outOfStock
+    } else if (stockFilter === 'needs-attention') {
+      // Products marked as out of stock but actually have stock available (>= 1)
+      const availableServings = maxServings[product.id]
+      matchesStock = product.outOfStock && availableServings !== undefined && availableServings >= 1
+    }
+    
     const matchesAvailability = availabilityFilter === 'all' || 
                                 (availabilityFilter === 'available' && product.available) ||
-                                (availabilityFilter === 'out-of-stock' && !product.available)
+                                (availabilityFilter === 'unavailable' && !product.available)
     const matchesItemType = itemTypeFilter === 'all' || product.itemType === itemTypeFilter
-    return matchesSearch && matchesCategory && matchesAvailability && matchesItemType
+    // When an ingredient is selected, only show products using that ingredient
+    const matchesIngredient = !selectedIngredient || selectedIngredientProducts.some(p => p.id === product.id)
+    return matchesSearch && matchesCategory && matchesStock && matchesAvailability && matchesItemType && matchesIngredient
   })
 
   // Calculate statistics
   const totalProducts = products.length
-  const activeProducts = products.filter(p => p.available).length
-  const outOfStockProducts = products.filter(p => !p.available).length
+  const availableProducts = products.filter(p => p.available).length
+  const unavailableProducts = products.filter(p => !p.available).length
+  const inStockProducts = products.filter(p => !p.outOfStock).length
+  const outOfStockProducts = products.filter(p => p.outOfStock).length
   const featuredProducts = products.filter(p => p.featured).length
+  
+  // Products needing attention: marked out of stock but have stock available
+  const needsAttentionProducts = products.filter(p => {
+    if (!p.outOfStock) return false
+    const availableServings = maxServings[p.id]
+    return availableServings !== undefined && availableServings >= 1
+  }).length
 
   return (
     <AdminLayout>
@@ -509,7 +798,7 @@ export const ProductsPage = () => {
         </div>
 
         {/* Statistics Cards - Updated to match InventoryPage design */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-6">
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-5 border border-blue-100 hover:shadow-lg transition-all duration-300 group">
             <div className="flex items-center justify-between mb-3">
               <div className="p-3 bg-blue-100 rounded-xl group-hover:scale-110 transition-transform">
@@ -521,31 +810,33 @@ export const ProductsPage = () => {
             <p className="text-xs text-gray-400 mt-2">in catalog</p>
           </div>
 
+          {/* In Stock Card */}
           <div 
             className={`rounded-2xl shadow-sm p-5 border cursor-pointer transition-all duration-300 group ${
-              availabilityFilter === 'available' 
+              stockFilter === 'in-stock' 
                 ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 ring-2 ring-green-200' 
                 : 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-100 hover:shadow-lg'
             }`}
-            onClick={() => setAvailabilityFilter(availabilityFilter === 'available' ? 'all' : 'available')}
+            onClick={() => setStockFilter(stockFilter === 'in-stock' ? 'all' : 'in-stock')}
           >
             <div className="flex items-center justify-between mb-3">
               <div className="p-3 bg-green-100 rounded-xl group-hover:scale-110 transition-transform">
                 <CheckCircle className="h-5 w-5 text-green-600" />
               </div>
             </div>
-            <p className="text-sm font-medium text-gray-500 mb-1">Available</p>
-            <p className="text-xl lg:text-2xl font-bold text-green-600">{activeProducts}</p>
-            <p className="text-xs text-gray-400 mt-2">click to filter</p>
+            <p className="text-sm font-medium text-gray-500 mb-1">In Stock</p>
+            <p className="text-xl lg:text-2xl font-bold text-green-600">{inStockProducts}</p>
+            <p className="text-xs text-gray-400 mt-2">ready for orders</p>
           </div>
 
+          {/* Out of Stock Card */}
           <div 
             className={`rounded-2xl shadow-sm p-5 border cursor-pointer transition-all duration-300 group ${
-              availabilityFilter === 'out-of-stock' 
+              stockFilter === 'out-of-stock' 
                 ? 'bg-gradient-to-br from-red-100 to-rose-100 border-red-300 ring-2 ring-red-200' 
                 : 'bg-gradient-to-br from-red-50 to-rose-50 border-red-100 hover:shadow-lg'
             }`}
-            onClick={() => setAvailabilityFilter(availabilityFilter === 'out-of-stock' ? 'all' : 'out-of-stock')}
+            onClick={() => setStockFilter(stockFilter === 'out-of-stock' ? 'all' : 'out-of-stock')}
           >
             <div className="flex items-center justify-between mb-3">
               <div className="p-3 bg-red-100 rounded-xl group-hover:scale-110 transition-transform">
@@ -554,18 +845,52 @@ export const ProductsPage = () => {
             </div>
             <p className="text-sm font-medium text-gray-500 mb-1">Out of Stock</p>
             <p className="text-xl lg:text-2xl font-bold text-red-600">{outOfStockProducts}</p>
-            <p className="text-xs text-gray-400 mt-2">click to filter</p>
+            <p className="text-xs text-gray-400 mt-2">marked by staff</p>
           </div>
 
-          <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl shadow-sm p-5 border border-amber-100 hover:shadow-lg transition-all duration-300 group">
+          {/* Needs Attention Card */}
+          <div 
+            className={`rounded-2xl shadow-sm p-5 border cursor-pointer transition-all duration-300 group relative ${
+              stockFilter === 'needs-attention' 
+                ? 'bg-gradient-to-br from-amber-100 to-yellow-100 border-amber-400 ring-2 ring-amber-300' 
+                : needsAttentionProducts > 0
+                  ? 'bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200 hover:shadow-lg animate-pulse'
+                  : 'bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-100 hover:shadow-lg'
+            }`}
+            onClick={() => setStockFilter(stockFilter === 'needs-attention' ? 'all' : 'needs-attention')}
+          >
+            {needsAttentionProducts > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                !
+              </span>
+            )}
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-amber-100 rounded-xl group-hover:scale-110 transition-transform">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+              </div>
+            </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">Needs Attention</p>
+            <p className="text-xl lg:text-2xl font-bold text-amber-600">{needsAttentionProducts}</p>
+            <p className="text-xs text-gray-400 mt-2">stock available</p>
+          </div>
+
+          {/* On Sale Card - Manager decision to include in menu */}
+          <div 
+            className={`rounded-2xl shadow-sm p-5 border cursor-pointer transition-all duration-300 group ${
+              availabilityFilter === 'available' 
+                ? 'bg-gradient-to-br from-amber-100 to-orange-100 border-amber-300 ring-2 ring-amber-200' 
+                : 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-100 hover:shadow-lg'
+            }`}
+            onClick={() => setAvailabilityFilter(availabilityFilter === 'available' ? 'all' : 'available')}
+          >
             <div className="flex items-center justify-between mb-3">
               <div className="p-3 bg-amber-100 rounded-xl group-hover:scale-110 transition-transform">
                 <Star className="h-5 w-5 text-amber-600" />
               </div>
             </div>
-            <p className="text-sm font-medium text-gray-500 mb-1">Featured</p>
-            <p className="text-xl lg:text-2xl font-bold text-amber-600">{featuredProducts}</p>
-            <p className="text-xs text-gray-400 mt-2">highlighted items</p>
+            <p className="text-sm font-medium text-gray-500 mb-1">On Sale</p>
+            <p className="text-xl lg:text-2xl font-bold text-amber-600">{availableProducts}</p>
+            <p className="text-xs text-gray-400 mt-2">included in menu</p>
           </div>
         </div>
 
@@ -611,12 +936,59 @@ export const ProductsPage = () => {
                 <option value="DRINK">Drinks</option>
               </select>
 
-              {/* Availability Quick Filters */}
-              <div className="flex items-center gap-2">
+              {/* Stock Status Filters - Based on ingredients availability */}
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500 mr-1">Stock:</span>
+                <Button
+                  variant={stockFilter === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setStockFilter('all')}
+                  className="h-7 px-2 text-xs"
+                >
+                  All
+                </Button>
+                <Button
+                  variant={stockFilter === 'in-stock' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setStockFilter('in-stock')}
+                  className={`h-7 px-2 text-xs ${stockFilter === 'in-stock' ? 'bg-green-500 hover:bg-green-600' : ''}`}
+                >
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Available
+                </Button>
+                <Button
+                  variant={stockFilter === 'out-of-stock' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setStockFilter('out-of-stock')}
+                  className={`h-7 px-2 text-xs ${stockFilter === 'out-of-stock' ? 'bg-red-500 hover:bg-red-600' : ''}`}
+                >
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Out
+                </Button>
+                <Button
+                  variant={stockFilter === 'needs-attention' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setStockFilter('needs-attention')}
+                  className={`h-7 px-2 text-xs relative ${stockFilter === 'needs-attention' ? 'bg-amber-500 hover:bg-amber-600' : ''}`}
+                >
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  Attention
+                  {needsAttentionProducts > 0 && stockFilter !== 'needs-attention' && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                      {needsAttentionProducts > 9 ? '9+' : needsAttentionProducts}
+                    </span>
+                  )}
+                </Button>
+              </div>
+
+              {/* For Sale Filters - Manager decision to include in sale */}
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500 mr-1">Sale:</span>
                 <Button
                   variant={availabilityFilter === 'all' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setAvailabilityFilter('all')}
+                  className="h-7 px-2 text-xs"
                 >
                   All
                 </Button>
@@ -624,19 +996,17 @@ export const ProductsPage = () => {
                   variant={availabilityFilter === 'available' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setAvailabilityFilter('available')}
-                  className={availabilityFilter === 'available' ? 'bg-green-500 hover:bg-green-600' : ''}
+                  className={`h-7 px-2 text-xs ${availabilityFilter === 'available' ? 'bg-amber-500 hover:bg-amber-600' : ''}`}
                 >
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Available
+                  On Sale
                 </Button>
                 <Button
-                  variant={availabilityFilter === 'out-of-stock' ? 'default' : 'outline'}
+                  variant={availabilityFilter === 'unavailable' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setAvailabilityFilter('out-of-stock')}
-                  className={availabilityFilter === 'out-of-stock' ? 'bg-red-500 hover:bg-red-600' : ''}
+                  onClick={() => setAvailabilityFilter('unavailable')}
+                  className={`h-7 px-2 text-xs ${availabilityFilter === 'unavailable' ? 'bg-gray-500 hover:bg-gray-600' : ''}`}
                 >
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  Out of Stock
+                  Off Sale
                 </Button>
               </div>
 
@@ -657,6 +1027,20 @@ export const ProductsPage = () => {
                   <List className="h-4 w-4" />
                 </Button>
               </div>
+              
+              {/* Selection Mode Toggle */}
+              <Button
+                variant={isSelectionMode ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  setIsSelectionMode(!isSelectionMode)
+                  if (isSelectionMode) clearSelection()
+                }}
+                className={isSelectionMode ? 'bg-amber-500 hover:bg-amber-600' : ''}
+              >
+                <Layers className="h-4 w-4 mr-1" />
+                {isSelectionMode ? 'Cancel' : 'Select'}
+              </Button>
             </div>
           </div>
         </div>
@@ -668,13 +1052,291 @@ export const ProductsPage = () => {
           </div>
         )}
 
+        {/* Batch Action Bar */}
+        {isSelectionMode && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-4">
+            {/* Row 1: Selection controls */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={selectAllProducts}
+                  className="bg-white"
+                >
+                  {selectedProducts.size === filteredProducts.length ? 'Deselect All' : 'Select All'}
+                </Button>
+                <span className="text-sm font-medium text-amber-800">
+                  {selectedProducts.size} product{selectedProducts.size !== 1 ? 's' : ''} selected
+                </span>
+              </div>
+              
+              {/* Batch action buttons */}
+              {selectedProducts.size > 0 && (
+                <div className="flex items-center gap-2">
+                  {/* Stock controls - for cashier/manager to mark ingredient availability */}
+                  <div className="flex items-center gap-1 pr-2 border-r border-gray-200">
+                    <span className="text-xs text-gray-500 mr-1">Stock:</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleBatchOutOfStock(true)}
+                      className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
+                    >
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Out
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleBatchOutOfStock(false)}
+                      className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                    >
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      In
+                    </Button>
+                  </div>
+                  
+                  {/* Sale controls - for manager to include/exclude from daily menu */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-500 mr-1">Sale:</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleBatchAvailability(false)}
+                      className="bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
+                    >
+                      Off Sale
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleBatchAvailability(true)}
+                      className="bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+                    >
+                      On Sale
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Row 2: Ingredient-based selection with searchable dropdown */}
+            <div className="bg-white rounded-lg border border-amber-200 p-3">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Package className="h-4 w-4 text-amber-600" />
+                  <span className="text-sm font-medium text-gray-700">Quick Select by Ingredient</span>
+                </div>
+                {selectedIngredient && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedIngredient('')
+                      setSelectedIngredientProducts([])
+                      setSelectedProducts(new Set())
+                      setIngredientSearchQuery('')
+                    }}
+                    className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Clear
+                  </Button>
+                )}
+              </div>
+              
+              {/* Searchable dropdown */}
+              <div className="relative max-w-sm" ref={dropdownRef}>
+                <div 
+                  className={`flex items-center h-9 px-3 text-sm border rounded-md bg-white cursor-pointer transition-colors ${
+                    ingredientDropdownOpen ? 'border-amber-500 ring-2 ring-amber-200' : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                  onClick={() => setIngredientDropdownOpen(!ingredientDropdownOpen)}
+                >
+                  {loadingIngredientProducts ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-amber-600 mr-2" />
+                  ) : null}
+                  <span className={selectedIngredient ? 'text-gray-900' : 'text-gray-500'}>
+                    {selectedIngredient ? (
+                      (() => {
+                        const item = inventoryItems.find(i => i.id === selectedIngredient)
+                        if (!item) return 'Select ingredient...'
+                        return (
+                          <span className="flex items-center gap-2">
+                            <span className={`inline-block w-2 h-2 rounded-full ${
+                              item.status === 'OUT_OF_STOCK' ? 'bg-red-500' : 
+                              item.status === 'LOW_STOCK' ? 'bg-yellow-500' : 'bg-green-500'
+                            }`} />
+                            {item.name}
+                            <span className="text-gray-400">({item.currentStock} {item.unit})</span>
+                          </span>
+                        )
+                      })()
+                    ) : 'Select ingredient to filter products...'}
+                  </span>
+                  <ChevronDown className={`h-4 w-4 ml-auto text-gray-400 transition-transform ${ingredientDropdownOpen ? 'rotate-180' : ''}`} />
+                </div>
+                
+                {/* Dropdown panel */}
+                {ingredientDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-[300px] flex flex-col">
+                    {/* Search and filter inside dropdown */}
+                    <div className="p-2 border-b border-gray-100 space-y-2 sticky top-0 bg-white">
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search ingredients..."
+                          value={ingredientSearchQuery}
+                          onChange={(e) => setIngredientSearchQuery(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full pl-7 pr-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant={ingredientStatusFilter === 'all' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('all') }}
+                          className="h-6 px-2 text-xs flex-1"
+                        >
+                          All
+                        </Button>
+                        <Button
+                          variant={ingredientStatusFilter === 'DISCREPANCY' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('DISCREPANCY') }}
+                          className={`h-6 px-2 text-xs flex-1 ${ingredientStatusFilter === 'DISCREPANCY' ? 'bg-purple-500 text-white' : ''}`}
+                        >
+                          ⚠️ Disc
+                        </Button>
+                        <Button
+                          variant={ingredientStatusFilter === 'OUT_OF_STOCK' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('OUT_OF_STOCK') }}
+                          className={`h-6 px-2 text-xs flex-1 ${ingredientStatusFilter === 'OUT_OF_STOCK' ? 'bg-red-500 text-white' : ''}`}
+                        >
+                          ❌ Out
+                        </Button>
+                        <Button
+                          variant={ingredientStatusFilter === 'LOW_STOCK' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('LOW_STOCK') }}
+                          className={`h-6 px-2 text-xs flex-1 ${ingredientStatusFilter === 'LOW_STOCK' ? 'bg-yellow-500' : ''}`}
+                        >
+                          ⚠️ Low
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    {/* Options list */}
+                    <div className="overflow-y-auto flex-1">
+                      {filteredInventoryItems.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                          No ingredients found
+                        </div>
+                      ) : (
+                        filteredInventoryItems.map(item => (
+                          <div
+                            key={item.id}
+                            className={`px-3 py-2 cursor-pointer hover:bg-amber-50 flex items-center justify-between ${
+                              selectedIngredient === item.id ? 'bg-amber-100' : ''
+                            }`}
+                            onClick={() => {
+                              handleIngredientSelect(item.id)
+                              setIngredientDropdownOpen(false)
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-block w-2 h-2 rounded-full ${
+                                item.status === 'DISCREPANCY' ? 'bg-purple-500' :
+                                item.status === 'OUT_OF_STOCK' ? 'bg-red-500' : 
+                                item.status === 'LOW_STOCK' ? 'bg-yellow-500' : 'bg-green-500'
+                              }`} />
+                              <span className="text-sm">{item.name}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-400">{item.currentStock} {item.unit}</span>
+                              {item.status !== 'IN_STOCK' && (
+                                <Badge className={`text-[10px] px-1.5 py-0 ${
+                                  item.status === 'DISCREPANCY' ? 'bg-purple-100 text-purple-700' :
+                                  item.status === 'OUT_OF_STOCK' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                }`}>
+                                  {item.status === 'DISCREPANCY' ? 'Disc' : item.status === 'OUT_OF_STOCK' ? 'Out' : 'Low'}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Show ingredient status info and product count */}
+              {selectedIngredient && (
+                <div className="mt-2 flex items-center justify-between">
+                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${(() => {
+                    const item = inventoryItems.find(i => i.id === selectedIngredient)
+                    if (!item) return 'bg-gray-100 text-gray-700'
+                    return item.status === 'OUT_OF_STOCK' ? 'bg-red-100 text-red-700' :
+                      item.status === 'LOW_STOCK' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-green-100 text-green-700'
+                  })()}`}>
+                    {(() => {
+                      const item = inventoryItems.find(i => i.id === selectedIngredient)
+                      if (!item) return 'Unknown ingredient'
+                      return `Stock: ${item.currentStock} ${item.unit} (Min: ${item.minStock})`
+                    })()}
+                  </span>
+                  {selectedIngredientProducts.length > 0 && (
+                    <span className="text-xs text-amber-700 font-medium">
+                      Showing {selectedIngredientProducts.length} product{selectedIngredientProducts.length !== 1 ? 's' : ''} using this ingredient
+                      {selectedIngredientProducts.filter(p => p.outOfStock).length > 0 && (
+                        <span className="text-red-600 ml-1">
+                          ({selectedIngredientProducts.filter(p => p.outOfStock).length} already out of stock)
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Products Display */}
         {!loading && viewMode === 'grid' ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {filteredProducts.map(product => {
+              const isSelected = selectedProducts.has(product.id)
               return (
-                <div key={product.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+                <div 
+                  key={product.id} 
+                  className={`bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-shadow ${
+                    isSelected ? 'border-amber-400 ring-2 ring-amber-200' : 'border-gray-200'
+                  }`}
+                  onClick={() => isSelectionMode && toggleProductSelection(product.id)}
+                >
                   <div className="aspect-video bg-gray-100 relative">
+                    {/* Selection Checkbox */}
+                    {isSelectionMode && (
+                      <div 
+                        className="absolute top-1.5 left-1.5 z-10"
+                        onClick={(e) => { e.stopPropagation(); toggleProductSelection(product.id) }}
+                      >
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${
+                          isSelected 
+                            ? 'bg-amber-500 border-amber-500 text-white' 
+                            : 'bg-white border-gray-300 hover:border-amber-400'
+                        }`}>
+                          {isSelected && <CheckCircle className="h-3 w-3" />}
+                        </div>
+                      </div>
+                    )}
                     {product.image ? (
                       <img
                         src={getImageUrl(product.image) || ''}
@@ -687,6 +1349,19 @@ export const ProductsPage = () => {
                       </div>
                     )}
                     <div className="absolute top-1.5 right-1.5 flex gap-1 flex-wrap justify-end">
+                      {/* Stock indicator badge - like POS */}
+                      {maxServings[product.id] !== undefined && (
+                        <Badge className={`text-[10px] px-1.5 py-0.5 flex items-center gap-0.5 ${
+                          maxServings[product.id] === 0 
+                            ? 'bg-red-100 text-red-700 border border-red-300' 
+                            : maxServings[product.id] <= 5 
+                              ? 'bg-yellow-100 text-yellow-700 border border-yellow-300'
+                              : 'bg-green-100 text-green-700 border border-green-300'
+                        }`}>
+                          <Package className="h-2.5 w-2.5" />
+                          {maxServings[product.id]}
+                        </Badge>
+                      )}
                       {product.itemType === 'ADDON' && (
                         <Badge className="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5">Add-on</Badge>
                       )}
@@ -699,8 +1374,11 @@ export const ProductsPage = () => {
                       {product.featured && (
                         <Badge className="bg-yellow-100 text-yellow-800 text-[10px] px-1.5 py-0.5">Featured</Badge>
                       )}
+                      {product.outOfStock && (
+                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5 bg-red-600 text-white shadow-sm">Out of Stock</Badge>
+                      )}
                       {!product.available && (
-                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">Unavailable</Badge>
+                        <Badge className="bg-gray-100 text-gray-600 text-[10px] px-1.5 py-0.5 border border-gray-300">Off Sale</Badge>
                       )}
                     </div>
                   </div>
@@ -723,26 +1401,27 @@ export const ProductsPage = () => {
                     </div>
                     
                     <div className="flex flex-col gap-1.5">
-                      {/* Quick Stock Toggle - Prominent for rush hours */}
+                      {/* Quick Stock Toggle - Staff marks when ingredients run out */}
                       <Button
                         size="sm"
-                        onClick={() => toggleAvailability(product.id)}
+                        onClick={() => toggleOutOfStock(product.id)}
                         className={`w-full font-medium text-xs h-7 ${
-                          product.available 
-                            ? 'bg-red-100 hover:bg-red-200 text-red-700 border border-red-300' 
-                            : 'bg-green-100 hover:bg-green-200 text-green-700 border border-green-300'
+                          product.outOfStock 
+                            ? 'bg-green-100 hover:bg-green-200 text-green-700 border border-green-300' 
+                            : 'bg-red-100 hover:bg-red-200 text-red-700 border border-red-300'
                         }`}
                         variant="outline"
+                        title={product.outOfStock ? 'Mark as in stock' : 'Mark as out of stock'}
                       >
-                        {product.available ? (
+                        {product.outOfStock ? (
                           <>
-                            <AlertCircle className="h-3 w-3 mr-1" />
-                            Out of Stock
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Mark In Stock
                           </>
                         ) : (
                           <>
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Available
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            Mark Out
                           </>
                         )}
                       </Button>
@@ -776,10 +1455,25 @@ export const ProductsPage = () => {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    {isSelectionMode && (
+                      <th className="px-4 py-3 text-center w-10">
+                        <div 
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer mx-auto ${
+                            selectedProducts.size === filteredProducts.length && filteredProducts.length > 0
+                              ? 'bg-amber-500 border-amber-500 text-white' 
+                              : 'bg-white border-gray-300 hover:border-amber-400'
+                          }`}
+                          onClick={selectAllProducts}
+                        >
+                          {selectedProducts.size === filteredProducts.length && filteredProducts.length > 0 && <CheckCircle className="h-3 w-3" />}
+                        </div>
+                      </th>
+                    )}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Product</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Price</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Cost</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Stock</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Prep Time</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Status</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
@@ -787,8 +1481,27 @@ export const ProductsPage = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {filteredProducts.map(product => {
+                    const isSelected = selectedProducts.has(product.id)
                     return (
-                      <tr key={product.id} className="hover:bg-gray-50">
+                      <tr 
+                        key={product.id} 
+                        className={`hover:bg-gray-50 ${isSelected ? 'bg-amber-50' : ''}`}
+                        onClick={() => isSelectionMode && toggleProductSelection(product.id)}
+                      >
+                        {isSelectionMode && (
+                          <td className="px-4 py-3 text-center">
+                            <div 
+                              className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer mx-auto ${
+                                isSelected 
+                                  ? 'bg-amber-500 border-amber-500 text-white' 
+                                  : 'bg-white border-gray-300 hover:border-amber-400'
+                              }`}
+                              onClick={(e) => { e.stopPropagation(); toggleProductSelection(product.id) }}
+                            >
+                              {isSelected && <CheckCircle className="h-3 w-3" />}
+                            </div>
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <div className="h-12 w-12 rounded-lg bg-gray-100 overflow-hidden flex-shrink-0">
@@ -815,30 +1528,56 @@ export const ProductsPage = () => {
                         <td className="px-4 py-3 text-right font-semibold">₱{product.price}</td>
                         <td className="px-4 py-3 text-right text-gray-600">₱{product.cost}</td>
                         <td className="px-4 py-3 text-center">
+                          {maxServings[product.id] !== undefined ? (
+                            <Badge className={`${
+                              maxServings[product.id] === 0 
+                                ? 'bg-red-100 text-red-700' 
+                                : maxServings[product.id] <= 5 
+                                  ? 'bg-yellow-100 text-yellow-700'
+                                  : 'bg-green-100 text-green-700'
+                            }`}>
+                              {maxServings[product.id]}
+                            </Badge>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
                           <Badge className="bg-blue-100 text-blue-800">{product.prepTime} min</Badge>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => toggleAvailability(product.id)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          <div className="flex flex-col items-center gap-1">
+                            {/* Stock status - controlled by staff */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleOutOfStock(product.id); }}
+                              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                product.outOfStock 
+                                  ? 'bg-red-100 text-red-700 hover:bg-red-200' 
+                                  : 'bg-green-100 text-green-700 hover:bg-green-200'
+                              }`}
+                              title={product.outOfStock ? 'Click to mark in stock' : 'Click to mark out of stock'}
+                            >
+                              {product.outOfStock ? (
+                                <span className="flex items-center justify-center gap-1">
+                                  <AlertCircle className="h-3 w-3" />
+                                  Out
+                                </span>
+                              ) : (
+                                <span className="flex items-center justify-center gap-1">
+                                  <CheckCircle className="h-3 w-3" />
+                                  In Stock
+                                </span>
+                              )}
+                            </button>
+                            {/* Sale status indicator */}
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
                               product.available 
-                                ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                                : 'bg-red-100 text-red-700 hover:bg-red-200'
-                            }`}
-                            title={product.available ? 'Click to mark out of stock' : 'Click to mark available'}
-                          >
-                            {product.available ? (
-                              <span className="flex items-center gap-1">
-                                <CheckCircle className="h-3 w-3" />
-                                Available
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                Out of Stock
-                              </span>
-                            )}
-                          </button>
+                                ? 'bg-amber-100 text-amber-700' 
+                                : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {product.available ? 'On Sale' : 'Off Sale'}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-2">
@@ -911,38 +1650,41 @@ export const ProductsPage = () => {
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {/* Product Name */}
-                  <div className="md:col-span-2">
-                    <Label htmlFor="name" className="text-sm font-semibold text-gray-700 mb-2 block">
-                      Product Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="name"
-                      type="text"
-                      required
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="e.g., Bacon Pepperoni Pizza"
-                    />
-                  </div>
-
-                  {/* Category */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label htmlFor="category" className="text-sm font-semibold text-gray-700">
-                        Category <span className="text-red-500">*</span>
+              <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                {/* Basic Information Section */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 pb-2">Basic Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Product Name */}
+                    <div className="md:col-span-2">
+                      <Label htmlFor="name" className="text-sm font-semibold text-gray-700 mb-2 block">
+                        Product Name <span className="text-red-500">*</span>
                       </Label>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          resetCategoryForm()
-                          setIsCategoryModalOpen(true)
-                        }}
-                        className="text-xs text-amber-600 hover:text-amber-700 h-6 px-2"
+                      <Input
+                        id="name"
+                        type="text"
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder="e.g., Bacon Pepperoni Pizza"
+                      />
+                    </div>
+
+                    {/* Category */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label htmlFor="category" className="text-sm font-semibold text-gray-700">
+                          Category <span className="text-red-500">*</span>
+                        </Label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            resetCategoryForm()
+                            setIsCategoryModalOpen(true)
+                          }}
+                          className="text-xs text-amber-600 hover:text-amber-700 h-6 px-2"
                       >
                         <FolderPlus className="h-3 w-3 mr-1" />
                         Manage Categories
@@ -1002,34 +1744,40 @@ export const ProductsPage = () => {
                       </label>
                     </div>
                   )}
-
-                  {/* Price */}
-                  <div>
-                    <Label htmlFor="price" className="text-sm font-semibold text-gray-700 mb-2 block">
-                      Price (₱) <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="price"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      required
-                      value={formData.price}
-                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                      placeholder="0.00"
-                    />
                   </div>
+                </div>
 
-                  {/* Cost */}
-                  <div>
-                    <Label htmlFor="cost" className="text-sm font-semibold text-gray-700 mb-2 block">
-                      Cost (₱)
-                    </Label>
-                    <Input
-                      id="cost"
-                      type="number"
-                      step="0.01"
-                      min="0"
+                {/* Pricing & Time Section */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 pb-2">Pricing & Time</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Price */}
+                    <div>
+                      <Label htmlFor="price" className="text-sm font-semibold text-gray-700 mb-2 block">
+                        Price (₱) <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="price"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        required
+                        value={formData.price}
+                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+
+                    {/* Cost */}
+                    <div>
+                      <Label htmlFor="cost" className="text-sm font-semibold text-gray-700 mb-2 block">
+                        Cost (₱)
+                      </Label>
+                      <Input
+                        id="cost"
+                        type="number"
+                        step="0.01"
+                        min="0"
                       value={formData.cost}
                       onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
                       placeholder="0.00"
@@ -1039,7 +1787,7 @@ export const ProductsPage = () => {
                   {/* Prep Time */}
                   <div>
                     <Label htmlFor="prepTime" className="text-sm font-semibold text-gray-700 mb-2 block">
-                      Preparation Time (minutes) <span className="text-red-500">*</span>
+                      Prep Time (min) <span className="text-red-500">*</span>
                     </Label>
                     <Input
                       id="prepTime"
@@ -1051,79 +1799,70 @@ export const ProductsPage = () => {
                       placeholder="5"
                     />
                   </div>
+                  </div>
+                </div>
 
-                  {/* Image Upload/URL */}
-                  <div className="md:col-span-2">
-                    <Label className="text-sm font-semibold text-gray-700 mb-2 block">
-                      Product Image
-                    </Label>
-                    <div className="space-y-3">
-                      {/* File Upload Area */}
-                      <div 
-                        className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                          isDragging 
-                            ? 'border-blue-500 bg-blue-50' 
-                            : 'border-gray-300 hover:border-blue-400'
-                        }`}
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                      >
-                        <Upload className={`h-8 w-8 mx-auto mb-2 ${
-                          isDragging ? 'text-blue-500' : 'text-gray-400'
-                        }`} />
-                        <label htmlFor="imageFile" className="cursor-pointer">
-                          <span className="text-sm text-blue-600 font-medium hover:text-blue-700">
-                            {uploadingImage ? 'Uploading...' : 'Click to upload'}
-                          </span>
-                          <span className="text-sm text-gray-500"> or drag and drop</span>
-                          <input
-                            id="imageFile"
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageUpload}
-                            className="hidden"
-                            disabled={uploadingImage}
-                          />
-                        </label>
-                        <p className="text-xs text-gray-400 mt-1">PNG, JPG, JPEG, GIF, WebP up to 5MB</p>
-                      </div>
-                      
-                      {/* Or separator */}
-                      <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                          <div className="w-full border-t border-gray-300"></div>
-                        </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                          <span className="bg-white px-2 text-gray-500">Or enter image path</span>
-                        </div>
-                      </div>
-                      
-                      {/* URL Input */}
-                      <Input
-                        id="imageUrl"
-                        type="text"
-                        value={formData.image}
-                        onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                        placeholder="/uploads/menu-images/image.jpg"
-                      />
-                      
-                      {/* Image Preview */}
-                      {formData.image && (
-                        <div className="mt-3">
-                          <p className="text-xs text-gray-500 mb-2">Preview:</p>
-                          <div className="relative w-32 h-32 rounded-lg overflow-hidden border border-gray-200">
+                {/* Media & Description Section */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 pb-2">Media & Description</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Image Upload/URL */}
+                    <div className="md:col-span-2">
+                      <Label className="text-sm font-semibold text-gray-700 mb-2 block">
+                        Product Image
+                      </Label>
+                      <div className="space-y-3">
+                        {/* File Upload Area - Shows preview inside when image exists */}
+                        {formData.image ? (
+                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 relative">
                             <img
                               src={getImageUrl(formData.image) || ''}
                               alt="Preview"
-                              className="w-full h-full object-cover"
+                              className="w-full h-40 object-contain rounded"
                               onError={(e) => {
                                 e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2YzZjRmNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5JbnZhbGlkPC90ZXh0Pjwvc3ZnPg=='
                               }}
                             />
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, image: '' })}
+                              className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                              title="Remove image"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           </div>
+                        ) : (
+                          <div 
+                            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                              isDragging 
+                                ? 'border-blue-500 bg-blue-50' 
+                                : 'border-gray-300 hover:border-blue-400'
+                            }`}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                          >
+                            <Upload className={`h-8 w-8 mx-auto mb-2 ${
+                              isDragging ? 'text-blue-500' : 'text-gray-400'
+                            }`} />
+                            <label htmlFor="imageFile" className="cursor-pointer">
+                              <span className="text-sm text-blue-600 font-medium hover:text-blue-700">
+                              {uploadingImage ? 'Uploading...' : 'Click to upload'}
+                            </span>
+                            <span className="text-sm text-gray-500"> or drag and drop</span>
+                            <input
+                              id="imageFile"
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                              className="hidden"
+                              disabled={uploadingImage}
+                            />
+                          </label>
+                          <p className="text-xs text-gray-400 mt-1">PNG, JPG, JPEG, GIF, WebP up to 5MB</p>
                         </div>
-                      )}
+                        )}
                     </div>
                   </div>
 
@@ -1141,28 +1880,13 @@ export const ProductsPage = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                     />
                   </div>
-
-                  {/* Nutrients (from AI or manual) */}
-                  <div className="md:col-span-2">
-                    <Label htmlFor="nutrients" className="text-sm font-semibold text-gray-700 mb-2 block">
-                      <span className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-green-600" />
-                        Key Nutrients
-                        <span className="text-xs font-normal text-gray-500">(from AI analysis or manual)</span>
-                      </span>
-                    </Label>
-                    <Input
-                      id="nutrients"
-                      type="text"
-                      value={formData.nutrients}
-                      onChange={(e) => setFormData({ ...formData, nutrients: e.target.value })}
-                      placeholder="e.g., Vitamin B12, Iron, Protein, Omega-3 (paste from AI response)"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">The AI prompt below will identify nutrients - paste them here after getting the response</p>
                   </div>
+                </div>
 
-                  {/* Mood Benefits Section (Collapsible) */}
-                  <div className="md:col-span-2 border border-purple-200 rounded-xl overflow-hidden">
+                {/* Mood Benefits Section - Only show for non-ADDON items */}
+                {formData.itemType !== 'ADDON' && (
+                <div className="space-y-4">
+                  <div className="border border-purple-200 rounded-xl overflow-hidden">
                     <button
                       type="button"
                       onClick={() => setMoodSectionExpanded(!moodSectionExpanded)}
@@ -1188,11 +1912,30 @@ export const ProductsPage = () => {
                       <div className="p-4 space-y-4 bg-white">
                         {/* Info Banner */}
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
-                          <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                          <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
                           <div className="text-xs text-blue-800">
                             <p className="font-medium mb-1">Select Only Relevant Moods</p>
                             <p>Not all products help with all moods. Only add scientific explanations for moods this product genuinely helps with. Products with mood explanations appear in recommendations when customers select that mood.</p>
                           </div>
+                        </div>
+
+                        {/* Key Nutrients (moved here from above) */}
+                        <div>
+                          <Label htmlFor="nutrients" className="text-sm font-semibold text-gray-700 mb-2 block">
+                            <span className="flex items-center gap-2">
+                              <Sparkles className="h-4 w-4 text-green-600" />
+                              Key Nutrients
+                              <span className="text-xs font-normal text-gray-500">(from AI analysis or manual)</span>
+                            </span>
+                          </Label>
+                          <Input
+                            id="nutrients"
+                            type="text"
+                            value={formData.nutrients}
+                            onChange={(e) => setFormData({ ...formData, nutrients: e.target.value })}
+                            placeholder="e.g., Vitamin B12, Iron, Protein, Omega-3 (paste from AI response)"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">The AI prompt below will identify nutrients - paste them here after getting the response</p>
                         </div>
 
                         {/* AI Prompt Template */}
@@ -1314,9 +2057,13 @@ MOOD BENEFITS:
                       </div>
                     )}
                   </div>
+                </div>
+                )}
 
-                  {/* Availability & Featured */}
-                  <div className="md:col-span-2 space-y-3">
+                {/* Settings Section */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 pb-2">Settings</h3>
+                  <div className="flex flex-col sm:flex-row gap-4 sm:gap-8">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
@@ -1324,7 +2071,7 @@ MOOD BENEFITS:
                         onChange={(e) => setFormData({ ...formData, available: e.target.checked })}
                         className="h-4 w-4 rounded border-gray-300"
                       />
-                      <span className="text-sm font-medium text-gray-700">Product is available for sale</span>
+                      <span className="text-sm font-medium text-gray-700">Available for sale</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -1333,7 +2080,7 @@ MOOD BENEFITS:
                         onChange={(e) => setFormData({ ...formData, featured: e.target.checked })}
                         className="h-4 w-4 rounded border-gray-300"
                       />
-                      <span className="text-sm font-medium text-gray-700">Mark as featured item (Best Seller/Recommended)</span>
+                      <span className="text-sm font-medium text-gray-700">Featured item</span>
                     </label>
                   </div>
                 </div>
@@ -1510,14 +2257,40 @@ MOOD BENEFITS:
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {categories.map(cat => (
+                      {[...categories].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((cat, index, arr) => (
                         <div 
                           key={cat.id} 
-                          className={`flex items-center justify-between p-3 rounded-lg border ${
+                          className={`flex items-center gap-3 p-3 rounded-lg border ${
                             cat.isActive ? 'bg-white' : 'bg-gray-100 opacity-60'
                           }`}
                         >
-                          <div>
+                          {/* Position Controls */}
+                          <div className="flex flex-col gap-0.5">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              disabled={index === 0}
+                              onClick={() => handleMoveCategoryPosition(cat.id, 'up')}
+                            >
+                              <ArrowUp className={`h-3 w-3 ${index === 0 ? 'text-gray-300' : 'text-gray-500 hover:text-gray-700'}`} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              disabled={index === arr.length - 1}
+                              onClick={() => handleMoveCategoryPosition(cat.id, 'down')}
+                            >
+                              <ArrowDown className={`h-3 w-3 ${index === arr.length - 1 ? 'text-gray-300' : 'text-gray-500 hover:text-gray-700'}`} />
+                            </Button>
+                          </div>
+                          
+                          {/* Position Number */}
+                          <span className="text-xs text-gray-400 font-mono w-4 text-center">{index + 1}</span>
+                          
+                          {/* Category Info */}
+                          <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-gray-900">{cat.displayName}</span>
                               <span className="text-xs text-gray-400 font-mono">{cat.name}</span>
@@ -1529,6 +2302,8 @@ MOOD BENEFITS:
                               <p className="text-xs text-gray-500 mt-1">{cat.description}</p>
                             )}
                           </div>
+                          
+                          {/* Action Buttons */}
                           <div className="flex items-center gap-1">
                             <Button
                               variant="ghost"

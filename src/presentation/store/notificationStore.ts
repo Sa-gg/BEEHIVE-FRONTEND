@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { ordersApi, type OrderResponse } from '../../infrastructure/api/orders.api'
 import { inventoryApi } from '../../infrastructure/api/inventory.api'
+import { menuItemsApi, type MenuItemDTO } from '../../infrastructure/api/menuItems.api'
+import { recipeApi } from '../../infrastructure/api/recipe.api'
 
 interface NewOrderAlert {
   id: string
@@ -10,10 +12,19 @@ interface NewOrderAlert {
   timestamp: Date
 }
 
+// Product that needs attention (marked out of stock but has available stock)
+interface ProductNeedingAttention {
+  id: string
+  name: string
+  currentStock: number // max servings available
+  image: string | null
+}
+
 interface NotificationState {
   pendingOrders: OrderResponse[]
   lowStockItems: Array<{ id: string; name: string; currentStock: number; minStock: number }>
   outOfStockItems: Array<{ id: string; name: string }>
+  productsNeedAttention: ProductNeedingAttention[] // Products marked out of stock but have stock
   lastUpdated: Date | null
   isLoading: boolean
   
@@ -23,11 +34,13 @@ interface NotificationState {
   // Computed counts
   pendingOrderCount: number
   stockAlertCount: number
+  productsNeedAttentionCount: number
   
   // Actions
   fetchNotifications: () => Promise<void>
   markOrderAsSeen: (orderId: string) => void
   clearStockAlert: (itemId: string) => void
+  clearProductAttention: (productId: string) => void
   
   // Real-time actions
   addNewOrderAlert: (order: OrderResponse) => void
@@ -40,11 +53,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   pendingOrders: [],
   lowStockItems: [],
   outOfStockItems: [],
+  productsNeedAttention: [],
   lastUpdated: null,
   isLoading: false,
   newOrderAlert: null,
   pendingOrderCount: 0,
   stockAlertCount: 0,
+  productsNeedAttentionCount: 0,
 
   fetchNotifications: async () => {
     set({ isLoading: true })
@@ -73,12 +88,36 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
           name: item.name
         }))
 
+      // Fetch products needing attention (marked out of stock but have available stock)
+      const menuItemsResponse = await menuItemsApi.getAll()
+      const menuItems = menuItemsResponse.data
+      const maxServings = await recipeApi.getAllMaxServings()
+      
+      // Find products that are marked out of stock but actually have stock available
+      const productsNeedAttention: ProductNeedingAttention[] = menuItems
+        .filter((item: MenuItemDTO) => {
+          // Product is marked as out of stock
+          if (!item.outOfStock) return false
+          // Check if it has recipe-based stock available (>= 1)
+          const availableServings = maxServings[item.id]
+          // Only flag if there's actually stock available (not undefined or 0)
+          return availableServings !== undefined && availableServings >= 1
+        })
+        .map((item: MenuItemDTO) => ({
+          id: item.id,
+          name: item.name,
+          currentStock: maxServings[item.id] || 0,
+          image: item.image
+        }))
+
       set({
         pendingOrders,
         lowStockItems,
         outOfStockItems,
+        productsNeedAttention,
         pendingOrderCount: pendingOrders.length,
         stockAlertCount: lowStockItems.length + outOfStockItems.length,
+        productsNeedAttentionCount: productsNeedAttention.length,
         lastUpdated: new Date(),
         isLoading: false
       })
@@ -105,6 +144,15 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       lowStockItems: newLowStock,
       outOfStockItems: newOutOfStock,
       stockAlertCount: newLowStock.length + newOutOfStock.length
+    })
+  },
+
+  clearProductAttention: (productId: string) => {
+    const { productsNeedAttention } = get()
+    const filtered = productsNeedAttention.filter(item => item.id !== productId)
+    set({
+      productsNeedAttention: filtered,
+      productsNeedAttentionCount: filtered.length
     })
   },
 

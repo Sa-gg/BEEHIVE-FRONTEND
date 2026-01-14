@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { OrderItem } from '../../../../core/domain/entities/Order.entity'
 import { Button } from '../../common/ui/button'
 import { Minus, Plus, Trash2 } from 'lucide-react'
@@ -10,10 +11,42 @@ interface OrderItemRowProps {
 }
 
 export const OrderItemRow = ({ item, onUpdateQuantity, onRemove, itemIndex }: OrderItemRowProps) => {
-  const hasVariantOrAddons = item.variantId || (item.addons && item.addons.length > 0)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(item.quantity.toString())
   
   // Calculate addon total using unitPrice
   const addonsTotal = item.addons?.reduce((sum, addon) => sum + (addon.unitPrice * addon.quantity), 0) || 0
+  
+  const handleQuantityClick = () => {
+    setEditValue(item.quantity.toString())
+    setIsEditing(true)
+  }
+  
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Allow only numbers
+    const value = e.target.value.replace(/[^0-9]/g, '')
+    setEditValue(value)
+  }
+  
+  const handleQuantityBlur = () => {
+    const newQuantity = parseInt(editValue, 10)
+    if (!isNaN(newQuantity) && newQuantity > 0) {
+      onUpdateQuantity(item.menuItemId, newQuantity, itemIndex)
+    } else if (newQuantity === 0 || editValue === '') {
+      // If 0 or empty, remove the item
+      onRemove(item.menuItemId, itemIndex)
+    }
+    setIsEditing(false)
+  }
+  
+  const handleQuantityKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleQuantityBlur()
+    } else if (e.key === 'Escape') {
+      setIsEditing(false)
+      setEditValue(item.quantity.toString())
+    }
+  }
   
   return (
     <div className="py-2 border-b border-gray-100 last:border-b-0">
@@ -44,7 +77,26 @@ export const OrderItemRow = ({ item, onUpdateQuantity, onRemove, itemIndex }: Or
           >
             <Minus className="h-3 w-3" />
           </Button>
-          <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+          {isEditing ? (
+            <input
+              type="text"
+              inputMode="numeric"
+              value={editValue}
+              onChange={handleQuantityChange}
+              onBlur={handleQuantityBlur}
+              onKeyDown={handleQuantityKeyDown}
+              autoFocus
+              className="w-10 h-7 text-center text-sm font-medium border border-yellow-400 rounded focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            />
+          ) : (
+            <button
+              onClick={handleQuantityClick}
+              className="w-8 h-7 text-center text-sm font-medium hover:bg-gray-100 rounded transition-colors cursor-text"
+              title="Click to edit quantity"
+            >
+              {item.quantity}
+            </button>
+          )}
           <Button
             size="sm"
             variant="outline"

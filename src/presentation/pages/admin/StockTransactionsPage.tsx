@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
@@ -11,12 +11,26 @@ import {
   ChevronRight,
   RefreshCw,
   ArrowLeft,
-  Printer
+  Printer,
+  Eye,
+  X,
+  AlertTriangle,
+  AlertOctagon,
+  Edit2,
+  Upload,
+  Trash2,
+  Image as ImageIcon,
+  Check,
+  FileText
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { stockTransactionApi, type StockTransaction } from '../../../infrastructure/api/stockTransaction.api'
+import { uploadApi } from '../../../infrastructure/api/menuItems.api'
 import { DateFilter, type DateFilterValue, filterByDateRange } from '../../components/common/DateFilter'
 import { printWithIframe } from '../../../shared/utils/printUtils'
+import { Label } from '../../components/common/ui/label'
+import { Input } from '../../components/common/ui/input'
+import { Textarea } from '../../components/common/ui/textarea'
 
 const REASON_LABELS: Record<string, { label: string; color: string }> = {
   PURCHASE: { label: 'Purchase', color: 'bg-green-100 text-green-800' },
@@ -24,23 +38,197 @@ const REASON_LABELS: Record<string, { label: string; color: string }> = {
   WASTE: { label: 'Waste', color: 'bg-red-100 text-red-800' },
   ADJUSTMENT: { label: 'Adjustment', color: 'bg-yellow-100 text-yellow-800' },
   RECONCILIATION: { label: 'Reconciliation', color: 'bg-purple-100 text-purple-800' },
+  VOID: { label: 'Void', color: 'bg-gray-100 text-gray-800' },
+  CREATED: { label: 'Created', color: 'bg-teal-100 text-teal-800' },
+  EDITED: { label: 'Edited', color: 'bg-orange-100 text-orange-800' },
+  DELETED: { label: 'Deleted', color: 'bg-rose-100 text-rose-800' },
 }
 
 export const StockTransactionsPage = () => {
   const [transactions, setTransactions] = useState<StockTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedTransaction, setSelectedTransaction] = useState<StockTransaction | null>(null)
+  
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editReferenceId, setEditReferenceId] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  const [editReceiptImage, setEditReceiptImage] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const [savingMetadata, setSavingMetadata] = useState(false)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
   const [filterReason, setFilterReason] = useState<string>('all')
+  const [filterStatus, setFilterStatus] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<DateFilterValue>({ preset: 'week', startDate: null, endDate: null })
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(25)
   const itemsPerPageOptions = [10, 25, 50, 100, 'all'] as const
+
+  // Get image URL helper
+  const getImageUrl = (imagePath: string | null | undefined) => {
+    if (!imagePath) return null
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath
+    }
+    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+    return `${backendUrl}${imagePath.startsWith('/') ? '' : '/'}${imagePath}`
+  }
+
+  // Handle image upload for edit mode
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      console.error('Please select an image file')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      console.error('Image size must be less than 5MB')
+      return
+    }
+
+    try {
+      setUploadingImage(true)
+      const formData = new FormData()
+      formData.append('image', file)
+      const response = await uploadApi.uploadImage(formData)
+      if (response.data?.path) {
+        setEditReceiptImage(response.data.path)
+      }
+    } catch (error) {
+      console.error('Failed to upload image:', error)
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      console.error('Please drop an image file')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      console.error('Image size must be less than 5MB')
+      return
+    }
+
+    try {
+      setUploadingImage(true)
+      const formData = new FormData()
+      formData.append('image', file)
+      const response = await uploadApi.uploadImage(formData)
+      if (response.data?.path) {
+        setEditReceiptImage(response.data.path)
+      }
+    } catch (error) {
+      console.error('Failed to upload image:', error)
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  // Remove receipt image
+  const removeReceiptImage = () => {
+    setEditReceiptImage(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  // Enter edit mode
+  const enterEditMode = () => {
+    if (selectedTransaction) {
+      setEditReferenceId(selectedTransaction.referenceId || '')
+      setEditNotes(selectedTransaction.notes || '')
+      setEditReceiptImage(selectedTransaction.receiptImage || null)
+      setIsEditMode(true)
+      setSuccessMessage(null)
+    }
+  }
+
+  // Cancel edit mode
+  const cancelEditMode = () => {
+    setIsEditMode(false)
+    setSuccessMessage(null)
+  }
+
+  // Save metadata changes
+  const saveMetadata = async () => {
+    if (!selectedTransaction) return
+
+    try {
+      setSavingMetadata(true)
+      const response = await stockTransactionApi.updateTransactionMetadata(selectedTransaction.id, {
+        referenceId: editReferenceId || undefined,
+        notes: editNotes || undefined,
+        receiptImage: editReceiptImage || undefined,
+      })
+
+      // Update the transaction in the list
+      setTransactions(prev => prev.map(tx => 
+        tx.id === selectedTransaction.id 
+          ? { ...tx, referenceId: editReferenceId || null, notes: editNotes || null, receiptImage: editReceiptImage || null }
+          : tx
+      ))
+
+      // Update selected transaction
+      setSelectedTransaction(prev => prev ? {
+        ...prev,
+        referenceId: editReferenceId || null,
+        notes: editNotes || null,
+        receiptImage: editReceiptImage || null
+      } : null)
+
+      setIsEditMode(false)
+      setSuccessMessage('Metadata updated. Inventory quantity unchanged.')
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccessMessage(null), 3000)
+    } catch (error) {
+      console.error('Failed to update metadata:', error)
+    } finally {
+      setSavingMetadata(false)
+    }
+  }
+
+  // Close modal and reset state
+  const closeModal = () => {
+    setSelectedTransaction(null)
+    setIsEditMode(false)
+    setSuccessMessage(null)
+  }
 
   const loadTransactions = async () => {
     try {
@@ -63,7 +251,7 @@ export const StockTransactionsPage = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, filterType, filterReason, dateFilter])
+  }, [searchQuery, filterType, filterReason, filterStatus, dateFilter])
 
   // Filter transactions
   const filteredTransactions = filterByDateRange(transactions, dateFilter, 'createdAt')
@@ -74,9 +262,14 @@ export const StockTransactionsPage = () => {
         tx.notes?.toLowerCase().includes(searchQuery.toLowerCase())
       const matchesType = filterType === 'all' || tx.type === filterType
       const matchesReason = filterReason === 'all' || tx.reason === filterReason
-      return matchesSearch && matchesType && matchesReason
+      const matchesStatus = filterStatus === 'all' || tx.status === filterStatus
+      return matchesSearch && matchesType && matchesReason && matchesStatus
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+  // Calculate discrepancy count from date-filtered transactions
+  const dateFilteredTransactions = filterByDateRange(transactions, dateFilter, 'createdAt')
+  const discrepancyCount = dateFilteredTransactions.filter(t => t.status === 'DISCREPANCY').length
 
   // Pagination logic
   const totalItems = filteredTransactions.length
@@ -266,28 +459,64 @@ export const StockTransactionsPage = () => {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <ArrowUpRight className="h-5 w-5 text-green-600" />
-              <span className="text-sm font-medium text-green-900">Stock In</span>
+        {/* Stats Cards - Dynamic grid based on whether discrepancy card is shown */}
+        <div className={`grid gap-4 lg:gap-6 ${
+          discrepancyCount > 0 
+            ? 'grid-cols-2 lg:grid-cols-4' 
+            : 'grid-cols-3'
+        }`}>
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-sm p-5 border border-green-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-green-100 rounded-xl group-hover:scale-110 transition-transform">
+                <ArrowUpRight className="h-5 w-5 text-green-600" />
+              </div>
             </div>
-            <p className="text-2xl lg:text-3xl font-bold text-green-900">{stats.totalIn.toFixed(2)}</p>
+            <p className="text-sm font-medium text-gray-500 mb-1">Stock In</p>
+            <p className="text-2xl lg:text-3xl font-bold text-green-700">+{stats.totalIn.toFixed(2)}</p>
+            <p className="text-xs text-gray-400 mt-2">total incoming</p>
           </div>
-          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <ArrowDownRight className="h-5 w-5 text-red-600" />
-              <span className="text-sm font-medium text-red-900">Stock Out</span>
+          <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl shadow-sm p-5 border border-red-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-red-100 rounded-xl group-hover:scale-110 transition-transform">
+                <ArrowDownRight className="h-5 w-5 text-red-600" />
+              </div>
             </div>
-            <p className="text-2xl lg:text-3xl font-bold text-red-900">{stats.totalOut.toFixed(2)}</p>
+            <p className="text-sm font-medium text-gray-500 mb-1">Stock Out</p>
+            <p className="text-2xl lg:text-3xl font-bold text-red-700">-{stats.totalOut.toFixed(2)}</p>
+            <p className="text-xs text-gray-400 mt-2">total outgoing</p>
           </div>
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Package className="h-5 w-5 text-blue-600" />
-              <span className="text-sm font-medium text-blue-900">Transactions</span>
+          {/* Discrepancy Card - Only show if there are discrepancies */}
+          {discrepancyCount > 0 && (
+            <div 
+              className={`rounded-2xl shadow-sm p-5 border cursor-pointer transition-all duration-300 group ${
+                filterStatus === 'DISCREPANCY'
+                  ? 'bg-gradient-to-br from-purple-100 to-violet-100 border-purple-300 ring-2 ring-purple-200'
+                  : 'bg-gradient-to-br from-purple-50 to-violet-50 border-purple-100 hover:shadow-lg'
+              }`}
+              onClick={() => setFilterStatus(filterStatus === 'DISCREPANCY' ? 'all' : 'DISCREPANCY')}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-3 bg-purple-100 rounded-xl group-hover:scale-110 transition-transform">
+                  <AlertOctagon className="h-5 w-5 text-purple-600" />
+                </div>
+                {filterStatus === 'DISCREPANCY' && (
+                  <Badge className="bg-purple-200 text-purple-800 text-[10px]">Filtered</Badge>
+                )}
+              </div>
+              <p className="text-sm font-medium text-gray-500 mb-1">Discrepancies</p>
+              <p className="text-2xl lg:text-3xl font-bold text-purple-700">{discrepancyCount}</p>
+              <p className="text-xs text-gray-400 mt-2">click to filter</p>
             </div>
-            <p className="text-2xl lg:text-3xl font-bold text-blue-900">{stats.transactionCount}</p>
+          )}
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-5 border border-blue-100 hover:shadow-lg transition-all duration-300 group">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-3 bg-blue-100 rounded-xl group-hover:scale-110 transition-transform">
+                <Package className="h-5 w-5 text-blue-600" />
+              </div>
+            </div>
+            <p className="text-sm font-medium text-gray-500 mb-1">Transactions</p>
+            <p className="text-2xl lg:text-3xl font-bold text-gray-900">{stats.transactionCount.toLocaleString()}</p>
+            <p className="text-xs text-gray-400 mt-2">total records</p>
           </div>
         </div>
 
@@ -336,9 +565,26 @@ export const StockTransactionsPage = () => {
               <option value="WASTE">Waste</option>
               <option value="ADJUSTMENT">Adjustment</option>
               <option value="RECONCILIATION">Reconciliation</option>
+              <option value="VOID">Void</option>
+              <option value="CREATED">Created</option>
+              <option value="EDITED">Edited</option>
+              <option value="DELETED">Deleted</option>
             </select>
 
-            {(searchQuery || filterType !== 'all' || filterReason !== 'all' || dateFilter.preset !== 'week') && (
+            {/* Status Filter */}
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className={`h-10 px-3 text-sm border rounded-lg bg-white focus:ring-2 focus:ring-amber-500 ${
+                filterStatus === 'DISCREPANCY' ? 'border-red-300 bg-red-50' : 'border-gray-200'
+              }`}
+            >
+              <option value="all">All Status</option>
+              <option value="NORMAL">Normal</option>
+              <option value="DISCREPANCY">⚠️ Discrepancy ({discrepancyCount})</option>
+            </select>
+
+            {(searchQuery || filterType !== 'all' || filterReason !== 'all' || filterStatus !== 'all' || dateFilter.preset !== 'week') && (
               <Button
                 variant="outline"
                 size="sm"
@@ -346,6 +592,7 @@ export const StockTransactionsPage = () => {
                   setSearchQuery('')
                   setFilterType('all')
                   setFilterReason('all')
+                  setFilterStatus('all')
                   setDateFilter({ preset: 'week', startDate: null, endDate: null })
                 }}
               >
@@ -379,17 +626,20 @@ export const StockTransactionsPage = () => {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Item</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Type</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Reason</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Quantity</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Qty</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Balance</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Notes</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {paginatedTransactions.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-12 text-center">
+                        <td colSpan={9} className="px-4 py-12 text-center">
                           <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                           <p className="text-gray-500">No transactions found</p>
-                          {(searchQuery || filterType !== 'all' || filterReason !== 'all') && (
+                          {(searchQuery || filterType !== 'all' || filterReason !== 'all' || filterStatus !== 'all') && (
                             <p className="text-sm text-gray-400 mt-2">Try adjusting your filters</p>
                           )}
                         </td>
@@ -399,7 +649,7 @@ export const StockTransactionsPage = () => {
                         const reasonInfo = REASON_LABELS[tx.reason] || { label: tx.reason, color: 'bg-gray-100 text-gray-800' }
                         
                         return (
-                          <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
+                          <tr key={tx.id} className={`hover:bg-gray-50 transition-colors ${tx.status === 'DISCREPANCY' ? 'bg-red-50' : ''}`}>
                             <td className="px-4 py-4">
                               <div>
                                 <p className="text-sm font-medium text-gray-900">
@@ -447,10 +697,47 @@ export const StockTransactionsPage = () => {
                                 {tx.type === 'IN' ? '+' : '-'}{tx.quantity.toFixed(2)}
                               </span>
                             </td>
+                            <td className="px-4 py-4 text-right">
+                              {tx.balanceBefore != null && tx.balanceAfter != null ? (
+                                <div className="text-xs">
+                                  <span className={tx.balanceBefore < 0 ? 'text-purple-600 font-medium' : 'text-gray-500'}>{tx.balanceBefore.toFixed(2)}</span>
+                                  <span className="text-gray-400 mx-1">→</span>
+                                  <span className={`font-medium ${tx.balanceAfter < 0 ? 'text-purple-600' : 'text-gray-900'}`}>{tx.balanceAfter.toFixed(2)}</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              {tx.status === 'DISCREPANCY' ? (
+                                <Badge className="bg-purple-100 text-purple-800 border border-purple-200">
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  Discrepancy
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-gray-100 text-gray-600">Normal</Badge>
+                              )}
+                            </td>
                             <td className="px-4 py-4">
-                              <p className="text-sm text-gray-600 max-w-xs truncate">
-                                {tx.notes || '-'}
-                              </p>
+                              <div className="max-w-[120px]">
+                                <p 
+                                  className="text-sm text-gray-600 truncate"
+                                  title={tx.notes || '-'}
+                                >
+                                  {tx.notes || '-'}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedTransaction(tx)}
+                                className="h-8 w-8 p-0"
+                                title="View details"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
                             </td>
                           </tr>
                         )
@@ -534,6 +821,352 @@ export const StockTransactionsPage = () => {
           )}
         </div>
       </div>
+
+      {/* Transaction Detail Modal */}
+      {selectedTransaction && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/50 z-50" 
+            onClick={closeModal}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {isEditMode ? 'Edit Transaction Metadata' : 'Transaction Details'}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    {!isEditMode && (
+                      <button
+                        onClick={enterEditMode}
+                        className="text-gray-500 hover:text-gray-700 p-1 hover:bg-gray-100 rounded"
+                        title="Edit metadata"
+                      >
+                        <Edit2 className="h-5 w-5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={closeModal}
+                      className="text-gray-400 hover:text-gray-600 p-1"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                {/* Success Message */}
+                {successMessage && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
+                    <Check className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm font-medium text-green-800">{successMessage}</p>
+                  </div>
+                )}
+
+                {/* Status Banner */}
+                {selectedTransaction.status === 'DISCREPANCY' && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-red-800">Stock Discrepancy Detected</p>
+                      <p className="text-sm text-red-600 mt-1">
+                        This transaction exceeded the available system quantity. This may indicate unrecorded stock or inventory count differences.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Transaction Info Grid - Read Only */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase tracking-wide">Date & Time</label>
+                    <p className="text-sm font-medium text-gray-900 mt-1">
+                      {new Date(selectedTransaction.createdAt).toLocaleString('en-US', {
+                        dateStyle: 'full',
+                        timeStyle: 'short'
+                      })}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase tracking-wide">Item</label>
+                    <p className="text-sm font-medium text-gray-900 mt-1">
+                      {selectedTransaction.inventory_item?.name || 'Unknown'}
+                    </p>
+                    <p className="text-xs text-gray-500">{selectedTransaction.inventory_item?.unit}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase tracking-wide">Type</label>
+                    <Badge className={`mt-1 ${
+                      selectedTransaction.type === 'IN' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {selectedTransaction.type === 'IN' ? (
+                        <ArrowUpRight className="h-3 w-3 mr-1" />
+                      ) : (
+                        <ArrowDownRight className="h-3 w-3 mr-1" />
+                      )}
+                      {selectedTransaction.type === 'IN' ? 'Stock In' : 'Stock Out'}
+                    </Badge>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase tracking-wide">Reason</label>
+                    <Badge className={`mt-1 ${REASON_LABELS[selectedTransaction.reason]?.color || 'bg-gray-100'}`}>
+                      {REASON_LABELS[selectedTransaction.reason]?.label || selectedTransaction.reason}
+                    </Badge>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase tracking-wide">Quantity</label>
+                    <p className={`text-lg font-bold mt-1 ${
+                      selectedTransaction.type === 'IN' ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {selectedTransaction.type === 'IN' ? '+' : '-'}{(selectedTransaction.quantity ?? 0).toFixed(2)} {selectedTransaction.inventory_item?.unit}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase tracking-wide">Status</label>
+                    <Badge className={`mt-1 ${
+                      selectedTransaction.status === 'DISCREPANCY'
+                        ? 'bg-red-100 text-red-800 border border-red-200'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {selectedTransaction.status === 'DISCREPANCY' && <AlertTriangle className="h-3 w-3 mr-1" />}
+                      {selectedTransaction.status || 'NORMAL'}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Balance Change */}
+                {selectedTransaction.balanceBefore != null && selectedTransaction.balanceAfter != null && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <label className="text-xs text-gray-500 uppercase tracking-wide">Balance Change</label>
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">Before</p>
+                        <p className={`text-lg font-semibold ${selectedTransaction.balanceBefore < 0 ? 'text-purple-600' : 'text-gray-600'}`}>{selectedTransaction.balanceBefore.toFixed(2)}</p>
+                      </div>
+                      <div className="text-gray-400">→</div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500">After</p>
+                        <p className={`text-lg font-semibold ${selectedTransaction.balanceAfter < 0 ? 'text-purple-600' : 'text-gray-900'}`}>{selectedTransaction.balanceAfter.toFixed(2)}</p>
+                      </div>
+                      <div className="ml-auto">
+                        <p className={`text-sm font-medium px-2 py-1 rounded ${
+                          selectedTransaction.balanceAfter < 0
+                            ? 'bg-purple-100 text-purple-700'
+                            : selectedTransaction.type === 'IN' 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-red-100 text-red-700'
+                        }`}>
+                          {selectedTransaction.type === 'IN' ? '+' : ''}{(selectedTransaction.balanceAfter - selectedTransaction.balanceBefore).toFixed(2)} {selectedTransaction.inventory_item?.unit}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* EDITABLE METADATA SECTION */}
+                {isEditMode ? (
+                  <>
+                    {/* Editable Reference ID */}
+                    <div className="space-y-2">
+                      <Label htmlFor="editReferenceId" className="text-xs text-gray-500 uppercase tracking-wide">
+                        Reference # (Optional)
+                      </Label>
+                      <Input
+                        id="editReferenceId"
+                        type="text"
+                        value={editReferenceId}
+                        onChange={(e) => setEditReferenceId(e.target.value)}
+                        placeholder="e.g., Invoice #, PO #, Receipt #"
+                        className="text-sm"
+                      />
+                    </div>
+
+                    {/* Editable Receipt Image */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-gray-500 uppercase tracking-wide">Receipt Image (Optional)</Label>
+                      <div
+                        className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors relative ${
+                          isDragging 
+                            ? 'border-blue-500 bg-blue-50' 
+                            : editReceiptImage
+                              ? 'border-gray-200 bg-gray-50'
+                              : uploadingImage 
+                                ? 'border-yellow-400 bg-yellow-50' 
+                                : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50 cursor-pointer'
+                        }`}
+                        onClick={() => !editReceiptImage && fileInputRef.current?.click()}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                      >
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                        {editReceiptImage ? (
+                          <div className="relative">
+                            <img
+                              src={getImageUrl(editReceiptImage) || ''}
+                              alt="Receipt"
+                              className="w-full h-40 object-contain rounded cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                window.open(getImageUrl(editReceiptImage) || '', '_blank')
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                removeReceiptImage()
+                              }}
+                              className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors shadow-md"
+                              title="Remove image"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ) : uploadingImage ? (
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="animate-spin h-6 w-6 border-2 border-yellow-500 border-t-transparent rounded-full"></div>
+                            <span className="text-sm text-gray-600">Uploading...</span>
+                          </div>
+                        ) : isDragging ? (
+                          <div className="flex flex-col items-center gap-2 py-4">
+                            <div className="p-2 bg-blue-100 rounded-full">
+                              <Upload size={20} className="text-blue-500" />
+                            </div>
+                            <span className="text-sm text-blue-600 font-medium">Drop image here</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="p-2 bg-gray-100 rounded-full">
+                              <Upload size={20} className="text-gray-500" />
+                            </div>
+                            <span className="text-sm text-gray-600">Click or drag to upload receipt image</span>
+                            <span className="text-xs text-gray-400">JPG, PNG, max 5MB</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Editable Notes */}
+                    <div className="space-y-2">
+                      <Label htmlFor="editNotes" className="text-xs text-gray-500 uppercase tracking-wide">
+                        Notes (Optional)
+                      </Label>
+                      <Textarea
+                        id="editNotes"
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        placeholder="Add notes about this transaction..."
+                        rows={3}
+                        className="text-sm"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Read-only Reference ID */}
+                    <div>
+                      <label className="text-xs text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                        <FileText className="h-3 w-3" />
+                        Reference #
+                      </label>
+                      <p className="text-sm font-mono text-gray-700 mt-1 bg-gray-50 px-3 py-2 rounded">
+                        {selectedTransaction.referenceId || <span className="text-gray-400 italic">Not provided</span>}
+                      </p>
+                    </div>
+
+                    {/* Read-only Receipt Image */}
+                    {selectedTransaction.receiptImage && (
+                      <div>
+                        <label className="text-xs text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                          <ImageIcon className="h-3 w-3" />
+                          Receipt Image
+                        </label>
+                        <div className="mt-1 border border-gray-200 rounded-lg p-2">
+                          <img
+                            src={getImageUrl(selectedTransaction.receiptImage) || ''}
+                            alt="Receipt"
+                            className="w-full h-40 object-contain rounded cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => window.open(getImageUrl(selectedTransaction.receiptImage) || '', '_blank')}
+                            title="Click to view full size"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Read-only Notes */}
+                    <div>
+                      <label className="text-xs text-gray-500 uppercase tracking-wide">Notes</label>
+                      <div className="mt-1 bg-gray-50 rounded-lg p-4 max-h-[200px] overflow-y-auto">
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                          {selectedTransaction.notes || <span className="text-gray-400 italic">No notes</span>}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Transaction ID */}
+                <div className="pt-4 border-t border-gray-200">
+                  <label className="text-xs text-gray-500 uppercase tracking-wide">Transaction ID</label>
+                  <p className="text-xs font-mono text-gray-400 mt-1">{selectedTransaction.id}</p>
+                </div>
+              </div>
+              
+              <div className="p-4 border-t border-gray-200">
+                {isEditMode ? (
+                  <div className="flex gap-3">
+                    <Button 
+                      onClick={cancelEditMode}
+                      variant="outline"
+                      className="flex-1"
+                      disabled={savingMetadata}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={saveMetadata}
+                      className="flex-1"
+                      style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                      disabled={savingMetadata || uploadingImage}
+                    >
+                      {savingMetadata ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-3">
+                    <Button 
+                      onClick={enterEditMode}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      <Edit2 className="h-4 w-4 mr-2" />
+                      Edit Metadata
+                    </Button>
+                    <Button 
+                      onClick={closeModal}
+                      className="flex-1"
+                      style={{ backgroundColor: '#F9C900', color: '#000000' }}
+                    >
+                      Close
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </AdminLayout>
   )
 }

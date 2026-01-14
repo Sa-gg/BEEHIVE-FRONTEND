@@ -6,9 +6,13 @@ export interface StockTransaction {
   id: string;
   inventoryItemId: string;
   type: 'IN' | 'OUT';
-  reason: 'PURCHASE' | 'ORDER' | 'WASTE' | 'ADJUSTMENT' | 'RECONCILIATION';
+  reason: 'PURCHASE' | 'ORDER' | 'WASTE' | 'ADJUSTMENT' | 'RECONCILIATION' | 'VOID' | 'CREATED' | 'EDITED';
   quantity: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
+  status: 'NORMAL' | 'DISCREPANCY';
   referenceId?: string;
+  receiptImage?: string;
   userId?: string;
   notes?: string;
   createdAt: string;
@@ -24,6 +28,7 @@ export interface StockInParams {
   quantity: number;
   reason?: 'PURCHASE' | 'RECONCILIATION';
   referenceId?: string;
+  receiptImage?: string;
   userId?: string;
   notes?: string;
 }
@@ -33,6 +38,7 @@ export interface StockOutParams {
   quantity: number;
   reason: 'ORDER' | 'WASTE' | 'ADJUSTMENT';
   referenceId?: string;
+  receiptImage?: string;
   userId?: string;
   notes?: string;
 }
@@ -40,8 +46,26 @@ export interface StockOutParams {
 export interface AdjustStockParams {
   inventoryItemId: string;
   newStock: number;
+  referenceId?: string;
+  receiptImage?: string;
   userId?: string;
   notes?: string;
+}
+
+export interface UpdateTransactionMetadataParams {
+  notes?: string;
+  referenceId?: string;
+  receiptImage?: string;
+}
+
+export interface TransactionMetadataAuditLog {
+  id: string;
+  transactionId: string;
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+  changedBy: string | null;
+  changedAt: string;
 }
 
 export const stockTransactionApi = {
@@ -82,5 +106,17 @@ export const stockTransactionApi = {
   }) => {
     const response = await api.get(API_URL, { params: filters });
     return response.data.data as StockTransaction[];
+  },
+
+  // Get single transaction with audit log
+  getTransaction: async (transactionId: string) => {
+    const response = await api.get(`${API_URL}/${transactionId}`);
+    return response.data.data as StockTransaction & { auditLog?: TransactionMetadataAuditLog[] };
+  },
+
+  // Update transaction metadata (receipt, reference, notes) - does NOT create new transaction
+  updateTransactionMetadata: async (transactionId: string, params: UpdateTransactionMetadataParams) => {
+    const response = await api.patch(`${API_URL}/${transactionId}/metadata`, params);
+    return response.data;
   },
 };

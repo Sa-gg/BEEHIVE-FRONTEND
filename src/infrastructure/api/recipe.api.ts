@@ -13,7 +13,7 @@ export interface MenuItemIngredient {
     unit: string;
     currentStock: number;
     minStock: number;
-    status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+    status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' | 'DISCREPANCY';
   };
 }
 

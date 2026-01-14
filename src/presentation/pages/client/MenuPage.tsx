@@ -397,6 +397,23 @@ export const MenuPage = () => {
   }
   
   // Add item with variants/add-ons from the modal
+  // Helper to check if two addon arrays are equivalent
+  const areAddonsEqual = (addons1: OrderItem['addons'], addons2: OrderItem['addons']): boolean => {
+    if (!addons1 && !addons2) return true
+    if (!addons1 || !addons2) return false
+    if (addons1.length !== addons2.length) return false
+    
+    // Sort by addonItemId for comparison
+    const sorted1 = [...addons1].sort((a, b) => a.addonItemId.localeCompare(b.addonItemId))
+    const sorted2 = [...addons2].sort((a, b) => a.addonItemId.localeCompare(b.addonItemId))
+    
+    return sorted1.every((addon, idx) => 
+      addon.addonItemId === sorted2[idx].addonItemId && 
+      addon.quantity === sorted2[idx].quantity
+    )
+  }
+
+  // Add item with variants/add-ons from the modal
   const addItemWithAddonsToCart = (data: {
     variantId: string | null
     variantName: string | null
@@ -404,29 +421,59 @@ export const MenuPage = () => {
     addons: OrderItemAddon[]
     notes: string
     finalPrice: number
+    quantity: number // Added: support ordering multiple items at once
   }) => {
     if (!selectedMenuItemForAddons) return
     
-    const orderItem: OrderItem = {
-      menuItemId: selectedMenuItemForAddons.id,
-      name: selectedMenuItemForAddons.name,
-      price: selectedMenuItemForAddons.price,
-      quantity: 1,
-      subtotal: data.finalPrice,
-      variantId: data.variantId || undefined,
-      variantName: data.variantName || undefined,
-      variantPriceDelta: data.variantPriceDelta || undefined,
-      notes: data.notes || undefined,
-      addons: data.addons.length > 0 ? data.addons.map(a => ({
-        addonItemId: a.addonItemId,
-        addonName: a.addonName,
-        unitPrice: a.unitPrice,
-        quantity: a.quantity,
-        subtotal: a.unitPrice * a.quantity
-      })) : undefined
-    }
+    const newAddons = data.addons.length > 0 ? data.addons.map(a => ({
+      addonItemId: a.addonItemId,
+      addonName: a.addonName,
+      unitPrice: a.unitPrice,
+      quantity: a.quantity,
+      subtotal: a.unitPrice * a.quantity
+    })) : undefined
     
-    setCartItems(prev => [...prev, orderItem])
+    setCartItems((prev) => {
+      // Try to find an existing item with same menuItemId, variant, addons, and notes
+      const existingIndex = prev.findIndex((item) => 
+        item.menuItemId === selectedMenuItemForAddons.id && 
+        item.variantId === (data.variantId || undefined) &&
+        areAddonsEqual(item.addons, newAddons) &&
+        (item.notes || '') === (data.notes || '')
+      )
+      
+      if (existingIndex !== -1) {
+        // Item with same config exists - increment quantity
+        const existingItem = prev[existingIndex]
+        const newQuantity = existingItem.quantity + data.quantity
+        // Recalculate subtotal: unitPrice * newQuantity
+        const unitPrice = data.finalPrice / data.quantity // Get unit price from finalPrice
+        const newSubtotal = unitPrice * newQuantity
+        
+        return prev.map((item, idx) =>
+          idx === existingIndex
+            ? { ...item, quantity: newQuantity, subtotal: newSubtotal }
+            : item
+        )
+      }
+      
+      // No matching item - add new cart item
+      const orderItem: OrderItem = {
+        menuItemId: selectedMenuItemForAddons.id,
+        name: selectedMenuItemForAddons.name,
+        price: selectedMenuItemForAddons.price,
+        quantity: data.quantity,
+        subtotal: data.finalPrice,
+        variantId: data.variantId || undefined,
+        variantName: data.variantName || undefined,
+        variantPriceDelta: data.variantPriceDelta || undefined,
+        notes: data.notes || undefined,
+        addons: newAddons
+      }
+      
+      return [...prev, orderItem]
+    })
+    
     setShowAddonsModal(false)
     setSelectedMenuItemForAddons(null)
   }
@@ -973,8 +1020,8 @@ export const MenuPage = () => {
     setViewState('menu')
   }
 
-  // Ensure menuItems is always an array
-  const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
+  // Ensure menuItems is always an array and filter out manually out-of-stock items
+  const safeMenuItems = (Array.isArray(menuItems) ? menuItems : []).filter(item => !(item as any).outOfStock)
   
   // Filter by category - use categoryId for matching with API categories
   const filteredItems = selectedCategory === 'all' 

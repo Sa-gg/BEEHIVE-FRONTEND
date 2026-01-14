@@ -12,7 +12,7 @@ export interface InventoryItemDTO {
   unit: string;
   costPerUnit: number;
   supplier: string;
-  status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+  status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' | 'DISCREPANCY';
   restockFrequencyDays: number | null;
   lastRestocked: Date | null;
   createdAt: Date;
@@ -47,6 +47,7 @@ export interface InventoryStats {
   totalItems: number;
   lowStock: number;
   outOfStock: number;
+  discrepancy?: number;
   totalValue: number;
 }
 
@@ -110,8 +111,8 @@ export const inventoryApi = {
     };
   },
 
-  async delete(id: string): Promise<void> {
-    await api.delete(`${API_URL}/${id}`);
+  async delete(id: string, reason?: string): Promise<void> {
+    await api.delete(`${API_URL}/${id}`, { data: { reason } });
   },
 
   async getStats(): Promise<InventoryStats> {

@@ -25,6 +25,7 @@ export interface AddonsVariantsResult {
   addons: OrderItemAddon[]
   notes: string
   finalPrice: number
+  quantity: number // Added: support ordering multiple items at once
 }
 
 interface AddonsVariantsModalProps {
@@ -55,6 +56,7 @@ export const AddonsVariantsModal = ({
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
   const [selectedAddons, setSelectedAddons] = useState<Map<string, { quantity: number; unitPrice: number; name: string }>>(new Map())
   const [notes, setNotes] = useState('')
+  const [quantity, setQuantity] = useState(initialQuantity)
 
   // Helper function to get full image URL
   const getImageUrl = (imagePath: string | null | undefined) => {
@@ -100,6 +102,7 @@ export const AddonsVariantsModal = ({
       setSelectedVariantId(null)
       setSelectedAddons(new Map())
       setNotes('')
+      setQuantity(1) // Reset quantity to 1
     }
   }, [isOpen])
 
@@ -117,8 +120,13 @@ export const AddonsVariantsModal = ({
       basePrice: menuItem.price,
       variantPriceDelta: variantDelta,
       addons: addonsArray,
-      quantity: initialQuantity
+      quantity: quantity // Use state quantity instead of initialQuantity
     })
+  }
+
+  // Handle item quantity change
+  const updateQuantity = (delta: number) => {
+    setQuantity(prev => Math.max(1, prev + delta)) // Minimum 1
   }
 
   // Handle addon quantity change
@@ -162,7 +170,8 @@ export const AddonsVariantsModal = ({
       variantPriceDelta: selectedVariant?.priceDelta || 0,
       addons: addonsArray,
       notes,
-      finalPrice: calculatePrice()
+      finalPrice: calculatePrice(),
+      quantity: quantity // Pass the selected quantity
     })
   }
 
@@ -313,8 +322,30 @@ export const AddonsVariantsModal = ({
 
         {/* Footer */}
         <div className="p-4 border-t bg-gray-50">
+          {/* Quantity Control */}
           <div className="flex items-center justify-between mb-3">
-            <span className="text-gray-600">Total ({initialQuantity}×)</span>
+            <span className="text-gray-700 font-medium">Quantity</span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => updateQuantity(-1)}
+                disabled={quantity <= 1}
+                className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+              <span className="w-8 text-center font-bold text-lg">{quantity}</span>
+              <button
+                onClick={() => updateQuantity(1)}
+                className="w-8 h-8 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          
+          {/* Total */}
+          <div className="flex items-center justify-between mb-3 pt-2 border-t border-gray-200">
+            <span className="text-gray-600">Total ({quantity}×)</span>
             <span className="text-xl font-bold text-amber-600">₱{finalPrice.toFixed(2)}</span>
           </div>
           <div className="flex gap-2">
@@ -330,7 +361,7 @@ export const AddonsVariantsModal = ({
               className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
               disabled={loading}
             >
-              Add to Order
+              Add {quantity > 1 ? `${quantity} items` : ''} to Order
             </Button>
           </div>
         </div>
