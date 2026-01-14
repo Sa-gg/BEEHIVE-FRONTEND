@@ -9,6 +9,7 @@ import { stockTransactionApi, type StockInParams, type StockOutParams, type Adju
 import { uploadApi } from '@/infrastructure/api/menuItems.api';
 import type { InventoryItemDTO } from '@/infrastructure/api/inventory.api';
 import { formatSmartStock } from '@/shared/utils/stockFormat';
+import { toast } from '@/presentation/components/common/ToastNotification';
 
 interface StockManagementModalProps {
   item: InventoryItemDTO;
@@ -151,6 +152,9 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
         };
         result = await stockTransactionApi.stockIn(params);
         
+        // Show success toast for stock in
+        toast.success('Stock In Recorded', `Added ${formatSmartStock(parseFloat(quantity), item.unit)} of ${item.name}`)
+        
         if (result.warning) {
           setWarning(result.warning);
         }
@@ -164,6 +168,9 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
           receiptImage: receiptImage || undefined,
         };
         result = await stockTransactionApi.stockOut(params);
+        
+        // Show success toast for stock out
+        toast.success('Stock Out Recorded', `Removed ${formatSmartStock(parseFloat(quantity), item.unit)} of ${item.name}`)
       } else {
         // ADJUST
         const params: AdjustStockParams = {
@@ -174,6 +181,9 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
           receiptImage: receiptImage || undefined,
         };
         result = await stockTransactionApi.adjustStock(params);
+        
+        // Show success toast for adjustment
+        toast.success('Stock Adjusted', `${item.name} stock set to ${formatSmartStock(parseFloat(newStock), item.unit)}`)
       }
 
       onSuccess();

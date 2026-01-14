@@ -21,10 +21,11 @@ import {
   Trash2,
   Image as ImageIcon,
   Check,
-  FileText
+  FileText,
+  History
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { stockTransactionApi, type StockTransaction } from '../../../infrastructure/api/stockTransaction.api'
+import { stockTransactionApi, type StockTransaction, type TransactionMetadataAuditLog } from '../../../infrastructure/api/stockTransaction.api'
 import { uploadApi } from '../../../infrastructure/api/menuItems.api'
 import { DateFilter, type DateFilterValue, filterByDateRange } from '../../components/common/DateFilter'
 import { printWithIframe } from '../../../shared/utils/printUtils'
@@ -61,6 +62,11 @@ export const StockTransactionsPage = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
+  // Audit log state
+  const [auditLogs, setAuditLogs] = useState<TransactionMetadataAuditLog[]>([])
+  const [loadingAuditLogs, setLoadingAuditLogs] = useState(false)
+  const [showAuditLogs, setShowAuditLogs] = useState(false)
+  
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
@@ -72,6 +78,7 @@ export const StockTransactionsPage = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(25)
   const itemsPerPageOptions = [10, 25, 50, 100, 'all'] as const
+
 
   // Get image URL helper
   const getImageUrl = (imagePath: string | null | undefined) => {
@@ -190,7 +197,7 @@ export const StockTransactionsPage = () => {
 
     try {
       setSavingMetadata(true)
-      const response = await stockTransactionApi.updateTransactionMetadata(selectedTransaction.id, {
+      await stockTransactionApi.updateTransactionMetadata(selectedTransaction.id, {
         referenceId: editReferenceId || undefined,
         notes: editNotes || undefined,
         receiptImage: editReceiptImage || undefined,
@@ -199,20 +206,25 @@ export const StockTransactionsPage = () => {
       // Update the transaction in the list
       setTransactions(prev => prev.map(tx => 
         tx.id === selectedTransaction.id 
-          ? { ...tx, referenceId: editReferenceId || null, notes: editNotes || null, receiptImage: editReceiptImage || null }
+          ? { ...tx, referenceId: editReferenceId || undefined, notes: editNotes || undefined, receiptImage: editReceiptImage || undefined }
           : tx
       ))
 
       // Update selected transaction
       setSelectedTransaction(prev => prev ? {
         ...prev,
-        referenceId: editReferenceId || null,
-        notes: editNotes || null,
-        receiptImage: editReceiptImage || null
+        referenceId: editReferenceId || undefined,
+        notes: editNotes || undefined,
+        receiptImage: editReceiptImage || undefined
       } : null)
 
       setIsEditMode(false)
       setSuccessMessage('Metadata updated. Inventory quantity unchanged.')
+      
+      // Refresh audit logs after saving
+      if (selectedTransaction) {
+        fetchAuditLogs(selectedTransaction.id)
+      }
       
       // Clear success message after 3 seconds
       setTimeout(() => setSuccessMessage(null), 3000)
@@ -222,12 +234,28 @@ export const StockTransactionsPage = () => {
       setSavingMetadata(false)
     }
   }
+  
+  // Fetch audit logs for a transaction
+  const fetchAuditLogs = async (transactionId: string) => {
+    try {
+      setLoadingAuditLogs(true)
+      const logs = await stockTransactionApi.getAuditLogs(transactionId)
+      setAuditLogs(logs)
+    } catch (error) {
+      console.error('Failed to fetch audit logs:', error)
+      setAuditLogs([])
+    } finally {
+      setLoadingAuditLogs(false)
+    }
+  }
 
   // Close modal and reset state
   const closeModal = () => {
     setSelectedTransaction(null)
     setIsEditMode(false)
     setSuccessMessage(null)
+    setAuditLogs([])
+    setShowAuditLogs(false)
   }
 
   const loadTransactions = async () => {
@@ -1114,6 +1142,69 @@ export const StockTransactionsPage = () => {
                       </div>
                     </div>
                   </>
+                )}
+
+                {/* Audit Log Section - Show change history */}
+                {!isEditMode && (
+                  <div className="pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() => {
+                        if (!showAuditLogs && auditLogs.length === 0) {
+                          fetchAuditLogs(selectedTransaction.id)
+                        }
+                        setShowAuditLogs(!showAuditLogs)
+                      }}
+                      className="flex items-center justify-between w-full text-left group"
+                    >
+                      <label className="text-xs text-gray-500 uppercase tracking-wide flex items-center gap-1 cursor-pointer group-hover:text-gray-700">
+                        <History className="h-3 w-3" />
+                        Change History
+                      </label>
+                      <ChevronRight className={`h-4 w-4 text-gray-400 transition-transform ${showAuditLogs ? 'rotate-90' : ''}`} />
+                    </button>
+                    
+                    {showAuditLogs && (
+                      <div className="mt-3">
+                        {loadingAuditLogs ? (
+                          <div className="text-center py-4">
+                            <RefreshCw className="h-5 w-5 text-gray-400 animate-spin mx-auto" />
+                            <p className="text-xs text-gray-500 mt-2">Loading history...</p>
+                          </div>
+                        ) : auditLogs.length === 0 ? (
+                          <div className="text-center py-4 bg-gray-50 rounded-lg">
+                            <p className="text-sm text-gray-500">No changes have been made to this transaction.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                            {auditLogs.map((log, idx) => (
+                              <div key={log.id || idx} className="bg-gray-50 rounded-lg p-3 text-sm">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium text-gray-700 capitalize">{log.field}</span>
+                                  <span className="text-xs text-gray-400">
+                                    {new Date(log.changedAt).toLocaleString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs">
+                                  <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded line-through">
+                                    {log.oldValue || '(empty)'}
+                                  </span>
+                                  <span className="text-gray-400">→</span>
+                                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                                    {log.newValue || '(empty)'}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {/* Transaction ID */}

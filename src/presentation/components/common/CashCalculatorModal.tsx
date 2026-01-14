@@ -141,14 +141,14 @@ export const CashCalculatorModal = ({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-6 py-4 flex items-center justify-between">
+        <div className="bg-[#F9C900] text-black px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Calculator className="h-6 w-6" />
             <h2 className="text-xl font-bold">{title}</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-white/20 rounded-lg transition-colors"
+            className="p-1 hover:bg-black/10 rounded-lg transition-colors"
           >
             <X className="h-6 w-6" />
           </button>
@@ -162,10 +162,10 @@ export const CashCalculatorModal = ({
           </div>
           
           {/* Cash Input Display - Now an actual input field */}
-          <div className="bg-white rounded-xl border-2 border-amber-200 p-4 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100 transition-all">
+          <div className="bg-white rounded-xl border-2 border-[#F9C900]/50 p-4 focus-within:border-[#F9C900] focus-within:ring-2 focus-within:ring-[#F9C900]/20 transition-all">
             <label htmlFor="cashInput" className="text-sm text-gray-500 block mb-1">Cash Received</label>
             <div className="flex items-center">
-              <span className="text-3xl font-bold text-amber-600 mr-1">₱</span>
+              <span className="text-3xl font-bold text-gray-900 mr-1">₱</span>
               <input
                 ref={inputRef}
                 id="cashInput"
@@ -174,7 +174,7 @@ export const CashCalculatorModal = ({
                 value={cashInput}
                 onChange={handleInputChange}
                 placeholder="0.00"
-                className="text-3xl font-bold text-amber-600 bg-transparent border-none outline-none w-full min-h-[40px] placeholder:text-amber-300"
+                className="text-3xl font-bold text-gray-900 bg-transparent border-none outline-none w-full min-h-[40px] placeholder:text-gray-300"
                 autoComplete="off"
               />
             </div>
@@ -198,7 +198,7 @@ export const CashCalculatorModal = ({
               variant="outline"
               size="sm"
               onClick={handleExactAmount}
-              className="flex-1 min-w-[80px] border-amber-300 text-amber-700 hover:bg-amber-50"
+              className="flex-1 min-w-[80px] border-[#F9C900] text-gray-900 hover:bg-[#F9C900]/10 font-medium"
             >
               Exact
             </Button>
@@ -237,7 +237,7 @@ export const CashCalculatorModal = ({
               onClick={() => key === '←' ? handleBackspace() : handleNumberClick(key)}
               className={`h-14 rounded-xl text-xl font-semibold transition-all active:scale-95 ${
                 key === '←' 
-                  ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' 
+                  ? 'bg-[#F9C900]/20 text-gray-800 hover:bg-[#F9C900]/30' 
                   : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
               }`}
             >
@@ -287,7 +287,7 @@ export const CashCalculatorModal = ({
           <Button
             onClick={handleConfirm}
             disabled={!isValid}
-            className={`flex-1 ${isValid ? 'bg-amber-500 hover:bg-amber-600' : ''}`}
+            className={`flex-1 ${isValid ? 'bg-[#F9C900] hover:bg-[#E5B800] text-black' : ''}`}
           >
             Confirm Payment
           </Button>

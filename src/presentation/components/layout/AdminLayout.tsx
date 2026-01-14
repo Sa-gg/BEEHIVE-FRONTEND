@@ -57,9 +57,9 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
-  const { pendingOrderCount, stockAlertCount, productsNeedAttentionCount, fetchNotifications, newOrderAlert, dismissNewOrderAlert, handleNewOrder, handleOrderUpdate } = useNotificationStore()
+  const { pendingOrderCount, stockAlertCount, discrepancyCount, productsNeedAttentionCount, fetchNotifications, newOrderAlert, dismissNewOrderAlert, handleNewOrder, handleOrderUpdate } = useNotificationStore()
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false)
-  const { pendingOrders, lowStockItems, outOfStockItems, productsNeedAttention } = useNotificationStore()
+  const { pendingOrders, lowStockItems, outOfStockItems, discrepancyItems, productsNeedAttention } = useNotificationStore()
 
   // Persist sidebar collapsed state to localStorage for desktop
   useEffect(() => {
@@ -203,7 +203,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
     { outlineIcon: LayoutDashboard, solidIcon: RiDashboardFill, label: 'Dashboard', path: '/admin', badge: null, permission: 'viewDashboard', iconColor: 'text-blue-400' },
     { outlineIcon: CreditCard, solidIcon: RiBankCardFill, label: 'POS', path: '/admin/pos', badge: null, permission: 'accessPOS', iconColor: 'text-emerald-400' },
     { outlineIcon: ClipboardList, solidIcon: RiFileList3Fill, label: 'Orders', path: '/admin/orders', badge: pendingOrderCount > 0 ? pendingOrderCount : null, badgeColor: 'bg-red-500', permission: 'viewOrders', iconColor: 'text-amber-400' },
-    { outlineIcon: Package, solidIcon: RiArchiveFill, label: 'Inventory', path: '/admin/inventory', badge: stockAlertCount > 0 ? stockAlertCount : null, badgeColor: 'bg-orange-500', permission: 'viewInventory', iconColor: 'text-cyan-400' },
+    { outlineIcon: Package, solidIcon: RiArchiveFill, label: 'Inventory', path: '/admin/inventory', badge: (stockAlertCount + discrepancyCount) > 0 ? (stockAlertCount + discrepancyCount) : null, badgeColor: discrepancyCount > 0 ? 'bg-red-600' : 'bg-orange-500', permission: 'viewInventory', iconColor: 'text-cyan-400' },
     { outlineIcon: ChefHat, solidIcon: RiRestaurantFill, label: 'Recipes', path: '/admin/recipes', badge: null, permission: 'viewRecipes', iconColor: 'text-orange-400' },
     { outlineIcon: TrendingUp, solidIcon: RiLineChartFill, label: 'Sales', path: '/admin/sales', badge: null, permission: 'viewSales', iconColor: 'text-green-400' },
     { outlineIcon: FileText, solidIcon: RiFileTextFill, label: 'Reports', path: '/admin/reports', badge: null, badgeColor: null, permission: 'viewReports', iconColor: 'text-indigo-400' },
@@ -247,7 +247,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
     }
   }, [sidebarOpen, menuItems.length])
 
-  const totalNotifications = pendingOrderCount + stockAlertCount + productsNeedAttentionCount
+  const totalNotifications = pendingOrderCount + stockAlertCount + discrepancyCount + productsNeedAttentionCount
 
   return (
     <div className="min-h-screen flex overflow-hidden" style={{ background: 'linear-gradient(135deg, #FFFBF0 0%, #FFF8E1 100%)' }}>
@@ -537,13 +537,28 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                           )}
 
                           {/* Stock Alerts */}
-                          {(lowStockItems.length > 0 || outOfStockItems.length > 0) && (
+                          {(lowStockItems.length > 0 || outOfStockItems.length > 0 || discrepancyItems.length > 0) && (
                             <div className="py-2">
                               <p className="px-4 py-1 text-xs font-medium text-gray-500 uppercase tracking-wide">Stock Alerts</p>
+                              {/* Discrepancy Items (highest priority) */}
+                              {discrepancyItems.slice(0, 2).map(item => (
+                                <Link
+                                  key={item.id}
+                                  to="/admin/inventory?filter=discrepancy"
+                                  onClick={() => setNotificationDropdownOpen(false)}
+                                  className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors"
+                                >
+                                  <div className="w-2 h-2 rounded-full bg-purple-500 shrink-0 animate-pulse" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                                    <p className="text-xs text-purple-600 font-semibold">Discrepancy: {item.currentStock.toFixed(1)}</p>
+                                  </div>
+                                </Link>
+                              ))}
                               {outOfStockItems.slice(0, 2).map(item => (
                                 <Link
                                   key={item.id}
-                                  to="/admin/inventory"
+                                  to="/admin/inventory?filter=out_of_stock"
                                   onClick={() => setNotificationDropdownOpen(false)}
                                   className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors"
                                 >
@@ -557,7 +572,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                               {lowStockItems.slice(0, 2).map(item => (
                                 <Link
                                   key={item.id}
-                                  to="/admin/inventory"
+                                  to="/admin/inventory?filter=low_stock"
                                   onClick={() => setNotificationDropdownOpen(false)}
                                   className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors"
                                 >
@@ -570,13 +585,13 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                                   </div>
                                 </Link>
                               ))}
-                              {(lowStockItems.length + outOfStockItems.length) > 4 && (
+                              {(lowStockItems.length + outOfStockItems.length + discrepancyItems.length) > 6 && (
                                 <Link
                                   to="/admin/inventory"
                                   onClick={() => setNotificationDropdownOpen(false)}
                                   className="block px-4 py-1 text-xs text-amber-600 font-medium hover:underline"
                                 >
-                                  +{(lowStockItems.length + outOfStockItems.length) - 4} more
+                                  +{(lowStockItems.length + outOfStockItems.length + discrepancyItems.length) - 6} more
                                 </Link>
                               )}
                             </div>
@@ -593,11 +608,13 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
                                   onClick={() => setNotificationDropdownOpen(false)}
                                   className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors"
                                 >
-                                  <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                                  <div className={`w-2 h-2 rounded-full shrink-0 ${item.currentStock <= 0 ? 'bg-red-500' : 'bg-amber-500'}`} />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                                    <p className="text-xs text-amber-600">
-                                      Marked out of stock • {item.currentStock} available
+                                    <p className={`text-xs ${item.currentStock <= 0 ? 'text-red-600' : 'text-amber-600'}`}>
+                                      {item.currentStock <= 0 
+                                        ? `Available but 0 stock • Check inventory`
+                                        : `Marked out of stock • ${item.currentStock} available`}
                                     </p>
                                   </div>
                                 </Link>

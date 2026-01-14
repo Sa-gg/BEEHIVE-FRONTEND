@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
@@ -16,6 +16,7 @@ type InventoryItem = InventoryItemDTO
 
 export const InventoryPage = () => {
   const { user } = useAuthStore()
+  const [searchParams, setSearchParams] = useSearchParams()
   
   // Check if user can manage inventory (ADMIN or MANAGER only)
   const canManageInventory = user?.role === 'ADMIN' || user?.role === 'MANAGER'
@@ -86,6 +87,25 @@ export const InventoryPage = () => {
       setLoading(false)
     }
   }
+
+  // Read filter from URL params on mount
+  useEffect(() => {
+    const filterParam = searchParams.get('filter')
+    if (filterParam) {
+      // Map URL filter values to stock status values
+      const filterMap: Record<string, string> = {
+        'discrepancy': 'discrepancy',
+        'out_of_stock': 'out_of_stock',
+        'low_stock': 'low_stock',
+        'in_stock': 'in_stock'
+      }
+      if (filterMap[filterParam]) {
+        setSelectedStockStatus(filterMap[filterParam])
+      }
+      // Clear the URL param after applying
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   useEffect(() => {
     loadInventory()

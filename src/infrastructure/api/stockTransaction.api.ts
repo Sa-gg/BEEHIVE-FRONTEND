@@ -119,4 +119,10 @@ export const stockTransactionApi = {
     const response = await api.patch(`${API_URL}/${transactionId}/metadata`, params);
     return response.data;
   },
+
+  // Get audit logs for a transaction
+  getAuditLogs: async (transactionId: string) => {
+    const response = await api.get(`${API_URL}/${transactionId}/audit-logs`);
+    return response.data.data as TransactionMetadataAuditLog[];
+  },
 };

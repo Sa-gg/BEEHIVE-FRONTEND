@@ -6,6 +6,18 @@ export interface Settings {
   lastResetDate: string | null;
 }
 
+export interface AutoStockSettings {
+  autoOutOfStockWhenIngredientsRunOut: boolean;
+  autoMarkInStockWhenAvailable: boolean;
+}
+
+export interface StockStatusUpdateResult {
+  success: boolean;
+  message: string;
+  markedOutOfStock: Array<{ id: string; name: string }>;
+  markedInStock: Array<{ id: string; name: string }>;
+}
+
 export const settingsApi = {
   getSettings: async (): Promise<Settings> => {
     const response = await api.get<Settings>('/api/settings');
@@ -29,6 +41,23 @@ export const settingsApi = {
   
   updateManagerPin: async (currentPin: string, newPin: string): Promise<{ success: boolean; message: string }> => {
     const response = await api.post<{ success: boolean; message: string }>('/api/settings/update-pin', { currentPin, newPin });
+    return response.data;
+  },
+  
+  // Auto-stock settings
+  getAutoStockSettings: async (): Promise<AutoStockSettings> => {
+    const response = await api.get<AutoStockSettings>('/api/settings/auto-stock');
+    return response.data;
+  },
+  
+  updateAutoStockSettings: async (settings: Partial<AutoStockSettings>): Promise<AutoStockSettings & { success: boolean }> => {
+    const response = await api.patch<AutoStockSettings & { success: boolean }>('/api/settings/auto-stock', settings);
+    return response.data;
+  },
+  
+  // Manually trigger stock status update for all menu items
+  triggerStockStatusUpdate: async (): Promise<StockStatusUpdateResult> => {
+    const response = await api.post<StockStatusUpdateResult>('/api/settings/auto-stock/trigger');
     return response.data;
   },
 };

@@ -24,6 +24,7 @@ interface NotificationState {
   pendingOrders: OrderResponse[]
   lowStockItems: Array<{ id: string; name: string; currentStock: number; minStock: number }>
   outOfStockItems: Array<{ id: string; name: string }>
+  discrepancyItems: Array<{ id: string; name: string; currentStock: number }> // Items with negative stock
   productsNeedAttention: ProductNeedingAttention[] // Products marked out of stock but have stock
   lastUpdated: Date | null
   isLoading: boolean
@@ -34,6 +35,7 @@ interface NotificationState {
   // Computed counts
   pendingOrderCount: number
   stockAlertCount: number
+  discrepancyCount: number
   productsNeedAttentionCount: number
   
   // Actions
@@ -53,12 +55,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   pendingOrders: [],
   lowStockItems: [],
   outOfStockItems: [],
+  discrepancyItems: [],
   productsNeedAttention: [],
   lastUpdated: null,
   isLoading: false,
   newOrderAlert: null,
   pendingOrderCount: 0,
   stockAlertCount: 0,
+  discrepancyCount: 0,
   productsNeedAttentionCount: 0,
 
   fetchNotifications: async () => {
@@ -88,20 +92,34 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
           name: item.name
         }))
 
+      // Fetch discrepancy items (negative stock)
+      const discrepancyItems = inventoryItems
+        .filter(item => item.status === 'DISCREPANCY' || item.currentStock < 0)
+        .map(item => ({
+          id: item.id,
+          name: item.name,
+          currentStock: item.currentStock
+        }))
+
       // Fetch products needing attention (marked out of stock but have available stock)
       const menuItemsResponse = await menuItemsApi.getAll()
       const menuItems = menuItemsResponse.data
       const maxServings = await recipeApi.getAllMaxServings()
       
-      // Find products that are marked out of stock but actually have stock available
+      // Find products needing attention:
+      // 1. Marked out of stock but actually have stock available (>= 1)
+      // 2. NOT marked out of stock but have 0 or negative stock (potential discrepancy)
       const productsNeedAttention: ProductNeedingAttention[] = menuItems
         .filter((item: MenuItemDTO) => {
-          // Product is marked as out of stock
-          if (!item.outOfStock) return false
-          // Check if it has recipe-based stock available (>= 1)
           const availableServings = maxServings[item.id]
-          // Only flag if there's actually stock available (not undefined or 0)
-          return availableServings !== undefined && availableServings >= 1
+          if (availableServings === undefined) return false
+          
+          // Case 1: Marked as out of stock but has stock
+          const markedOutButHasStock = item.outOfStock && availableServings >= 1
+          // Case 2: Available but has no stock (potential discrepancy)
+          const availableButNoStock = !item.outOfStock && availableServings <= 0
+          
+          return markedOutButHasStock || availableButNoStock
         })
         .map((item: MenuItemDTO) => ({
           id: item.id,
@@ -114,9 +132,11 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         pendingOrders,
         lowStockItems,
         outOfStockItems,
+        discrepancyItems,
         productsNeedAttention,
         pendingOrderCount: pendingOrders.length,
         stockAlertCount: lowStockItems.length + outOfStockItems.length,
+        discrepancyCount: discrepancyItems.length,
         productsNeedAttentionCount: productsNeedAttention.length,
         lastUpdated: new Date(),
         isLoading: false
@@ -137,13 +157,16 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   clearStockAlert: (itemId: string) => {
-    const { lowStockItems, outOfStockItems } = get()
+    const { lowStockItems, outOfStockItems, discrepancyItems } = get()
     const newLowStock = lowStockItems.filter(item => item.id !== itemId)
     const newOutOfStock = outOfStockItems.filter(item => item.id !== itemId)
+    const newDiscrepancy = discrepancyItems.filter(item => item.id !== itemId)
     set({
       lowStockItems: newLowStock,
       outOfStockItems: newOutOfStock,
-      stockAlertCount: newLowStock.length + newOutOfStock.length
+      discrepancyItems: newDiscrepancy,
+      stockAlertCount: newLowStock.length + newOutOfStock.length,
+      discrepancyCount: newDiscrepancy.length
     })
   },
 

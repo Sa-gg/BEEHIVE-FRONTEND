@@ -14,7 +14,8 @@ import {
   Shield,
   Key,
   LayoutDashboard,
-  Smartphone
+  Smartphone,
+  RefreshCw
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { toast } from '../../components/common/ToastNotification'
@@ -165,6 +166,7 @@ export const SettingsPage = () => {
   } = useSettingsStore()
 
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isTriggeringUpdate, setIsTriggeringUpdate] = useState(false)
   const [openTime, setOpenTime] = useState('08:00')
   const [closeTime, setCloseTime] = useState('22:00')
   
@@ -179,15 +181,26 @@ export const SettingsPage = () => {
   useEffect(() => {
     const syncSettings = async () => {
       try {
+        // Sync general settings
         const backendSettings = await settingsApi.getSettings()
         setOpenTime(backendSettings.openTime)
         setCloseTime(backendSettings.closeTime)
+        
+        // Sync auto-stock settings with backend
+        const autoStockSettings = await settingsApi.getAutoStockSettings()
+        if (autoStockSettings.autoOutOfStockWhenIngredientsRunOut !== autoOutOfStockWhenIngredientsRunOut) {
+          setAutoOutOfStockWhenIngredientsRunOut(autoStockSettings.autoOutOfStockWhenIngredientsRunOut)
+        }
+        if (autoStockSettings.autoMarkInStockWhenAvailable !== autoMarkInStockWhenAvailable) {
+          setAutoMarkInStockWhenAvailable(autoStockSettings.autoMarkInStockWhenAvailable)
+        }
       } catch (error) {
         console.error('Failed to sync settings:', error)
       }
     }
     syncSettings()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only run on mount - we sync FROM backend, not TO backend
 
   const handleTimeChange = async (field: 'openTime' | 'closeTime', value: string) => {
     setIsSyncing(true)
@@ -243,6 +256,70 @@ export const SettingsPage = () => {
       } else {
         setPinError('Failed to update PIN. Please try again.')
       }
+    }
+  }
+
+  // Handle auto out-of-stock setting change - sync with backend
+  const handleAutoOutOfStockChange = async () => {
+    const newValue = !autoOutOfStockWhenIngredientsRunOut
+    setAutoOutOfStockWhenIngredientsRunOut(newValue)
+    
+    try {
+      await settingsApi.updateAutoStockSettings({ autoOutOfStockWhenIngredientsRunOut: newValue })
+    } catch (error) {
+      console.error('Failed to sync auto out-of-stock setting:', error)
+      // Revert on error
+      setAutoOutOfStockWhenIngredientsRunOut(!newValue)
+      toast.error('Sync Failed', 'Failed to save setting to server')
+    }
+  }
+
+  // Handle auto in-stock setting change - sync with backend
+  const handleAutoInStockChange = async () => {
+    const newValue = !autoMarkInStockWhenAvailable
+    setAutoMarkInStockWhenAvailable(newValue)
+    
+    try {
+      await settingsApi.updateAutoStockSettings({ autoMarkInStockWhenAvailable: newValue })
+    } catch (error) {
+      console.error('Failed to sync auto in-stock setting:', error)
+      // Revert on error
+      setAutoMarkInStockWhenAvailable(!newValue)
+      toast.error('Sync Failed', 'Failed to save setting to server')
+    }
+  }
+
+  // Manually trigger stock status update for all menu items
+  const handleTriggerStockUpdate = async () => {
+    if (!autoOutOfStockWhenIngredientsRunOut && !autoMarkInStockWhenAvailable) {
+      toast.warning('No Settings Enabled', 'Enable at least one auto-stock setting to trigger an update')
+      return
+    }
+    
+    setIsTriggeringUpdate(true)
+    try {
+      const result = await settingsApi.triggerStockStatusUpdate()
+      
+      const totalUpdated = result.markedOutOfStock.length + result.markedInStock.length
+      
+      if (totalUpdated === 0) {
+        toast.info('No Updates Needed', 'All menu items are already correctly marked')
+      } else {
+        let message = ''
+        if (result.markedOutOfStock.length > 0) {
+          message += `${result.markedOutOfStock.length} marked out of stock`
+        }
+        if (result.markedInStock.length > 0) {
+          if (message) message += ', '
+          message += `${result.markedInStock.length} marked in stock`
+        }
+        toast.success('Stock Updated', message)
+      }
+    } catch (error) {
+      console.error('Failed to trigger stock update:', error)
+      toast.error('Update Failed', 'Failed to update menu item stock status')
+    } finally {
+      setIsTriggeringUpdate(false)
     }
   }
 
@@ -358,16 +435,16 @@ export const SettingsPage = () => {
             <div className="divide-y divide-gray-100">
               <SettingItem
                 title="Auto Out-of-Stock When Ingredients Run Out"
-                description="Automatically mark menu items as out of stock when their ingredients are depleted"
+                description="Automatically mark menu items as out of stock when their ingredients are depleted (synced with backend)"
                 enabled={autoOutOfStockWhenIngredientsRunOut}
-                onChange={() => setAutoOutOfStockWhenIngredientsRunOut(!autoOutOfStockWhenIngredientsRunOut)}
+                onChange={handleAutoOutOfStockChange}
                 warning={autoOutOfStockWhenIngredientsRunOut}
               />
               <SettingItem
                 title="Auto Mark In-Stock When Available"
-                description="Automatically mark products as in-stock when their ingredient stock becomes ≥1 after restocking"
+                description="Automatically mark products as in-stock when their ingredient stock becomes ≥1 after restocking (synced with backend)"
                 enabled={autoMarkInStockWhenAvailable}
-                onChange={() => setAutoMarkInStockWhenAvailable(!autoMarkInStockWhenAvailable)}
+                onChange={handleAutoInStockChange}
               />
               <SettingItem
                 title="Show Current Stock in POS"
@@ -375,6 +452,24 @@ export const SettingsPage = () => {
                 enabled={showCurrentStockInPOS}
                 onChange={() => setShowCurrentStockInPOS(!showCurrentStockInPOS)}
               />
+              
+              {/* Manual trigger button */}
+              <div className="px-6 py-5 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                <div className="flex-1 pr-4">
+                  <h3 className="text-base font-medium text-gray-900">Update All Products Now</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Manually check all products and update their stock status based on current ingredient levels
+                  </p>
+                </div>
+                <button
+                  onClick={handleTriggerStockUpdate}
+                  disabled={isTriggeringUpdate || (!autoOutOfStockWhenIngredientsRunOut && !autoMarkInStockWhenAvailable)}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isTriggeringUpdate ? 'animate-spin' : ''}`} />
+                  {isTriggeringUpdate ? 'Updating...' : 'Update Now'}
+                </button>
+              </div>
             </div>
           </div>
 

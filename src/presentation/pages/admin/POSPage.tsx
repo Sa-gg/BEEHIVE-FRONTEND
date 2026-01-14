@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import type { MenuItem } from '../../../core/domain/entities/MenuItem.entity'
@@ -17,6 +17,7 @@ import { generateReceiptHTML, generateKitchenReceiptHTML } from '../../../shared
 import { CashCalculatorModal } from '../../components/common/CashCalculatorModal'
 import { FeeInputModal, type FeeType } from '../../components/common/FeeInputModal'
 import { toast } from '../../components/common/ToastNotification'
+import { ConfirmationModal } from '../../components/common/ConfirmationModal'
 import { AddonsVariantsModal, type AddonSelection, type VariantSelection } from '../../components/features/shared/AddonsVariantsModal'
 import { addonsApi } from '../../../infrastructure/api/addons.api'
 
@@ -95,10 +96,18 @@ export const POSPage = () => {
   const [currentFeeType, setCurrentFeeType] = useState<FeeType>('delivery')
   const [pendingAction, setPendingAction] = useState<'confirm' | 'print' | null>(null)
   
+  // Stock warning confirmation modal state
+  const [showStockWarningModal, setShowStockWarningModal] = useState(false)
+  const [stockWarnings, setStockWarnings] = useState<string[]>([])
+  const [stockWarningAction, setStockWarningAction] = useState<'print' | 'confirm' | null>(null)
+  
   // Variants/Add-ons modal state
   const [showAddonsModal, setShowAddonsModal] = useState(false)
   const [selectedMenuItemForAddons, setSelectedMenuItemForAddons] = useState<MenuItem | null>(null)
   const [menuItemsWithAddons, setMenuItemsWithAddons] = useState<Set<string>>(new Set())
+  
+  // Race condition prevention - track processing state for each menu item
+  const [processingItemIds, setProcessingItemIds] = useState<Set<string>>(new Set())
 
   // Helper function to get full image URL
   const getImageUrl = (imagePath: string | null) => {
@@ -195,6 +204,11 @@ export const POSPage = () => {
   }, [])
 
   const addToOrder = (menuItem: MenuItem) => {
+    // Prevent rapid clicking - check if this item is being processed
+    if (processingItemIds.has(menuItem.id)) {
+      return
+    }
+    
     // Check if this item has variants or add-ons
     if (menuItemsWithAddons.has(menuItem.id)) {
       // Open addons/variants modal
@@ -209,6 +223,35 @@ export const POSPage = () => {
   
   // Add a simple item without variants/add-ons
   const addSimpleItemToOrder = (menuItem: MenuItem) => {
+    // Prevent rapid clicking - check if this item is being processed
+    if (processingItemIds.has(menuItem.id)) {
+      return
+    }
+    
+    // Mark item as processing
+    setProcessingItemIds(prev => new Set(prev).add(menuItem.id))
+    
+    // Check if item is manually marked as out of stock
+    if ((menuItem as any).outOfStock === true) {
+      toast.warning('Out of Stock', 'This item has been marked as out of stock')
+      setProcessingItemIds(prev => { const next = new Set(prev); next.delete(menuItem.id); return next })
+      return
+    }
+    
+    // Check stock limits if auto out of stock is enabled
+    if (autoOutOfStockWhenIngredientsRunOut) {
+      const availableStock = maxServings[menuItem.id]
+      // If we have recipe-based stock tracking (not unlimited)
+      if (availableStock !== undefined && availableStock !== -1) {
+        // availableStock already accounts for current cart, so we can only add if > 0
+        if (availableStock <= 0) {
+          toast.warning('Stock Limit', `Cannot add more ${menuItem.name}. Stock limit reached.`)
+          setProcessingItemIds(prev => { const next = new Set(prev); next.delete(menuItem.id); return next })
+          return
+        }
+      }
+    }
+    
     setOrderItems((prev) => {
       // For simple items without variants/addons, aggregate by menuItemId
       const existingItem = prev.find((item) => 
@@ -240,6 +283,11 @@ export const POSPage = () => {
         },
       ]
     })
+    
+    // Clear processing state after a short delay to allow maxServings to update
+    setTimeout(() => {
+      setProcessingItemIds(prev => { const next = new Set(prev); next.delete(menuItem.id); return next })
+    }, 350)
   }
   
   // Helper to check if two addon arrays are equivalent
@@ -326,29 +374,60 @@ export const POSPage = () => {
       return
     }
     
-    // Check stock limits if auto out of stock is enabled
-    if (autoOutOfStockWhenIngredientsRunOut) {
+    // Prevent rapid clicking - check if this item is being processed
+    if (processingItemIds.has(menuItemId)) {
+      return
+    }
+    
+    // Get current quantity of this item in cart
+    let currentQuantity = 0
+    if (itemIndex !== undefined) {
+      currentQuantity = orderItems[itemIndex]?.quantity || 0
+    } else {
+      const item = orderItems.find(i => i.menuItemId === menuItemId && !i.variantId && (!i.addons || i.addons.length === 0))
+      currentQuantity = item?.quantity || 0
+    }
+    
+    // Only check stock limits when INCREASING quantity
+    const isIncreasing = quantity > currentQuantity
+    
+    if (isIncreasing && autoOutOfStockWhenIngredientsRunOut) {
+      // Mark as processing to prevent race conditions
+      setProcessingItemIds(prev => new Set(prev).add(menuItemId))
+      
       const availableStock = maxServings[menuItemId]
       // If we have recipe-based stock tracking (not unlimited)
       if (availableStock !== undefined && availableStock !== -1) {
         // The maxServings already accounts for cart + preparing orders from the API
-        // So we need to check if the new quantity exceeds available stock
-        const maxAllowedQuantity = Math.max(0, availableStock)
-        if (quantity > maxAllowedQuantity) {
-          toast.warning('Stock Limit', `Only ${maxAllowedQuantity} available in stock`)
-          quantity = maxAllowedQuantity
-          if (quantity <= 0) {
+        // For increasing, we need to check if the additional quantity is available
+        const additionalQuantity = quantity - currentQuantity
+        if (additionalQuantity > availableStock) {
+          toast.warning('Stock Limit', `Only ${availableStock} more available in stock`)
+          // If we can add some but not all, add what we can
+          if (availableStock > 0) {
+            quantity = currentQuantity + availableStock
+          } else {
+            // Clear processing state and return
+            setTimeout(() => {
+              setProcessingItemIds(prev => { const next = new Set(prev); next.delete(menuItemId); return next })
+            }, 300)
             return // Can't add any more
           }
         }
       }
     }
     
-    // Also check if item is manually marked as out of stock
-    const menuItem = menuItems.find(item => item.id === menuItemId)
-    if (menuItem && (menuItem as any).outOfStock === true) {
-      toast.warning('Out of Stock', 'This item has been marked as out of stock')
-      return
+    // Also check if item is manually marked as out of stock (only when increasing)
+    if (isIncreasing) {
+      const menuItem = menuItems.find(item => item.id === menuItemId)
+      if (menuItem && (menuItem as any).outOfStock === true) {
+        toast.warning('Out of Stock', 'This item has been marked as out of stock')
+        // Clear processing state
+        setTimeout(() => {
+          setProcessingItemIds(prev => { const next = new Set(prev); next.delete(menuItemId); return next })
+        }, 300)
+        return
+      }
     }
     
     setOrderItems((prev) => {
@@ -381,6 +460,13 @@ export const POSPage = () => {
           : item
       )
     })
+    
+    // Clear processing state after update
+    if (isIncreasing) {
+      setTimeout(() => {
+        setProcessingItemIds(prev => { const next = new Set(prev); next.delete(menuItemId); return next })
+      }, 350)
+    }
   }
 
   const removeItem = (menuItemId: string, itemIndex?: number) => {
@@ -459,13 +545,14 @@ export const POSPage = () => {
       return
     }
     
-    // Validate stock availability (only if auto out of stock is enabled)
-    if (autoOutOfStockWhenIngredientsRunOut) {
-      const { valid, warnings } = validateStockAvailability()
-      if (!valid) {
-        const proceed = confirm(`Stock Warning:\n\n${warnings.join('\n')}\n\nDo you want to proceed anyway?`)
-        if (!proceed) return
-      }
+    // Always validate stock availability to warn about potential overselling
+    const { valid, warnings } = validateStockAvailability()
+    if (!valid) {
+      // Show custom modal instead of browser confirm
+      setStockWarnings(warnings)
+      setStockWarningAction('print')
+      setShowStockWarningModal(true)
+      return
     }
     
     if (paymentMethod === 'CASH' && cashChangeEnabled) {
@@ -477,6 +564,7 @@ export const POSPage = () => {
   }
 
   // Validate stock for all items in the order
+  // Warns about potential discrepancies when ordering items with insufficient stock
   const validateStockAvailability = (): { valid: boolean; warnings: string[] } => {
     const warnings: string[] = []
     
@@ -487,12 +575,36 @@ export const POSPage = () => {
     }, {} as Record<string, number>)
     
     // Check each item against available stock
-    for (const [menuItemId, quantity] of Object.entries(itemQuantities)) {
-      const availableStock = maxServings[menuItemId]
-      if (availableStock !== undefined && quantity > availableStock) {
+    // maxServings represents REMAINING stock after cart items are already subtracted by the API
+    // A value of 0 means the cart exactly uses all available stock
+    // A negative value would indicate exceeding stock, but API clamps to 0
+    // So if remainingStock is 0 and we have items in cart, we're at the limit
+    // If remainingStock is 0 and the original stock was also 0, we have a discrepancy
+    for (const [menuItemId, cartQuantity] of Object.entries(itemQuantities)) {
+      const remainingStock = maxServings[menuItemId]
+      // Skip if no recipe tracking (undefined or -1 means unlimited/no recipe)
+      if (remainingStock === undefined || remainingStock === -1) continue
+      
+      // remainingStock is what's left AFTER cart is subtracted
+      // So total original stock = remainingStock + cartQuantity
+      // If remainingStock < 0, we've exceeded (but API clamps to 0)
+      // If remainingStock = 0 and cartQuantity > 0, we're at exact limit OR exceeding
+      // The key insight: if remainingStock is 0, it could mean:
+      // 1. We ordered exactly what was available (OK but tight)
+      // 2. Original stock was 0 and we're creating a discrepancy (NOT OK)
+      // 
+      // To detect discrepancy: if remainingStock is 0 and cartQuantity > 0,
+      // the original stock was equal to cartQuantity (tight) OR less (discrepancy)
+      // Since the API clamps, if original stock was less than cart, remaining would still be 0
+      // 
+      // SAFEST: Warn when remainingStock <= 0 (stock is depleted or will create discrepancy)
+      if (remainingStock <= 0) {
         const item = orderItems.find(i => i.menuItemId === menuItemId)
         if (item) {
-          warnings.push(`${item.name}: ordered ${quantity}, only ${availableStock} available`)
+          // Calculate what the original stock was before cart was added
+          // Since API clamps to 0, if remaining=0, original could be 0 to cartQuantity
+          // We show warning that stock will be depleted/negative after this order
+          warnings.push(`${item.name}: ordering ${cartQuantity}, stock will be depleted or negative after this order`)
         }
       }
     }
@@ -507,16 +619,36 @@ export const POSPage = () => {
       return
     }
     
-    // Validate stock availability (only if auto out of stock is enabled)
-    if (autoOutOfStockWhenIngredientsRunOut) {
-      const { valid, warnings } = validateStockAvailability()
-      if (!valid) {
-        const proceed = confirm(`Stock Warning:\n\n${warnings.join('\n')}\n\nDo you want to proceed anyway?`)
-        if (!proceed) return
-      }
+    // Always validate stock availability to warn about potential overselling
+    const { valid, warnings } = validateStockAvailability()
+    if (!valid) {
+      // Show custom modal instead of browser confirm
+      setStockWarnings(warnings)
+      setStockWarningAction('confirm')
+      setShowStockWarningModal(true)
+      return
     }
     
     executeConfirmOrder(0, 0)
+  }
+  
+  // Handle stock warning confirmation
+  const handleStockWarningConfirm = () => {
+    setShowStockWarningModal(false)
+    
+    if (stockWarningAction === 'print') {
+      if (paymentMethod === 'CASH' && cashChangeEnabled) {
+        setPendingAction('print')
+        setShowCashModal(true)
+      } else {
+        executePrintReceipt(0, 0)
+      }
+    } else if (stockWarningAction === 'confirm') {
+      executeConfirmOrder(0, 0)
+    }
+    
+    setStockWarningAction(null)
+    setStockWarnings([])
   }
 
   const printReceiptForOrder = (order: any, cashReceived?: number, changeAmount?: number) => {
@@ -899,36 +1031,40 @@ export const POSPage = () => {
     navigate('/admin/orders')
   }
 
-  // Filter by category - use categoryId for matching
-  const filteredItems = selectedCategory === 'all' 
-    ? menuItems 
-    : selectedCategory === 'best seller'
-    ? menuItems.filter(item => item.featured)
-    : menuItems.filter((item) => (item as any).categoryId === selectedCategory || item.category === selectedCategory.toLowerCase())
+  // Filter by category - use categoryId for matching (memoized for performance)
+  const filteredItems = useMemo(() => {
+    if (selectedCategory === 'all') return menuItems
+    if (selectedCategory === 'best seller') return menuItems.filter(item => item.featured)
+    return menuItems.filter((item) => (item as any).categoryId === selectedCategory || item.category === selectedCategory.toLowerCase())
+  }, [menuItems, selectedCategory])
 
-  // Apply search filter
-  const searchFilteredItems = searchQuery.trim() 
-    ? filteredItems.filter(item => 
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : filteredItems
+  // Apply search filter (memoized for performance)
+  const searchFilteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return filteredItems
+    const query = searchQuery.toLowerCase()
+    return filteredItems.filter(item => 
+      item.name.toLowerCase().includes(query) ||
+      item.category.toLowerCase().includes(query)
+    )
+  }, [filteredItems, searchQuery])
 
-  // Sort items: out-of-stock items at the bottom
-  const sortedItems = [...searchFilteredItems].sort((a, b) => {
-    // Check manual out of stock flag first (set by manager in Products page)
-    const aManualOutOfStock = (a as any).outOfStock === true
-    const bManualOutOfStock = (b as any).outOfStock === true
-    // Also consider ingredient-based out-of-stock if auto setting is enabled
-    const aIngredientOutOfStock = autoOutOfStockWhenIngredientsRunOut && maxServings[a.id] === 0
-    const bIngredientOutOfStock = autoOutOfStockWhenIngredientsRunOut && maxServings[b.id] === 0
-    // Item is out of stock if manually marked OR (auto enabled AND ingredients out)
-    const aOutOfStock = aManualOutOfStock || aIngredientOutOfStock
-    const bOutOfStock = bManualOutOfStock || bIngredientOutOfStock
-    if (aOutOfStock && !bOutOfStock) return 1  // a goes to bottom
-    if (!aOutOfStock && bOutOfStock) return -1 // b goes to bottom
-    return 0 // maintain original order
-  })
+  // Sort items: out-of-stock items at the bottom (memoized for performance)
+  const sortedItems = useMemo(() => {
+    return [...searchFilteredItems].sort((a, b) => {
+      // Check manual out of stock flag first (set by manager in Products page)
+      const aManualOutOfStock = (a as any).outOfStock === true
+      const bManualOutOfStock = (b as any).outOfStock === true
+      // Also consider ingredient-based out-of-stock if auto setting is enabled
+      const aIngredientOutOfStock = autoOutOfStockWhenIngredientsRunOut && maxServings[a.id] === 0
+      const bIngredientOutOfStock = autoOutOfStockWhenIngredientsRunOut && maxServings[b.id] === 0
+      // Item is out of stock if manually marked OR (auto enabled AND ingredients out)
+      const aOutOfStock = aManualOutOfStock || aIngredientOutOfStock
+      const bOutOfStock = bManualOutOfStock || bIngredientOutOfStock
+      if (aOutOfStock && !bOutOfStock) return 1  // a goes to bottom
+      if (!aOutOfStock && bOutOfStock) return -1 // b goes to bottom
+      return 0 // maintain original order
+    })
+  }, [searchFilteredItems, autoOutOfStockWhenIngredientsRunOut, maxServings])
 
   const totalItems = orderItems.reduce((sum, item) => sum + item.quantity, 0)
 
@@ -1244,6 +1380,22 @@ export const POSPage = () => {
           }}
         />
       )}
+      
+      {/* Stock Warning Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showStockWarningModal}
+        onClose={() => {
+          setShowStockWarningModal(false)
+          setStockWarningAction(null)
+          setStockWarnings([])
+        }}
+        onConfirm={handleStockWarningConfirm}
+        title="Stock Warning"
+        message={stockWarnings}
+        type="warning"
+        confirmText="Proceed Anyway"
+        cancelText="Go Back"
+      />
     </AdminLayout>
   )
 }

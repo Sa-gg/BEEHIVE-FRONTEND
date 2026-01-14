@@ -739,16 +739,20 @@ export const ProductsPage = () => {
                          (product.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
     const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory
     
-    // Stock filter logic - includes needs-attention (marked out of stock but has available stock)
+    // Stock filter logic - includes needs-attention (marked out of stock but has available stock, OR available but has no stock)
     let matchesStock = true
     if (stockFilter === 'in-stock') {
       matchesStock = !product.outOfStock
     } else if (stockFilter === 'out-of-stock') {
       matchesStock = product.outOfStock
     } else if (stockFilter === 'needs-attention') {
-      // Products marked as out of stock but actually have stock available (>= 1)
+      // Products that need attention:
+      // 1. Marked as out of stock but actually have stock available (>= 1)
+      // 2. NOT marked as out of stock but have 0 or negative stock (potential discrepancy)
       const availableServings = maxServings[product.id]
-      matchesStock = product.outOfStock && availableServings !== undefined && availableServings >= 1
+      const markedOutButHasStock = product.outOfStock && availableServings !== undefined && availableServings >= 1
+      const availableButNoStock = !product.outOfStock && availableServings !== undefined && availableServings <= 0
+      matchesStock = markedOutButHasStock || availableButNoStock
     }
     
     const matchesAvailability = availabilityFilter === 'all' || 
@@ -768,11 +772,15 @@ export const ProductsPage = () => {
   const outOfStockProducts = products.filter(p => p.outOfStock).length
   const featuredProducts = products.filter(p => p.featured).length
   
-  // Products needing attention: marked out of stock but have stock available
+  // Products needing attention:
+  // 1. Marked out of stock but have stock available
+  // 2. NOT marked out of stock but have 0 or negative stock (potential discrepancy)
   const needsAttentionProducts = products.filter(p => {
-    if (!p.outOfStock) return false
     const availableServings = maxServings[p.id]
-    return availableServings !== undefined && availableServings >= 1
+    if (availableServings === undefined) return false
+    const markedOutButHasStock = p.outOfStock && availableServings >= 1
+    const availableButNoStock = !p.outOfStock && availableServings <= 0
+    return markedOutButHasStock || availableButNoStock
   }).length
 
   return (
