@@ -3,9 +3,10 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Badge } from '../../components/common/ui/badge'
 import { Button } from '../../components/common/ui/button'
-import { Search, Plus, Package, AlertTriangle, CheckCircle, TrendingUp, ArrowUpDown, Trash2, Pencil, ChevronLeft, ChevronRight, History, Printer, Eye, X, AlertOctagon } from 'lucide-react'
+import { Search, Plus, Package, AlertTriangle, CheckCircle, TrendingUp, ArrowUpDown, Trash2, Pencil, ChevronLeft, ChevronRight, History, Printer, Eye, X, AlertOctagon, Layers } from 'lucide-react'
 import { inventoryApi, type CreateInventoryItemRequest, type InventoryStats, type UpdateInventoryItemRequest, type InventoryItemDTO } from '../../../infrastructure/api/inventory.api'
 import { StockManagementModal } from '../../components/features/Admin/StockManagementModal'
+import { BulkStockModal } from '../../components/features/Admin/BulkStockModal'
 import { formatSmartStock } from '../../../shared/utils/stockFormat'
 import { printWithIframe } from '../../../shared/utils/printUtils'
 import { useAuthStore } from '../../store/authStore'
@@ -35,6 +36,7 @@ export const InventoryPage = () => {
   const [error, setError] = useState<string | null>(null)
   const [showStockModal, setShowStockModal] = useState(false)
   const [selectedItemForStock, setSelectedItemForStock] = useState<InventoryItem | null>(null)
+  const [showBulkStockModal, setShowBulkStockModal] = useState(false)
   
   // Form validation error states
   const [nameError, setNameError] = useState<string | null>(null)
@@ -625,9 +627,17 @@ export const InventoryPage = () => {
                 <Link to="/admin/inventory/transactions">
                   <Button variant="outline" className="flex items-center gap-2">
                     <History className="h-4 w-4" />
-                    Stock Transactions
+                    Transactions
                   </Button>
                 </Link>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowBulkStockModal(true)}
+                  className="flex items-center gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
+                >
+                  <Layers className="h-4 w-4" />
+                  Bulk Stock
+                </Button>
                 <Button
                   onClick={() => setIsAdding(true)}
                   className="flex items-center gap-2"
@@ -1715,6 +1725,16 @@ export const InventoryPage = () => {
           </div>
         </>
       )}
+
+      {/* Bulk Stock Modal */}
+      <BulkStockModal
+        inventoryItems={inventory}
+        isOpen={showBulkStockModal}
+        onClose={() => setShowBulkStockModal(false)}
+        onSuccess={() => {
+          loadInventory()
+        }}
+      />
     </AdminLayout>
   )
 }

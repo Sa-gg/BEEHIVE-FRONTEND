@@ -68,6 +68,36 @@ export interface TransactionMetadataAuditLog {
   changedAt: string;
 }
 
+export interface BulkStockItem {
+  inventoryItemId: string;
+  quantity: number;
+}
+
+export interface BulkStockInParams {
+  items: BulkStockItem[];
+  referenceId?: string;
+  receiptImage?: string;
+  userId?: string;
+  notes?: string;
+}
+
+export interface BulkStockOutParams {
+  items: BulkStockItem[];
+  reason: 'WASTE' | 'ADJUSTMENT';
+  referenceId?: string;
+  receiptImage?: string;
+  userId?: string;
+  notes?: string;
+}
+
+export interface BulkStockResult {
+  successful: Array<{ inventoryItemId: string; itemName: string; quantity: number; newStock: number }>;
+  failed: Array<{ inventoryItemId: string; itemName?: string; error: string }>;
+  totalAdded?: number;
+  totalRemoved?: number;
+  discrepancies?: number;
+}
+
 export const stockTransactionApi = {
   // Stock-In: Add inventory
   stockIn: async (params: StockInParams) => {
@@ -85,6 +115,18 @@ export const stockTransactionApi = {
   adjustStock: async (params: AdjustStockParams) => {
     const response = await api.post(`${API_URL}/adjust`, params);
     return response.data;
+  },
+
+  // Bulk Stock-In: Add inventory to multiple items
+  bulkStockIn: async (params: BulkStockInParams): Promise<BulkStockResult> => {
+    const response = await api.post(`${API_URL}/bulk/in`, params);
+    return response.data.data;
+  },
+
+  // Bulk Stock-Out: Remove inventory from multiple items
+  bulkStockOut: async (params: BulkStockOutParams): Promise<BulkStockResult> => {
+    const response = await api.post(`${API_URL}/bulk/out`, params);
+    return response.data.data;
   },
 
   // Get transaction history for an inventory item

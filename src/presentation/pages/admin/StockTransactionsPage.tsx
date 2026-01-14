@@ -463,8 +463,8 @@ export const StockTransactionsPage = () => {
                 <span className="text-sm">Back to Inventory</span>
               </Link>
             </div>
-            <h1 className="text-2xl lg:text-3xl font-bold">Stock Transactions</h1>
-            <p className="text-sm lg:text-base text-gray-600">View all inventory stock movements</p>
+            <h1 className="text-2xl lg:text-3xl font-bold">Inventory</h1>
+            <p className="text-sm lg:text-base text-gray-600">Manage your BEEHIVE operations</p>
           </div>
           <div className="flex items-center gap-2">
             <Button

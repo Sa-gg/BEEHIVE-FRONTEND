@@ -1062,10 +1062,11 @@ export const ProductsPage = () => {
 
         {/* Batch Action Bar */}
         {isSelectionMode && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-4">
-            {/* Row 1: Selection controls */}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+            {/* Row 1: Selection controls + Quick Select by Ingredient */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Selection controls */}
+              <div className="flex items-center gap-3">
                 <Button
                   variant="outline"
                   size="sm"
@@ -1078,63 +1079,142 @@ export const ProductsPage = () => {
                   {selectedProducts.size} product{selectedProducts.size !== 1 ? 's' : ''} selected
                 </span>
               </div>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-amber-300 hidden sm:block" />
               
-              {/* Batch action buttons */}
-              {selectedProducts.size > 0 && (
-                <div className="flex items-center gap-2">
-                  {/* Stock controls - for cashier/manager to mark ingredient availability */}
-                  <div className="flex items-center gap-1 pr-2 border-r border-gray-200">
-                    <span className="text-xs text-gray-500 mr-1">Stock:</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleBatchOutOfStock(true)}
-                      className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
-                    >
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      Out
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleBatchOutOfStock(false)}
-                      className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-                    >
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      In
-                    </Button>
+              {/* Ingredient selector - compact */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Package className="h-4 w-4 text-amber-600" />
+                  <span className="text-xs font-medium text-gray-600 hidden sm:inline">By Ingredient:</span>
+                </div>
+                <div className="relative" ref={dropdownRef}>
+                  <div 
+                    className={`flex items-center h-8 px-2.5 text-sm border rounded-md bg-white cursor-pointer transition-colors min-w-[180px] ${
+                      ingredientDropdownOpen ? 'border-amber-500 ring-2 ring-amber-200' : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                    onClick={() => setIngredientDropdownOpen(!ingredientDropdownOpen)}
+                  >
+                    {loadingIngredientProducts ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600 mr-2" />
+                    ) : null}
+                    <span className={`flex-1 truncate text-xs ${selectedIngredient ? 'text-gray-900' : 'text-gray-500'}`}>
+                      {selectedIngredient ? (
+                        (() => {
+                          const item = inventoryItems.find(i => i.id === selectedIngredient)
+                          if (!item) return 'Select...'
+                          return (
+                            <span className="flex items-center gap-1.5">
+                              <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${
+                                item.status === 'OUT_OF_STOCK' ? 'bg-red-500' : 
+                                item.status === 'LOW_STOCK' ? 'bg-yellow-500' : 'bg-green-500'
+                              }`} />
+                              <span className="truncate">{item.name}</span>
+                            </span>
+                          )
+                        })()
+                      ) : 'Select ingredient...'}
+                    </span>
+                    <ChevronDown className={`h-3.5 w-3.5 ml-1 text-gray-400 flex-shrink-0 transition-transform ${ingredientDropdownOpen ? 'rotate-180' : ''}`} />
                   </div>
                   
-                  {/* Sale controls - for manager to include/exclude from daily menu */}
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-500 mr-1">Sale:</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleBatchAvailability(false)}
-                      className="bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
-                    >
-                      Off Sale
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleBatchAvailability(true)}
-                      className="bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
-                    >
-                      On Sale
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Row 2: Ingredient-based selection with searchable dropdown */}
-            <div className="bg-white rounded-lg border border-amber-200 p-3">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Package className="h-4 w-4 text-amber-600" />
-                  <span className="text-sm font-medium text-gray-700">Quick Select by Ingredient</span>
+                  {/* Dropdown panel */}
+                  {ingredientDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-[300px] flex flex-col w-[280px]">
+                      {/* Search and filter inside dropdown */}
+                      <div className="p-2 border-b border-gray-100 space-y-2 sticky top-0 bg-white">
+                        <div className="relative">
+                          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search ingredients..."
+                            value={ingredientSearchQuery}
+                            onChange={(e) => setIngredientSearchQuery(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full pl-7 pr-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant={ingredientStatusFilter === 'all' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('all') }}
+                            className="h-6 px-2 text-xs flex-1"
+                          >
+                            All
+                          </Button>
+                          <Button
+                            variant={ingredientStatusFilter === 'DISCREPANCY' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('DISCREPANCY') }}
+                            className={`h-6 px-2 text-xs flex-1 ${ingredientStatusFilter === 'DISCREPANCY' ? 'bg-purple-500 text-white' : ''}`}
+                          >
+                            ⚠️ Disc
+                          </Button>
+                          <Button
+                            variant={ingredientStatusFilter === 'OUT_OF_STOCK' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('OUT_OF_STOCK') }}
+                            className={`h-6 px-2 text-xs flex-1 ${ingredientStatusFilter === 'OUT_OF_STOCK' ? 'bg-red-500 text-white' : ''}`}
+                          >
+                            ❌ Out
+                          </Button>
+                          <Button
+                            variant={ingredientStatusFilter === 'LOW_STOCK' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('LOW_STOCK') }}
+                            className={`h-6 px-2 text-xs flex-1 ${ingredientStatusFilter === 'LOW_STOCK' ? 'bg-yellow-500' : ''}`}
+                          >
+                            ⚠️ Low
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {/* Options list */}
+                      <div className="overflow-y-auto flex-1">
+                        {filteredInventoryItems.length === 0 ? (
+                          <div className="p-4 text-center text-sm text-gray-500">
+                            No ingredients found
+                          </div>
+                        ) : (
+                          filteredInventoryItems.map(item => (
+                            <div
+                              key={item.id}
+                              className={`px-3 py-2 cursor-pointer hover:bg-amber-50 flex items-center justify-between ${
+                                selectedIngredient === item.id ? 'bg-amber-100' : ''
+                              }`}
+                              onClick={() => {
+                                handleIngredientSelect(item.id)
+                                setIngredientDropdownOpen(false)
+                              }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className={`inline-block w-2 h-2 rounded-full ${
+                                  item.status === 'DISCREPANCY' ? 'bg-purple-500' :
+                                  item.status === 'OUT_OF_STOCK' ? 'bg-red-500' : 
+                                  item.status === 'LOW_STOCK' ? 'bg-yellow-500' : 'bg-green-500'
+                                }`} />
+                                <span className="text-sm">{item.name}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400">{item.currentStock} {item.unit}</span>
+                                {item.status !== 'IN_STOCK' && (
+                                  <Badge className={`text-[10px] px-1.5 py-0 ${
+                                    item.status === 'DISCREPANCY' ? 'bg-purple-100 text-purple-700' :
+                                    item.status === 'OUT_OF_STOCK' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                  }`}>
+                                    {item.status === 'DISCREPANCY' ? 'Disc' : item.status === 'OUT_OF_STOCK' ? 'Out' : 'Low'}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {selectedIngredient && (
                   <Button
@@ -1146,173 +1226,91 @@ export const ProductsPage = () => {
                       setSelectedProducts(new Set())
                       setIngredientSearchQuery('')
                     }}
-                    className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700"
+                    className="h-7 px-2 text-xs text-gray-500 hover:text-gray-700"
                   >
-                    <X className="h-3 w-3 mr-1" />
-                    Clear
+                    <X className="h-3 w-3" />
                   </Button>
                 )}
               </div>
-              
-              {/* Searchable dropdown */}
-              <div className="relative max-w-sm" ref={dropdownRef}>
-                <div 
-                  className={`flex items-center h-9 px-3 text-sm border rounded-md bg-white cursor-pointer transition-colors ${
-                    ingredientDropdownOpen ? 'border-amber-500 ring-2 ring-amber-200' : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                  onClick={() => setIngredientDropdownOpen(!ingredientDropdownOpen)}
-                >
-                  {loadingIngredientProducts ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-amber-600 mr-2" />
-                  ) : null}
-                  <span className={selectedIngredient ? 'text-gray-900' : 'text-gray-500'}>
-                    {selectedIngredient ? (
-                      (() => {
-                        const item = inventoryItems.find(i => i.id === selectedIngredient)
-                        if (!item) return 'Select ingredient...'
-                        return (
-                          <span className="flex items-center gap-2">
-                            <span className={`inline-block w-2 h-2 rounded-full ${
-                              item.status === 'OUT_OF_STOCK' ? 'bg-red-500' : 
-                              item.status === 'LOW_STOCK' ? 'bg-yellow-500' : 'bg-green-500'
-                            }`} />
-                            {item.name}
-                            <span className="text-gray-400">({item.currentStock} {item.unit})</span>
-                          </span>
-                        )
-                      })()
-                    ) : 'Select ingredient to filter products...'}
-                  </span>
-                  <ChevronDown className={`h-4 w-4 ml-auto text-gray-400 transition-transform ${ingredientDropdownOpen ? 'rotate-180' : ''}`} />
+            </div>
+            
+            {/* Row 2: Batch action buttons (only shown when items selected) */}
+            {selectedProducts.size > 0 && (
+              <div className="flex items-center gap-2 pt-2 border-t border-amber-200">
+                {/* Stock controls - for cashier/manager to mark ingredient availability */}
+                <div className="flex items-center gap-1 pr-2 border-r border-gray-200">
+                  <span className="text-xs text-gray-500 mr-1">Stock:</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBatchOutOfStock(true)}
+                    className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
+                  >
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                    Out
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBatchOutOfStock(false)}
+                    className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                  >
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    In
+                  </Button>
                 </div>
                 
-                {/* Dropdown panel */}
-                {ingredientDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-[300px] flex flex-col">
-                    {/* Search and filter inside dropdown */}
-                    <div className="p-2 border-b border-gray-100 space-y-2 sticky top-0 bg-white">
-                      <div className="relative">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
-                        <input
-                          type="text"
-                          placeholder="Search ingredients..."
-                          value={ingredientSearchQuery}
-                          onChange={(e) => setIngredientSearchQuery(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-full pl-7 pr-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500"
-                          autoFocus
-                        />
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant={ingredientStatusFilter === 'all' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('all') }}
-                          className="h-6 px-2 text-xs flex-1"
-                        >
-                          All
-                        </Button>
-                        <Button
-                          variant={ingredientStatusFilter === 'DISCREPANCY' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('DISCREPANCY') }}
-                          className={`h-6 px-2 text-xs flex-1 ${ingredientStatusFilter === 'DISCREPANCY' ? 'bg-purple-500 text-white' : ''}`}
-                        >
-                          ⚠️ Disc
-                        </Button>
-                        <Button
-                          variant={ingredientStatusFilter === 'OUT_OF_STOCK' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('OUT_OF_STOCK') }}
-                          className={`h-6 px-2 text-xs flex-1 ${ingredientStatusFilter === 'OUT_OF_STOCK' ? 'bg-red-500 text-white' : ''}`}
-                        >
-                          ❌ Out
-                        </Button>
-                        <Button
-                          variant={ingredientStatusFilter === 'LOW_STOCK' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); setIngredientStatusFilter('LOW_STOCK') }}
-                          className={`h-6 px-2 text-xs flex-1 ${ingredientStatusFilter === 'LOW_STOCK' ? 'bg-yellow-500' : ''}`}
-                        >
-                          ⚠️ Low
-                        </Button>
-                      </div>
-                    </div>
-                    
-                    {/* Options list */}
-                    <div className="overflow-y-auto flex-1">
-                      {filteredInventoryItems.length === 0 ? (
-                        <div className="p-4 text-center text-sm text-gray-500">
-                          No ingredients found
-                        </div>
-                      ) : (
-                        filteredInventoryItems.map(item => (
-                          <div
-                            key={item.id}
-                            className={`px-3 py-2 cursor-pointer hover:bg-amber-50 flex items-center justify-between ${
-                              selectedIngredient === item.id ? 'bg-amber-100' : ''
-                            }`}
-                            onClick={() => {
-                              handleIngredientSelect(item.id)
-                              setIngredientDropdownOpen(false)
-                            }}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className={`inline-block w-2 h-2 rounded-full ${
-                                item.status === 'DISCREPANCY' ? 'bg-purple-500' :
-                                item.status === 'OUT_OF_STOCK' ? 'bg-red-500' : 
-                                item.status === 'LOW_STOCK' ? 'bg-yellow-500' : 'bg-green-500'
-                              }`} />
-                              <span className="text-sm">{item.name}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-400">{item.currentStock} {item.unit}</span>
-                              {item.status !== 'IN_STOCK' && (
-                                <Badge className={`text-[10px] px-1.5 py-0 ${
-                                  item.status === 'DISCREPANCY' ? 'bg-purple-100 text-purple-700' :
-                                  item.status === 'OUT_OF_STOCK' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                                }`}>
-                                  {item.status === 'DISCREPANCY' ? 'Disc' : item.status === 'OUT_OF_STOCK' ? 'Out' : 'Low'}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                {/* Sale controls - for manager to include/exclude from daily menu */}
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-500 mr-1">Sale:</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBatchAvailability(false)}
+                    className="bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
+                  >
+                    Off Sale
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBatchAvailability(true)}
+                    className="bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+                  >
+                    On Sale
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Selected ingredient info */}
+            {selectedIngredient && (
+              <div className="flex items-center justify-between pt-2 border-t border-amber-200">
+                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${(() => {
+                  const item = inventoryItems.find(i => i.id === selectedIngredient)
+                  if (!item) return 'bg-gray-100 text-gray-700'
+                  return item.status === 'OUT_OF_STOCK' ? 'bg-red-100 text-red-700' :
+                    item.status === 'LOW_STOCK' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-green-100 text-green-700'
+                })()}`}>
+                  {(() => {
+                    const item = inventoryItems.find(i => i.id === selectedIngredient)
+                    if (!item) return 'Unknown ingredient'
+                    return `Stock: ${item.currentStock} ${item.unit} (Min: ${item.minStock})`
+                  })()}
+                </span>
+                {selectedIngredientProducts.length > 0 && (
+                  <span className="text-xs text-amber-700 font-medium">
+                    Showing {selectedIngredientProducts.length} product{selectedIngredientProducts.length !== 1 ? 's' : ''} using this ingredient
+                    {selectedIngredientProducts.filter(p => p.outOfStock).length > 0 && (
+                      <span className="text-red-600 ml-1">
+                        ({selectedIngredientProducts.filter(p => p.outOfStock).length} already out of stock)
+                      </span>
+                    )}
+                  </span>
                 )}
               </div>
-
-              {/* Show ingredient status info and product count */}
-              {selectedIngredient && (
-                <div className="mt-2 flex items-center justify-between">
-                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${(() => {
-                    const item = inventoryItems.find(i => i.id === selectedIngredient)
-                    if (!item) return 'bg-gray-100 text-gray-700'
-                    return item.status === 'OUT_OF_STOCK' ? 'bg-red-100 text-red-700' :
-                      item.status === 'LOW_STOCK' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-green-100 text-green-700'
-                  })()}`}>
-                    {(() => {
-                      const item = inventoryItems.find(i => i.id === selectedIngredient)
-                      if (!item) return 'Unknown ingredient'
-                      return `Stock: ${item.currentStock} ${item.unit} (Min: ${item.minStock})`
-                    })()}
-                  </span>
-                  {selectedIngredientProducts.length > 0 && (
-                    <span className="text-xs text-amber-700 font-medium">
-                      Showing {selectedIngredientProducts.length} product{selectedIngredientProducts.length !== 1 ? 's' : ''} using this ingredient
-                      {selectedIngredientProducts.filter(p => p.outOfStock).length > 0 && (
-                        <span className="text-red-600 ml-1">
-                          ({selectedIngredientProducts.filter(p => p.outOfStock).length} already out of stock)
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
+            )}
           </div>
         )}
 
