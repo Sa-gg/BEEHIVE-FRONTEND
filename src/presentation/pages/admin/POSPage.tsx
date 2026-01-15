@@ -1363,6 +1363,14 @@ export const POSPage = () => {
             name: selectedMenuItemForAddons.name,
             price: selectedMenuItemForAddons.price
           }}
+          // Pass cart items so variant stock can be calculated with current cart considered
+          cartItems={orderItems.map(item => ({
+            menuItemId: item.menuItemId,
+            variantId: item.variantId,
+            quantity: item.quantity
+          }))}
+          // Pass base product max servings for real-time variant stock display
+          baseMaxServings={maxServings[selectedMenuItemForAddons.id]}
           onConfirm={(data) => {
             addItemWithAddonsToOrder(
               selectedMenuItemForAddons,

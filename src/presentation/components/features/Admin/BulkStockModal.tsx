@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { X, Plus, Minus, Upload, Trash2, Search, Package, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { X, Plus, Minus, Upload, Trash2, Search, Package, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, CheckCircle, Loader2, Eye } from 'lucide-react';
 import { Button } from '@/presentation/components/common/ui/button';
 import { Input } from '@/presentation/components/common/ui/input';
 import { Label } from '@/presentation/components/common/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/presentation/components/common/ui/select';
 import { Textarea } from '@/presentation/components/common/ui/textarea';
+import { ImageViewer } from '@/presentation/components/common/ImageViewer';
 import { stockTransactionApi, type BulkStockItem } from '@/infrastructure/api/stockTransaction.api';
 import { uploadApi } from '@/infrastructure/api/menuItems.api';
 import type { InventoryItemDTO } from '@/infrastructure/api/inventory.api';
@@ -40,6 +41,7 @@ export const BulkStockModal: React.FC<BulkStockModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Items to process
@@ -592,18 +594,36 @@ export const BulkStockModal: React.FC<BulkStockModalProps> = ({
               <div className="space-y-2">
                 <Label>Receipt Image (Optional)</Label>
                 {receiptImage ? (
-                  <div className="relative">
+                  <div className="relative group">
                     <img
                       src={getImageUrl(receiptImage) || ''}
                       alt="Receipt"
-                      className="w-full h-24 object-cover rounded-lg border"
+                      className="w-full h-24 object-cover rounded-lg border cursor-pointer"
+                      onClick={() => setImageViewerOpen(true)}
                     />
-                    <button
-                      onClick={removeReceiptImage}
-                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                    {/* Overlay with view icon on hover */}
+                    <div 
+                      className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center cursor-pointer"
+                      onClick={() => setImageViewerOpen(true)}
                     >
-                      <X className="h-3 w-3" />
-                    </button>
+                      <Eye className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="absolute top-1 right-1 flex gap-1">
+                      <button
+                        onClick={() => setImageViewerOpen(true)}
+                        className="p-1 bg-blue-500 text-white rounded-full hover:bg-blue-600"
+                        title="View image"
+                      >
+                        <Eye className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={removeReceiptImage}
+                        className="p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                        title="Remove image"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div
@@ -677,6 +697,15 @@ export const BulkStockModal: React.FC<BulkStockModalProps> = ({
           </div>
         </div>
       </div>
+      
+      {/* Image Viewer Modal */}
+      {imageViewerOpen && receiptImage && (
+        <ImageViewer
+          src={getImageUrl(receiptImage) || ''}
+          alt="Receipt image"
+          onClose={() => setImageViewerOpen(false)}
+        />
+      )}
     </>
   );
 };

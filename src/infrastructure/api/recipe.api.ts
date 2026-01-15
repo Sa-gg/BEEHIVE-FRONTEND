@@ -117,4 +117,25 @@ export const recipeApi = {
     const response = await api.get(`${API_URL}/low-stock`);
     return response.data.data;
   },
+
+  // Get variant-specific max servings for a single menu item
+  getVariantServings: async (menuItemId: string): Promise<Record<string, number>> => {
+    const response = await api.get(`${API_URL}/${menuItemId}/variant-servings`);
+    return response.data.data;
+  },
+
+  // Get variant-specific max servings WITH cart items considered
+  getVariantServingsWithCart: async (
+    menuItemId: string,
+    cartItems: Array<{ menuItemId: string; variantId?: string | null; quantity: number }>
+  ): Promise<Record<string, number>> => {
+    const response = await api.post(`${API_URL}/${menuItemId}/variant-servings-with-cart`, { cartItems });
+    return response.data.data;
+  },
+
+  // Get variant-specific max servings for ALL menu items that have variants
+  getAllVariantServings: async (): Promise<Record<string, Record<string, number>>> => {
+    const response = await api.get(`${API_URL}/all-variant-servings`);
+    return response.data.data;
+  },
 };

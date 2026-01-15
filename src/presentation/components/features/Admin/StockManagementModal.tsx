@@ -1,10 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { X, Plus, Minus, Edit, AlertTriangle, Upload, Trash2 } from 'lucide-react';
+import { X, Plus, Minus, Edit, AlertTriangle, Upload, Trash2, Eye } from 'lucide-react';
 import { Button } from '@/presentation/components/common/ui/button';
 import { Input } from '@/presentation/components/common/ui/input';
 import { Label } from '@/presentation/components/common/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/presentation/components/common/ui/select';
 import { Textarea } from '@/presentation/components/common/ui/textarea';
+import { ImageViewer } from '@/presentation/components/common/ImageViewer';
 import { stockTransactionApi, type StockInParams, type StockOutParams, type AdjustStockParams } from '@/infrastructure/api/stockTransaction.api';
 import { uploadApi } from '@/infrastructure/api/menuItems.api';
 import type { InventoryItemDTO } from '@/infrastructure/api/inventory.api';
@@ -38,6 +39,7 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string>('');
   const [warning, setWarning] = useState<string>('');
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Helper function to get full image URL
@@ -416,20 +418,39 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
           <div className="space-y-2">
             <Label>Receipt Image (Optional)</Label>
             {receiptImage ? (
-              <div className="relative border border-gray-200 rounded-lg p-2">
+              <div className="relative border border-gray-200 rounded-lg p-2 group">
                 <img
                   src={getImageUrl(receiptImage) || ''}
                   alt="Receipt"
-                  className="w-full h-32 object-contain rounded"
+                  className="w-full h-32 object-contain rounded cursor-pointer"
+                  onClick={() => setImageViewerOpen(true)}
                 />
-                <button
-                  type="button"
-                  onClick={removeImage}
-                  className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                  title="Remove image"
+                {/* Overlay with view icon on hover */}
+                <div 
+                  className="absolute inset-2 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center cursor-pointer"
+                  onClick={() => setImageViewerOpen(true)}
                 >
-                  <Trash2 size={14} />
-                </button>
+                  <Eye size={24} className="text-white" />
+                </div>
+                <div className="absolute top-1 right-1 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setImageViewerOpen(true)}
+                    className="p-1 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+                    title="View image"
+                  >
+                    <Eye size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={removeImage}
+                    className="p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                    title="Remove image"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 text-center mt-1">Click image to view full size</p>
               </div>
             ) : (
               <div
@@ -502,6 +523,15 @@ export const StockManagementModal: React.FC<StockManagementModalProps> = ({
           </div>
         </form>
       </div>
+      
+      {/* Image Viewer Modal */}
+      {imageViewerOpen && receiptImage && (
+        <ImageViewer
+          src={getImageUrl(receiptImage) || ''}
+          alt="Receipt image"
+          onClose={() => setImageViewerOpen(false)}
+        />
+      )}
     </div>
   );
 };

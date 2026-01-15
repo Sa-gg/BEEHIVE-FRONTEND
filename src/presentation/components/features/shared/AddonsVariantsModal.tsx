@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Minus, Loader2 } from 'lucide-react'
+import { X, Plus, Minus, Loader2, Package } from 'lucide-react'
 import { Button } from '../../common/ui/button'
 import { addonsApi, type VariantDTO, type MenuItemAddonLinkDTO, calculateOrderItemSubtotal } from '../../../../infrastructure/api/addons.api'
+import { recipeApi } from '../../../../infrastructure/api/recipe.api'
 import type { OrderItemAddon } from '../../../../core/domain/entities/Order.entity'
 
 // Export types for consumers
@@ -28,6 +29,13 @@ export interface AddonsVariantsResult {
   quantity: number // Added: support ordering multiple items at once
 }
 
+// Cart item format for stock calculation
+export interface CartItemForStock {
+  menuItemId: string
+  variantId?: string | null
+  quantity: number
+}
+
 interface AddonsVariantsModalProps {
   isOpen: boolean
   onClose: () => void
@@ -39,6 +47,10 @@ interface AddonsVariantsModalProps {
     image?: string | null
   }
   initialQuantity?: number
+  // Cart items to consider when calculating available stock
+  cartItems?: CartItemForStock[]
+  // Base product max servings from POSPage (for real-time display)
+  baseMaxServings?: number
 }
 
 export const AddonsVariantsModal = ({
@@ -46,11 +58,19 @@ export const AddonsVariantsModal = ({
   onClose,
   onConfirm,
   menuItem,
-  initialQuantity = 1
+  initialQuantity = 1,
+  cartItems = [],
+  baseMaxServings
 }: AddonsVariantsModalProps) => {
   const [loading, setLoading] = useState(true)
   const [variants, setVariants] = useState<VariantDTO[]>([])
   const [addonLinks, setAddonLinks] = useState<MenuItemAddonLinkDTO[]>([])
+  const [variantServings, setVariantServings] = useState<Record<string, number>>({}) // 'base' or variantId -> stock count
+  // Store initial servings to calculate real-time stock based on quantity changes
+  const [initialVariantServings, setInitialVariantServings] = useState<Record<string, number>>({})
+  
+  // Memoize cartItems for proper dependency tracking
+  const cartItemsKey = JSON.stringify(cartItems)
   
   // Selection state
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
@@ -79,6 +99,26 @@ export const AddonsVariantsModal = ({
         setVariants(variantsData)
         setAddonLinks(addonsData)
         
+        // Fetch variant-specific stock (accounting for cart items) if there are variants
+        if (variantsData.length > 0) {
+          try {
+            // Use the new endpoint that considers cart items
+            const servingsData = await recipeApi.getVariantServingsWithCart(menuItem.id, cartItems)
+            setVariantServings(servingsData)
+            setInitialVariantServings(servingsData) // Store initial values for quantity-based calculations
+          } catch (error) {
+            console.error('Failed to fetch variant servings:', error)
+            // Fallback to regular endpoint
+            try {
+              const servingsData = await recipeApi.getVariantServings(menuItem.id)
+              setVariantServings(servingsData)
+              setInitialVariantServings(servingsData) // Store initial values
+            } catch (fallbackError) {
+              console.error('Fallback also failed:', fallbackError)
+            }
+          }
+        }
+        
         // Set default variant if available
         const defaultVariant = variantsData.find(v => v.isDefault)
         if (defaultVariant) {
@@ -94,7 +134,17 @@ export const AddonsVariantsModal = ({
     if (isOpen && menuItem.id) {
       doFetch()
     }
-  }, [isOpen, menuItem.id])
+  }, [isOpen, menuItem.id, cartItemsKey]) // Use stringified cartItems for proper comparison
+  
+  // Update base servings from POSPage prop when it changes (for real-time updates)
+  useEffect(() => {
+    if (baseMaxServings !== undefined && variants.length > 0) {
+      setVariantServings(prev => ({
+        ...prev,
+        base: baseMaxServings
+      }))
+    }
+  }, [baseMaxServings, variants.length])
 
   // Reset state when modal closes
   useEffect(() => {
@@ -103,6 +153,7 @@ export const AddonsVariantsModal = ({
       setSelectedAddons(new Map())
       setNotes('')
       setQuantity(1) // Reset quantity to 1
+      setInitialVariantServings({}) // Reset initial servings
     }
   }, [isOpen])
 
@@ -124,9 +175,32 @@ export const AddonsVariantsModal = ({
     })
   }
 
-  // Handle item quantity change
+  // Handle item quantity change and update displayed variant stock in real-time
   const updateQuantity = (delta: number) => {
-    setQuantity(prev => Math.max(1, prev + delta)) // Minimum 1
+    setQuantity(prev => {
+      const newQuantity = Math.max(1, prev + delta) // Minimum 1
+      
+      // Update displayed variant servings based on new quantity
+      // Shows what stock remains AFTER this order is placed
+      if (Object.keys(initialVariantServings).length > 0) {
+        const updatedServings: Record<string, number> = {}
+        
+        for (const [key, initialValue] of Object.entries(initialVariantServings)) {
+          if (initialValue === -1) {
+            // -1 means unlimited/no recipe, keep as is
+            updatedServings[key] = -1
+          } else {
+            // Reduce stock by the full quantity being ordered
+            // All variants are affected because they likely share base ingredients
+            updatedServings[key] = Math.max(0, initialValue - newQuantity)
+          }
+        }
+        
+        setVariantServings(updatedServings)
+      }
+      
+      return newQuantity
+    })
   }
 
   // Handle addon quantity change
@@ -227,24 +301,50 @@ export const AddonsVariantsModal = ({
                 <div>
                   <h4 className="font-medium text-gray-900 mb-3">Select Size/Option</h4>
                   <div className="grid grid-cols-3 gap-2">
-                    {variants.map(variant => (
-                      <button
-                        key={variant.id}
-                        onClick={() => setSelectedVariantId(variant.id)}
-                        className={`p-3 rounded-lg border-2 transition-all ${
-                          selectedVariantId === variant.id
-                            ? 'border-amber-500 bg-amber-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="font-medium text-sm">{variant.name}</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {variant.priceDelta > 0 && `+₱${variant.priceDelta.toFixed(2)}`}
-                          {variant.priceDelta < 0 && `-₱${Math.abs(variant.priceDelta).toFixed(2)}`}
-                          {variant.priceDelta === 0 && 'Base price'}
-                        </div>
-                      </button>
-                    ))}
+                    {variants.map(variant => {
+                      const stock = variantServings[variant.id]
+                      const hasStock = stock !== undefined && stock !== -1
+                      const isOutOfStock = hasStock && stock <= 0
+                      const isLowStock = hasStock && stock > 0 && stock <= 5
+                      
+                      return (
+                        <button
+                          key={variant.id}
+                          onClick={() => !isOutOfStock && setSelectedVariantId(variant.id)}
+                          disabled={isOutOfStock}
+                          className={`p-3 rounded-lg border-2 transition-all relative ${
+                            isOutOfStock
+                              ? 'border-gray-200 bg-gray-100 opacity-60 cursor-not-allowed'
+                              : selectedVariantId === variant.id
+                                ? 'border-amber-500 bg-amber-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="font-medium text-sm">{variant.name}</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {variant.priceDelta > 0 && `+₱${variant.priceDelta.toFixed(2)}`}
+                            {variant.priceDelta < 0 && `-₱${Math.abs(variant.priceDelta).toFixed(2)}`}
+                            {variant.priceDelta === 0 && 'Base price'}
+                          </div>
+                          {/* Stock indicator for variant */}
+                          {hasStock && (
+                            <div className={`absolute -top-1 -right-1 text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5 ${
+                              isOutOfStock
+                                ? 'bg-red-100 text-red-700 border border-red-300'
+                                : isLowStock
+                                  ? 'bg-yellow-100 text-yellow-700 border border-yellow-300'
+                                  : 'bg-green-100 text-green-700 border border-green-300'
+                            }`}>
+                              <Package className="h-2.5 w-2.5" />
+                              {Math.max(0, stock)}
+                            </div>
+                          )}
+                          {isOutOfStock && (
+                            <div className="text-[10px] text-red-600 mt-1 font-medium">Out of stock</div>
+                          )}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               )}

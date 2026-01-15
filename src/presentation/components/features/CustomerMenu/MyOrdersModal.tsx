@@ -83,7 +83,7 @@ const ORDER_STATUS_CONFIG = {
 }
 
 export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrdersModalProps) => {
-  const { user, isAuthenticated } = useAuthStore()
+  const { user } = useAuthStore()
   const [orders, setOrders] = useState<OrderResponse[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'active' | 'history' | 'track'>('active')
@@ -633,13 +633,7 @@ export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrd
           <div className="flex-1 overflow-y-auto bg-gray-50 min-h-0">
             {activeTab === 'active' && (
               <div className="p-4 space-y-3">
-                {!isAuthenticated ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                    <Package className="h-12 w-12 mb-3 text-gray-300" />
-                    <p className="font-medium mb-1">Sign in to view orders</p>
-                    <p className="text-sm text-gray-400">Or use Track tab</p>
-                  </div>
-                ) : isLoading ? (
+                {isLoading ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin" style={{ color: '#F9C900' }} />
                   </div>
@@ -664,12 +658,7 @@ export const MyOrdersModal = ({ open, onOpenChange, onFeedbackSubmitted }: MyOrd
 
             {activeTab === 'history' && (
               <div className="p-4 space-y-3">
-                {!isAuthenticated ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                    <Clock className="h-12 w-12 mb-3 text-gray-300" />
-                    <p className="font-medium">Sign in to view history</p>
-                  </div>
-                ) : isLoading ? (
+                {isLoading ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin" style={{ color: '#F9C900' }} />
                   </div>

@@ -31,8 +31,13 @@ import {
   Layers,
   ArrowUp,
   ArrowDown,
-  AlertTriangle
+  AlertTriangle,
+  Eye,
+  Eraser,
+  ImageIcon
 } from 'lucide-react'
+import { ImageViewer } from '../../components/common/ImageViewer'
+import { processImage, formatFileSize } from '../../../shared/utils/imageProcessing'
 import { VariantsAddonsManager } from '../../components/features/Admin/VariantsAddonsManager'
 import { menuItemsApi, uploadApi } from '../../../infrastructure/api/menuItems.api'
 import type { MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
@@ -120,6 +125,14 @@ export const ProductsPage = () => {
   const [ingredientStatusFilter, setIngredientStatusFilter] = useState<'all' | 'DISCREPANCY' | 'OUT_OF_STOCK' | 'LOW_STOCK'>('all')
   const [selectedIngredientProducts, setSelectedIngredientProducts] = useState<Product[]>([])
   const [ingredientDropdownOpen, setIngredientDropdownOpen] = useState(false)
+
+  // Image processing state
+  const [imageProcessingProgress, setImageProcessingProgress] = useState<string>('')
+  const [compressImage, setCompressImage] = useState(true)
+  const [removeBackground, setRemoveBackground] = useState(false)
+  const [originalFileSize, setOriginalFileSize] = useState<number | null>(null)
+  const [processedFileSize, setProcessedFileSize] = useState<number | null>(null)
+  const [imageViewerOpen, setImageViewerOpen] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -354,25 +367,66 @@ export const ProductsPage = () => {
     }
   }
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
+  // Helper function to process and upload image
+  const processAndUploadImage = async (file: File) => {
     try {
       setUploadingImage(true)
+      setOriginalFileSize(file.size)
+      setProcessedFileSize(null)
+      setImageProcessingProgress('')
+
+      let fileToUpload: File = file
+
+      // Process image if compression or background removal is enabled
+      if (compressImage || removeBackground) {
+        setImageProcessingProgress('Processing image...')
+        const result = await processImage(file, {
+          compress: compressImage,
+          removeBackground: removeBackground,
+          onProgress: (stage, progress) => {
+            if (stage === 'compressing') {
+              setImageProcessingProgress(`Compressing... ${Math.round(progress)}%`)
+            } else if (stage === 'removing-background') {
+              setImageProcessingProgress(`Removing background... ${Math.round(progress)}%`)
+            }
+          }
+        })
+        fileToUpload = result.file
+        setProcessedFileSize(result.file.size)
+      }
+
+      setImageProcessingProgress('Uploading...')
       const uploadFormData = new FormData()
-      uploadFormData.append('image', file)
+      uploadFormData.append('image', fileToUpload)
       
       const response = await uploadApi.uploadImage(uploadFormData)
       setFormData(prev => ({ ...prev, image: response.data.path }))
-      toast.success('Image uploaded successfully!')
+      
+      // Show success message with size comparison
+      if (compressImage && originalFileSize) {
+        const savedPercent = Math.round((1 - (fileToUpload.size / file.size)) * 100)
+        if (savedPercent > 0) {
+          toast.success('Image uploaded!', `Compressed from ${formatFileSize(file.size)} to ${formatFileSize(fileToUpload.size)} (${savedPercent}% smaller)`)
+        } else {
+          toast.success('Image uploaded successfully!')
+        }
+      } else {
+        toast.success('Image uploaded successfully!')
+      }
     } catch (error) {
       console.error('Failed to upload image:', error)
       const err = error as { response?: { data?: { message?: string } } }
       toast.error('Failed to upload image', err.response?.data?.message || 'Please try again.')
     } finally {
       setUploadingImage(false)
+      setImageProcessingProgress('')
     }
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await processAndUploadImage(file)
   }
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -400,26 +454,13 @@ export const ProductsPage = () => {
       return
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.warning('File Too Large', 'Image size must be less than 5MB')
+    // Allow larger files since we'll compress them
+    if (file.size > 20 * 1024 * 1024) {
+      toast.warning('File Too Large', 'Image size must be less than 20MB')
       return
     }
 
-    try {
-      setUploadingImage(true)
-      const uploadFormData = new FormData()
-      uploadFormData.append('image', file)
-      
-      const response = await uploadApi.uploadImage(uploadFormData)
-      setFormData(prev => ({ ...prev, image: response.data.path }))
-      toast.success('Image uploaded successfully!')
-    } catch (error) {
-      console.error('Failed to upload image:', error)
-      const err = error as { response?: { data?: { message?: string } } }
-      toast.error('Failed to upload image', err.response?.data?.message || 'Please try again.')
-    } finally {
-      setUploadingImage(false)
-    }
+    await processAndUploadImage(file)
   }
 
   const handleEdit = (product: Product) => {
@@ -1818,25 +1859,92 @@ export const ProductsPage = () => {
                         Product Image
                       </Label>
                       <div className="space-y-3">
+                        {/* Image Processing Options */}
+                        <div className="flex flex-wrap gap-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={compressImage}
+                              onChange={(e) => setCompressImage(e.target.checked)}
+                              className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <ImageIcon className="h-4 w-4 text-blue-500" />
+                            <span className="text-sm text-gray-700">Compress Image</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer" title="AI background removal - may take 10-30 seconds">
+                            <input
+                              type="checkbox"
+                              checked={removeBackground}
+                              onChange={(e) => setRemoveBackground(e.target.checked)}
+                              className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                            />
+                            <Eraser className="h-4 w-4 text-purple-500" />
+                            <span className="text-sm text-gray-700">Remove Background</span>
+                            <span className="text-[10px] text-purple-500 bg-purple-50 px-1.5 py-0.5 rounded">AI</span>
+                          </label>
+                        </div>
+
+                        {/* Warning for background removal */}
+                        {removeBackground && !imageProcessingProgress && (
+                          <div className="flex items-start gap-2 p-2 bg-purple-50 rounded-lg border border-purple-200">
+                            <AlertTriangle className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                            <span className="text-xs text-purple-700">
+                              AI background removal may take 10-30 seconds depending on image size. The page may be briefly unresponsive.
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Processing Progress */}
+                        {imageProcessingProgress && (
+                          <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                            <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                            <span className="text-sm text-blue-700">{imageProcessingProgress}</span>
+                          </div>
+                        )}
+
                         {/* File Upload Area - Shows preview inside when image exists */}
                         {formData.image ? (
-                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 relative">
+                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 relative group">
                             <img
                               src={getImageUrl(formData.image) || ''}
                               alt="Preview"
-                              className="w-full h-40 object-contain rounded"
+                              className="w-full h-40 object-contain rounded cursor-pointer"
+                              onClick={() => setImageViewerOpen(true)}
                               onError={(e) => {
                                 e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2YzZjRmNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5JbnZhbGlkPC90ZXh0Pjwvc3ZnPg=='
                               }}
                             />
-                            <button
-                              type="button"
-                              onClick={() => setFormData({ ...formData, image: '' })}
-                              className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                              title="Remove image"
+                            {/* Overlay with view icon on hover */}
+                            <div 
+                              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center cursor-pointer"
+                              onClick={() => setImageViewerOpen(true)}
                             >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                              <Eye className="h-8 w-8 text-white" />
+                            </div>
+                            <div className="absolute top-1 right-1 flex gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setImageViewerOpen(true)}
+                                className="p-1 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+                                title="View image"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData({ ...formData, image: '' })
+                                  setOriginalFileSize(null)
+                                  setProcessedFileSize(null)
+                                }}
+                                className="p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                                title="Remove image"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                            {/* Click to view hint */}
+                            <p className="text-xs text-gray-400 text-center mt-1">Click image to view full size</p>
                           </div>
                         ) : (
                           <div 
@@ -1849,25 +1957,34 @@ export const ProductsPage = () => {
                             onDragLeave={handleDragLeave}
                             onDrop={handleDrop}
                           >
-                            <Upload className={`h-8 w-8 mx-auto mb-2 ${
-                              isDragging ? 'text-blue-500' : 'text-gray-400'
-                            }`} />
-                            <label htmlFor="imageFile" className="cursor-pointer">
-                              <span className="text-sm text-blue-600 font-medium hover:text-blue-700">
-                              {uploadingImage ? 'Uploading...' : 'Click to upload'}
-                            </span>
-                            <span className="text-sm text-gray-500"> or drag and drop</span>
-                            <input
-                              id="imageFile"
-                              type="file"
-                              accept="image/*"
-                              onChange={handleImageUpload}
-                              className="hidden"
-                              disabled={uploadingImage}
-                            />
-                          </label>
-                          <p className="text-xs text-gray-400 mt-1">PNG, JPG, JPEG, GIF, WebP up to 5MB</p>
-                        </div>
+                            {uploadingImage ? (
+                              <div className="flex flex-col items-center">
+                                <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-2" />
+                                <span className="text-sm text-blue-600">{imageProcessingProgress || 'Processing...'}</span>
+                              </div>
+                            ) : (
+                              <>
+                                <Upload className={`h-8 w-8 mx-auto mb-2 ${
+                                  isDragging ? 'text-blue-500' : 'text-gray-400'
+                                }`} />
+                                <label htmlFor="imageFile" className="cursor-pointer">
+                                  <span className="text-sm text-blue-600 font-medium hover:text-blue-700">
+                                    Click to upload
+                                  </span>
+                                  <span className="text-sm text-gray-500"> or drag and drop</span>
+                                  <input
+                                    id="imageFile"
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleImageUpload}
+                                    className="hidden"
+                                    disabled={uploadingImage}
+                                  />
+                                </label>
+                                <p className="text-xs text-gray-400 mt-1">PNG, JPG, JPEG, GIF, WebP up to 20MB</p>
+                              </>
+                            )}
+                          </div>
                         )}
                     </div>
                   </div>
@@ -2369,6 +2486,15 @@ MOOD BENEFITS:
               price: variantsAddonsProduct.price
             }}
             onUpdate={fetchProducts}
+          />
+        )}
+        
+        {/* Image Viewer Modal */}
+        {imageViewerOpen && formData.image && (
+          <ImageViewer
+            src={getImageUrl(formData.image) || ''}
+            alt={formData.name || 'Product image'}
+            onClose={() => setImageViewerOpen(false)}
           />
         )}
       </div>

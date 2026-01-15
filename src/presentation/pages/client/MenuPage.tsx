@@ -1290,13 +1290,13 @@ export const MenuPage = () => {
         )}
 
         {/* Floating Orders Button with Bee Icon - positioned on left for better mobile UX */}
-        {user && (
-          <button
-            onClick={() => setShowMyOrders(true)}
-            className={`fixed bottom-6 left-6 z-50 group transition-all duration-300 ${
-              hasOrderUpdates || orderNotifications > 0 ? 'animate-bounce-slow' : ''
-            }`}
-          >
+        {/* Shows for both authenticated users AND guests (guests can track orders by device ID) */}
+        <button
+          onClick={() => setShowMyOrders(true)}
+          className={`fixed bottom-6 left-6 z-50 group transition-all duration-300 ${
+            hasOrderUpdates || orderNotifications > 0 ? 'animate-bounce-slow' : ''
+          }`}
+        >
             <div className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 ${
               orderNotifications > 0 
                 ? 'bg-gradient-to-br from-yellow-400 to-orange-400 border-2 border-yellow-300' 
@@ -1327,10 +1327,9 @@ export const MenuPage = () => {
             
             {/* Label on hover */}
             <span className="absolute left-full ml-2 px-2 py-1 bg-black text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity shadow-lg">
-              My Orders
+              {user ? 'My Orders' : 'Track Order'}
             </span>
           </button>
-        )}
 
         {/* Custom animation styles */}
         <style>{`
