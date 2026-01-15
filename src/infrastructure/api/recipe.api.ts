@@ -6,6 +6,7 @@ export interface MenuItemIngredient {
   id: string;
   menuItemId: string;
   inventoryItemId: string;
+  variantId: string | null;
   quantity: number;
   inventory_item: {
     id: string;
@@ -14,36 +15,56 @@ export interface MenuItemIngredient {
     currentStock: number;
     minStock: number;
     status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' | 'DISCREPANCY';
+    category?: string;
   };
+  variant?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 export interface RecipeIngredient {
   inventoryItemId: string;
   quantity: number;
+  variantId?: string | null;
 }
 
 export const recipeApi = {
-  // Add ingredient to recipe
-  addIngredient: async (menuItemId: string, inventoryItemId: string, quantity: number) => {
+  // Add ingredient to recipe (supports variant-specific)
+  addIngredient: async (menuItemId: string, inventoryItemId: string, quantity: number, variantId?: string | null) => {
     const response = await api.post(`${API_URL}/ingredients`, {
       menuItemId,
       inventoryItemId,
       quantity,
+      variantId: variantId || null,
     });
     return response.data;
   },
 
-  // Remove ingredient from recipe
-  removeIngredient: async (menuItemId: string, inventoryItemId: string) => {
+  // Remove ingredient from recipe (supports variant-specific)
+  removeIngredient: async (menuItemId: string, inventoryItemId: string, variantId?: string | null) => {
     const response = await api.delete(`${API_URL}/ingredients`, {
-      data: { menuItemId, inventoryItemId },
+      data: { menuItemId, inventoryItemId, variantId: variantId || null },
     });
     return response.data;
   },
 
-  // Get recipe for a menu item
-  getRecipe: async (menuItemId: string) => {
-    const response = await api.get(`${API_URL}/${menuItemId}`);
+  // Get recipe for a menu item (supports variant filtering)
+  getRecipe: async (menuItemId: string, variantId?: string | null, includeAll?: boolean) => {
+    const params = new URLSearchParams();
+    if (variantId) params.append('variantId', variantId);
+    if (includeAll) params.append('includeAll', 'true');
+    
+    const queryString = params.toString();
+    const url = `${API_URL}/${menuItemId}${queryString ? `?${queryString}` : ''}`;
+    const response = await api.get(url);
+    return response.data.data as MenuItemIngredient[];
+  },
+
+  // Get effective recipe (base + variant overrides merged)
+  getEffectiveRecipe: async (menuItemId: string, variantId?: string | null) => {
+    const params = variantId ? `?variantId=${variantId}` : '';
+    const response = await api.get(`${API_URL}/${menuItemId}/effective${params}`);
     return response.data.data as MenuItemIngredient[];
   },
 

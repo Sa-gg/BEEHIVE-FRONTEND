@@ -381,7 +381,7 @@ export const BulkStockModal: React.FC<BulkStockModalProps> = ({
             )}
 
             {/* Items List */}
-            <div className="space-y-3">
+            <div className="space-y-3 relative">
               <div className="flex items-center justify-between">
                 <Label className="text-base font-semibold">Items</Label>
                 <Button
@@ -483,7 +483,16 @@ export const BulkStockModal: React.FC<BulkStockModalProps> = ({
 
               {/* Item Selector Dropdown */}
               {showItemSelector && activeItemIndex !== null && (
-                <div className="absolute left-0 right-0 mx-6 mt-1 bg-white border rounded-xl shadow-xl z-10 max-h-[300px] overflow-hidden">
+                <>
+                  {/* Backdrop to close dropdown */}
+                  <div 
+                    className="fixed inset-0 z-[5]" 
+                    onClick={() => {
+                      setShowItemSelector(false);
+                      setActiveItemIndex(null);
+                    }}
+                  />
+                  <div className="absolute left-0 right-0 top-[60px] bg-white border rounded-xl shadow-xl z-10 max-h-[300px] overflow-hidden max-w-md mx-auto">
                   <div className="p-3 border-b sticky top-0 bg-white">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -518,7 +527,7 @@ export const BulkStockModal: React.FC<BulkStockModalProps> = ({
                             <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
                             <p className="text-xs text-gray-500">{item.category}</p>
                           </div>
-                          <div className="text-right">
+                          <div className="text-right flex-shrink-0">
                             <p className={`text-sm font-medium ${
                               item.currentStock < 0 ? 'text-purple-600' :
                               item.currentStock === 0 ? 'text-red-600' : 'text-gray-700'
@@ -543,6 +552,7 @@ export const BulkStockModal: React.FC<BulkStockModalProps> = ({
                     </button>
                   </div>
                 </div>
+                </>
               )}
             </div>
 

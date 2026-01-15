@@ -204,7 +204,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
     { outlineIcon: CreditCard, solidIcon: RiBankCardFill, label: 'POS', path: '/admin/pos', badge: null, permission: 'accessPOS', iconColor: 'text-emerald-400' },
     { outlineIcon: ClipboardList, solidIcon: RiFileList3Fill, label: 'Orders', path: '/admin/orders', badge: pendingOrderCount > 0 ? pendingOrderCount : null, badgeColor: 'bg-red-500', permission: 'viewOrders', iconColor: 'text-amber-400' },
     { outlineIcon: Package, solidIcon: RiArchiveFill, label: 'Inventory', path: '/admin/inventory', badge: (stockAlertCount + discrepancyCount) > 0 ? (stockAlertCount + discrepancyCount) : null, badgeColor: discrepancyCount > 0 ? 'bg-red-600' : 'bg-orange-500', permission: 'viewInventory', iconColor: 'text-cyan-400' },
-    { outlineIcon: ChefHat, solidIcon: RiRestaurantFill, label: 'Recipes', path: '/admin/recipes', badge: null, permission: 'viewRecipes', iconColor: 'text-orange-400' },
+    { outlineIcon: ChefHat, solidIcon: RiRestaurantFill, label: 'Product Components', path: '/admin/recipes', badge: null, permission: 'viewRecipes', iconColor: 'text-orange-400' },
     { outlineIcon: TrendingUp, solidIcon: RiLineChartFill, label: 'Sales', path: '/admin/sales', badge: null, permission: 'viewSales', iconColor: 'text-green-400' },
     { outlineIcon: FileText, solidIcon: RiFileTextFill, label: 'Reports', path: '/admin/reports', badge: null, badgeColor: null, permission: 'viewReports', iconColor: 'text-indigo-400' },
     { outlineIcon: Wallet, solidIcon: RiWalletFill, label: 'Expenses', path: '/admin/expenses', badge: null, badgeColor: null, permission: 'viewExpenses', iconColor: 'text-red-400' },

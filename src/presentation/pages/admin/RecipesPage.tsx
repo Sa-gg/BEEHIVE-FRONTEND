@@ -31,7 +31,7 @@ export const RecipesPage = () => {
   }, [selectedCategory, searchQuery])
 
   useEffect(() => {
-    document.title = 'Recipes - BEEHIVE Admin'
+    document.title = 'Product Components - BEEHIVE Admin'
   }, [])
 
   const loadCategories = async () => {
@@ -106,12 +106,11 @@ export const RecipesPage = () => {
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold mb-2 flex items-center gap-3">
-            <span className="text-4xl">👨‍🍳</span>
-            Recipe Management
+          <h1 className="text-2xl lg:text-3xl font-bold mb-2">
+            Product Components
           </h1>
           <p className="text-sm lg:text-base text-gray-600">
-            Define ingredients for each menu item to enable automatic inventory deduction
+            Configure ingredients and packaging for each menu item to enable automatic inventory deduction
           </p>
         </div>
 
@@ -122,11 +121,11 @@ export const RecipesPage = () => {
               <Book className="h-5 w-5 text-black" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-bold text-gray-900 mb-1">How Recipe Management Works</p>
+              <p className="text-sm font-bold text-gray-900 mb-1">How Product Components Work</p>
               <p className="text-sm text-gray-700">
-                Define which ingredients are needed for each menu item. When an order is marked as 
+                Define which inventory items (ingredients, packaging, supplies) are needed for each menu item. When an order is marked as 
                 <span className="font-bold" style={{ color: '#F9C900' }}> COMPLETED</span>, the system will automatically deduct 
-                the required ingredients from your inventory.
+                the required items from your inventory.
               </p>
             </div>
           </div>
@@ -175,7 +174,7 @@ export const RecipesPage = () => {
                   }`}
                 >
                   <CheckCircle className="h-3.5 w-3.5" />
-                  Has Recipe
+                  Configured
                 </button>
                 <button
                   onClick={() => setRecipeFilter('no-recipe')}
@@ -186,7 +185,7 @@ export const RecipesPage = () => {
                   }`}
                 >
                   <AlertTriangle className="h-3.5 w-3.5" />
-                  No Recipe
+                  Not Configured
                 </button>
               </div>
             </div>
@@ -356,7 +355,7 @@ export const RecipesPage = () => {
                           ) : (
                             <AlertTriangle className="h-3 w-3 mr-1" />
                           )}
-                          {ingredientCount} {ingredientCount === 1 ? 'ingredient' : 'ingredients'}
+                          {ingredientCount} {ingredientCount === 1 ? 'item' : 'items'}
                         </Badge>
                       </div>
 
@@ -373,14 +372,14 @@ export const RecipesPage = () => {
                           className="font-medium"
                         >
                           <Book className="h-4 w-4 mr-2" />
-                          Edit Recipe
+                          Configure
                         </Button>
                       </div>
 
                       {!hasRecipe && (
                         <p className="text-xs text-yellow-600 mt-3 flex items-start gap-2">
-                          <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                          <span>No recipe defined. Orders won't deduct inventory.</span>
+                          <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                          <span>Not configured. Orders won't deduct inventory.</span>
                         </p>
                       )}
                     </div>
