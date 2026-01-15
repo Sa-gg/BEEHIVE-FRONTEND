@@ -6,10 +6,10 @@ export interface LoginRequest {
 }
 
 export interface RegisterRequest {
-  email: string;
+  phone: string;
   password: string;
   name: string;
-  phone?: string;
+  email?: string;
   role?: 'CUSTOMER' | 'CASHIER' | 'COOK' | 'MANAGER' | 'ADMIN';
 }
 
@@ -45,6 +45,11 @@ export const authApi = {
 
   async getMe(): Promise<User> {
     const response = await api.get<User>('/api/auth/me');
+    return response.data;
+  },
+
+  async updateMe(data: { name?: string; phone?: string }): Promise<User> {
+    const response = await api.put<User>('/api/auth/me', data);
     return response.data;
   },
 

@@ -1,6 +1,6 @@
 import { type ReactNode, useState, useEffect, useCallback, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, X, LogOut, Bell, LayoutDashboard, CreditCard, Package, ClipboardList, ChefHat, TrendingUp, FileText, Wallet, Tag, Users, Brain, Settings } from 'lucide-react'
+import { Menu, X, LogOut, Bell, LayoutDashboard, CreditCard, Package, ClipboardList, ChefHat, TrendingUp, FileText, Wallet, Tag, Users, Brain, Settings, Coffee } from 'lucide-react'
 // Solid icons from react-icons
 import { 
   RiDashboardFill, 
@@ -14,7 +14,8 @@ import {
   RiPriceTag3Fill,
   RiTeamFill,
   RiBrainFill,
-  RiSettings4Fill
+  RiSettings4Fill,
+  RiCupFill
 } from 'react-icons/ri'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
@@ -209,6 +210,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
     { outlineIcon: TrendingUp, solidIcon: RiLineChartFill, label: 'Sales', path: '/admin/sales', badge: null, permission: 'viewSales', iconColor: 'text-green-400' },
     { outlineIcon: Wallet, solidIcon: RiWalletFill, label: 'Expenses', path: '/admin/expenses', badge: null, badgeColor: null, permission: 'viewExpenses', iconColor: 'text-red-400' },
     { outlineIcon: Brain, solidIcon: RiBrainFill, label: 'Mood System', path: '/admin/mood-settings', badge: null, permission: 'manageMoodSettings', iconColor: 'text-pink-400' },
+    { outlineIcon: Coffee, solidIcon: RiCupFill, label: 'Loyalty', path: '/admin/loyalty', badge: null, permission: 'manageOrders', iconColor: 'text-amber-500' },
     { outlineIcon: FileText, solidIcon: RiFileTextFill, label: 'Reports', path: '/admin/reports', badge: null, badgeColor: null, permission: 'viewReports', iconColor: 'text-indigo-400' },
     { outlineIcon: Users, solidIcon: RiTeamFill, label: 'Accounts', path: '/admin/accounts', badge: null, badgeColor: null, permission: 'viewAccounts', iconColor: 'text-teal-400' },
     { outlineIcon: Settings, solidIcon: RiSettings4Fill, label: 'Settings', path: '/admin/settings', badge: null, permission: 'viewSettings', iconColor: 'text-gray-400' },

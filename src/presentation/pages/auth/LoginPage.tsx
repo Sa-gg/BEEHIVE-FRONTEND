@@ -4,13 +4,13 @@ import { useAuthStore } from '../../store/authStore'
 import { Button } from '../../components/common/ui/button'
 import { Input } from '../../components/common/ui/input'
 import { Label } from '../../components/common/ui/label'
-import { Loader2, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react'
+import { Loader2, Mail, Lock, ArrowRight, Eye, EyeOff, Phone } from 'lucide-react'
 
 export const LoginPage = () => {
   const navigate = useNavigate()
   const { login, isAuthenticated, isLoading, user } = useAuthStore()
   
-  const [email, setEmail] = useState('')
+  const [emailOrPhone, setEmailOrPhone] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -34,13 +34,13 @@ export const LoginPage = () => {
     e.preventDefault()
     setError('')
 
-    if (!email || !password) {
+    if (!emailOrPhone || !password) {
       setError('Please fill in all fields')
       return
     }
 
     try {
-      await login(email, password)
+      await login(emailOrPhone, password)
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.')
     }
@@ -84,15 +84,15 @@ export const LoginPage = () => {
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-gray-700 font-medium">Email Address</Label>
+            <Label htmlFor="emailOrPhone" className="text-gray-700 font-medium">Email or Phone Number</Label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
               <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="emailOrPhone"
+                type="text"
+                placeholder="you@example.com or +63 912 345 6789"
+                value={emailOrPhone}
+                onChange={(e) => setEmailOrPhone(e.target.value)}
                 disabled={isLoading}
                 className="h-12 pl-10 rounded-xl border-gray-200 focus:border-yellow-400 focus:ring-yellow-400 transition-all"
               />

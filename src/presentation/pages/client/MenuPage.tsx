@@ -16,7 +16,6 @@ import { MoodReflectionModal } from '../../components/features/CustomerMenu/Mood
 import { CustomerDropdown } from '../../components/features/CustomerMenu/CustomerDropdown'
 import { MyOrdersModal } from '../../components/features/CustomerMenu/MyOrdersModal'
 import { AddonsVariantsModal } from '../../components/features/shared/AddonsVariantsModal'
-import { LoyaltyCard } from '../../components/features/Loyalty/LoyaltyCard'
 import { Button } from '../../components/common/ui/button'
 import { ShoppingBag, Sparkles, Loader2, Bell } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
@@ -83,6 +82,9 @@ export const MenuPage = () => {
   
   // Track if we've already tracked recommendations for current mood (prevent double-counting)
   const trackedMoodRef = useRef<string | null>(null)
+  
+  // Cache shuffled recommendations to prevent re-shuffling on every render
+  const shuffledRecommendationsRef = useRef<{ mood: string | null; items: MenuItem[] }>({ mood: null, items: [] })
   
   // Get device ID for guest order tracking
   const deviceId = getDeviceId()
@@ -611,6 +613,8 @@ export const MenuPage = () => {
     setShowMoodSelector(false)
     // Reset tracked mood ref so useEffect will track for the new mood
     trackedMoodRef.current = null
+    // Clear cached recommendations so new mood gets freshly shuffled
+    shuffledRecommendationsRef.current = { mood: null, items: [] }
   }
   
   // Track shown items when mood is selected and recommendations are computed
@@ -715,6 +719,13 @@ export const MenuPage = () => {
 
   const getRecommendedItems = (): MenuItem[] => {
     if (!selectedMood) return []
+    
+    // Check if we already have cached shuffled results for this mood
+    // This prevents re-shuffling on every render
+    if (shuffledRecommendationsRef.current.mood === selectedMood && 
+        shuffledRecommendationsRef.current.items.length > 0) {
+      return shuffledRecommendationsRef.current.items
+    }
     
     const moodConfig = getMoodByValue(selectedMood)
     if (!moodConfig) return []
@@ -949,8 +960,11 @@ export const MenuPage = () => {
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
       }
       topRecommended = shuffled
-      console.log('🔀 Day 0 Position Shuffle: Display order randomized to prevent left-position bias')
+      console.log('🔀 Day 0 Position Shuffle: Display order randomized (cached for this mood)')
     }
+    
+    // Cache the shuffled result so subsequent renders don't re-shuffle
+    shuffledRecommendationsRef.current = { mood: selectedMood, items: topRecommended }
     
     return topRecommended
   }
@@ -1144,9 +1158,6 @@ export const MenuPage = () => {
               </div>
             )}
 
-            {/* Loyalty Card - Shows stamp progress */}
-            <LoyaltyCard deviceId={deviceId} className="mb-4" />
-            
             {/* Recommended Items for Mood */}
             {selectedMood && recommendedItems.length > 0 && (
               <div className="mb-4">

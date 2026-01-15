@@ -29,8 +29,15 @@ export const RegisterPage = () => {
     e.preventDefault()
     setError('')
 
-    if (!name || !email || !password || !confirmPassword) {
+    if (!name || !phone || !password || !confirmPassword) {
       setError('Please fill in all required fields')
+      return
+    }
+
+    // Validate phone number format (basic validation)
+    const phoneRegex = /^[+]?[0-9\s-]{10,15}$/
+    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
+      setError('Please enter a valid phone number')
       return
     }
 
@@ -45,7 +52,7 @@ export const RegisterPage = () => {
     }
 
     try {
-      await register(email, password, name, phone || undefined)
+      await register(phone, password, name, email || undefined)
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.')
     }
@@ -123,23 +130,7 @@ export const RegisterPage = () => {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="email" className="text-gray-700 font-medium text-sm">Email Address *</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
-                className="h-11 pl-10 rounded-xl border-gray-200 focus:border-yellow-400 focus:ring-yellow-400 transition-all"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="phone" className="text-gray-700 font-medium text-sm">Phone (Optional)</Label>
+            <Label htmlFor="phone" className="text-gray-700 font-medium text-sm">Phone Number * <span className="text-xs text-gray-400">(for loyalty stamps)</span></Label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
@@ -148,6 +139,23 @@ export const RegisterPage = () => {
                 placeholder="+63 912 345 6789"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                disabled={isLoading}
+                className="h-11 pl-10 rounded-xl border-gray-200 focus:border-yellow-400 focus:ring-yellow-400 transition-all"
+              />
+            </div>
+            <p className="text-xs text-gray-500">Your phone number will be used to track your loyalty stamps</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="email" className="text-gray-700 font-medium text-sm">Email Address <span className="text-xs text-gray-400">(optional)</span></Label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 disabled={isLoading}
                 className="h-11 pl-10 rounded-xl border-gray-200 focus:border-yellow-400 focus:ring-yellow-400 transition-all"
               />

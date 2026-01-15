@@ -7,10 +7,11 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string, phone?: string) => Promise<void>;
+  login: (emailOrPhone: string, password: string) => Promise<void>;
+  register: (phone: string, password: string, name: string, email?: string) => Promise<void>;
   logout: () => void;
   checkAuth: () => Promise<void>;
+  setUser: (user: User) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -42,14 +43,14 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      register: async (email: string, password: string, name: string, phone?: string) => {
+      register: async (phone: string, password: string, name: string, email?: string) => {
         set({ isLoading: true });
         try {
           const response = await authApi.register({ 
-            email, 
+            phone, 
             password, 
             name, 
-            phone,
+            email,
             role: 'CUSTOMER' 
           });
           
@@ -100,6 +101,10 @@ export const useAuthStore = create<AuthState>()(
           // Token is invalid, clear auth state
           get().logout();
         }
+      },
+
+      setUser: (user: User) => {
+        set({ user });
       }
     }),
     {

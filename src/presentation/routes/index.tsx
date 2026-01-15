@@ -39,6 +39,7 @@ const ProductsPage = lazy(() => import('../pages/admin/ProductsPage').then(m => 
 const SettingsPage = lazy(() => import('../pages/admin/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const StockTransactionsPage = lazy(() => import('../pages/admin/StockTransactionsPage').then(m => ({ default: m.StockTransactionsPage })))
 const MoodSettingsPage = lazy(() => import('../pages/admin/MoodSettingsPage').then(m => ({ default: m.MoodSettingsPage })))
+const LoyaltyPage = lazy(() => import('../pages/admin/LoyaltyPage').then(m => ({ default: m.LoyaltyPage })))
 
 // Error Pages
 const NotFoundPage = lazy(() => import('../pages/error/NotFoundPage').then(m => ({ default: m.NotFoundPage })))
@@ -236,6 +237,16 @@ export const routes: RouteObject[] = [
               <Suspense fallback={<LoadingFallback />}>
                 <ProtectedRoute requiredPermission="manageMoodSettings">
                   <MoodSettingsPage />
+                </ProtectedRoute>
+              </Suspense>
+            ),
+          },
+          {
+            path: 'loyalty',
+            element: (
+              <Suspense fallback={<LoadingFallback />}>
+                <ProtectedRoute requiredPermission="manageOrders">
+                  <LoyaltyPage />
                 </ProtectedRoute>
               </Suspense>
             ),
