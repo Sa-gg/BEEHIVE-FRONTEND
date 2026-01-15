@@ -1,8 +1,8 @@
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { useSettingsStore } from '../../store/settingsStore'
-import { settingsApi } from '../../../infrastructure/api/settings.api'
+import { settingsApi, type GlobalSettings } from '../../../infrastructure/api/settings.api'
 import type { Settings } from '../../../infrastructure/api/settings.api'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { 
   CreditCard, 
   Printer, 
@@ -15,7 +15,8 @@ import {
   Key,
   LayoutDashboard,
   Smartphone,
-  RefreshCw
+  RefreshCw,
+  FlaskConical
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { toast } from '../../components/common/ToastNotification'
@@ -113,6 +114,10 @@ const SectionHeader = ({
 export const SettingsPage = () => {
   const { user } = useAuthStore()
   const isManager = user?.role === 'MANAGER' || user?.role === 'ADMIN'
+  const isCashier = user?.role === 'CASHIER'
+  const isCook = user?.role === 'COOK'
+  // Cashier and Cook can see UI settings, but not global/permission settings
+  const canSeeUISettings = isManager || isCashier || isCook
   
   const {
     printKitchenCopy,
@@ -139,6 +144,8 @@ export const SettingsPage = () => {
     cashierCanApplyServiceAmount,
     cashierCanApplyDiscount,
     cashierCanApplyDeliveryAmount,
+    linkedOrdersEnabled,
+    allowVoidOrderItem,
     setPrintKitchenCopy,
     setPrintKitchenCopyForOpenTab,
     setCashChangeEnabled,
@@ -163,6 +170,8 @@ export const SettingsPage = () => {
     setCashierCanApplyServiceAmount,
     setCashierCanApplyDiscount,
     setCashierCanApplyDeliveryAmount,
+    setLinkedOrdersEnabled,
+    setAllowVoidOrderItem,
   } = useSettingsStore()
 
   const [isSyncing, setIsSyncing] = useState(false)
@@ -186,13 +195,66 @@ export const SettingsPage = () => {
         setOpenTime(backendSettings.openTime)
         setCloseTime(backendSettings.closeTime)
         
-        // Sync auto-stock settings with backend
-        const autoStockSettings = await settingsApi.getAutoStockSettings()
-        if (autoStockSettings.autoOutOfStockWhenIngredientsRunOut !== autoOutOfStockWhenIngredientsRunOut) {
-          setAutoOutOfStockWhenIngredientsRunOut(autoStockSettings.autoOutOfStockWhenIngredientsRunOut)
+        // Sync ALL global settings from backend
+        const { settings: globalSettings } = await settingsApi.getGlobalSettings()
+        
+        // Auto-stock settings
+        if (globalSettings.autoOutOfStockWhenIngredientsRunOut !== autoOutOfStockWhenIngredientsRunOut) {
+          setAutoOutOfStockWhenIngredientsRunOut(globalSettings.autoOutOfStockWhenIngredientsRunOut)
         }
-        if (autoStockSettings.autoMarkInStockWhenAvailable !== autoMarkInStockWhenAvailable) {
-          setAutoMarkInStockWhenAvailable(autoStockSettings.autoMarkInStockWhenAvailable)
+        if (globalSettings.autoMarkInStockWhenAvailable !== autoMarkInStockWhenAvailable) {
+          setAutoMarkInStockWhenAvailable(globalSettings.autoMarkInStockWhenAvailable)
+        }
+        
+        // Payment settings
+        if (globalSettings.cashChangeEnabled !== cashChangeEnabled) {
+          setCashChangeEnabled(globalSettings.cashChangeEnabled)
+        }
+        
+        // Printing settings
+        if (globalSettings.printKitchenCopy !== printKitchenCopy) {
+          setPrintKitchenCopy(globalSettings.printKitchenCopy)
+        }
+        if (globalSettings.printKitchenCopyForOpenTab !== printKitchenCopyForOpenTab) {
+          setPrintKitchenCopyForOpenTab(globalSettings.printKitchenCopyForOpenTab)
+        }
+        
+        // Experimental features
+        if (globalSettings.linkedOrdersEnabled !== linkedOrdersEnabled) {
+          setLinkedOrdersEnabled(globalSettings.linkedOrdersEnabled)
+        }
+        
+        // Order permissions
+        if (globalSettings.allowVoidOrderItem !== allowVoidOrderItem) {
+          setAllowVoidOrderItem(globalSettings.allowVoidOrderItem)
+        }
+        
+        // Cashier permissions
+        if (globalSettings.cashierCanVoidWithoutPin !== cashierCanVoidWithoutPin) {
+          setCashierCanVoidWithoutPin(globalSettings.cashierCanVoidWithoutPin)
+        }
+        if (globalSettings.cashierCanRefundWithoutPin !== cashierCanRefundWithoutPin) {
+          setCashierCanRefundWithoutPin(globalSettings.cashierCanRefundWithoutPin)
+        }
+        if (globalSettings.cashierCanComplimentaryWithoutPin !== cashierCanComplimentaryWithoutPin) {
+          setCashierCanComplimentaryWithoutPin(globalSettings.cashierCanComplimentaryWithoutPin)
+        }
+        if (globalSettings.cashierCanWriteOffWithoutPin !== cashierCanWriteOffWithoutPin) {
+          setCashierCanWriteOffWithoutPin(globalSettings.cashierCanWriteOffWithoutPin)
+        }
+        if (globalSettings.cashierCanVoidAndReorderWithoutPin !== cashierCanVoidAndReorderWithoutPin) {
+          setCashierCanVoidAndReorderWithoutPin(globalSettings.cashierCanVoidAndReorderWithoutPin)
+        }
+        
+        // Cashier POS permissions
+        if (globalSettings.cashierCanApplyServiceAmount !== cashierCanApplyServiceAmount) {
+          setCashierCanApplyServiceAmount(globalSettings.cashierCanApplyServiceAmount)
+        }
+        if (globalSettings.cashierCanApplyDiscount !== cashierCanApplyDiscount) {
+          setCashierCanApplyDiscount(globalSettings.cashierCanApplyDiscount)
+        }
+        if (globalSettings.cashierCanApplyDeliveryAmount !== cashierCanApplyDeliveryAmount) {
+          setCashierCanApplyDeliveryAmount(globalSettings.cashierCanApplyDeliveryAmount)
         }
       } catch (error) {
         console.error('Failed to sync settings:', error)
@@ -201,6 +263,26 @@ export const SettingsPage = () => {
     syncSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Only run on mount - we sync FROM backend, not TO backend
+  
+  // Helper function to update a global setting on the backend
+  const updateGlobalSetting = useCallback(async <K extends keyof GlobalSettings>(
+    key: K,
+    value: GlobalSettings[K],
+    setter: (value: GlobalSettings[K]) => void,
+    currentValue: GlobalSettings[K]
+  ) => {
+    // Optimistically update local state
+    setter(value)
+    
+    try {
+      await settingsApi.updateGlobalSettings({ [key]: value })
+    } catch (error) {
+      console.error(`Failed to sync ${key} setting:`, error)
+      // Revert on error
+      setter(currentValue)
+      toast.error('Sync Failed', 'Failed to save setting to server')
+    }
+  }, [])
 
   const handleTimeChange = async (field: 'openTime' | 'closeTime', value: string) => {
     setIsSyncing(true)
@@ -262,31 +344,84 @@ export const SettingsPage = () => {
   // Handle auto out-of-stock setting change - sync with backend
   const handleAutoOutOfStockChange = async () => {
     const newValue = !autoOutOfStockWhenIngredientsRunOut
-    setAutoOutOfStockWhenIngredientsRunOut(newValue)
-    
-    try {
-      await settingsApi.updateAutoStockSettings({ autoOutOfStockWhenIngredientsRunOut: newValue })
-    } catch (error) {
-      console.error('Failed to sync auto out-of-stock setting:', error)
-      // Revert on error
-      setAutoOutOfStockWhenIngredientsRunOut(!newValue)
-      toast.error('Sync Failed', 'Failed to save setting to server')
-    }
+    await updateGlobalSetting('autoOutOfStockWhenIngredientsRunOut', newValue, setAutoOutOfStockWhenIngredientsRunOut, autoOutOfStockWhenIngredientsRunOut)
   }
 
   // Handle auto in-stock setting change - sync with backend
   const handleAutoInStockChange = async () => {
     const newValue = !autoMarkInStockWhenAvailable
-    setAutoMarkInStockWhenAvailable(newValue)
-    
-    try {
-      await settingsApi.updateAutoStockSettings({ autoMarkInStockWhenAvailable: newValue })
-    } catch (error) {
-      console.error('Failed to sync auto in-stock setting:', error)
-      // Revert on error
-      setAutoMarkInStockWhenAvailable(!newValue)
-      toast.error('Sync Failed', 'Failed to save setting to server')
-    }
+    await updateGlobalSetting('autoMarkInStockWhenAvailable', newValue, setAutoMarkInStockWhenAvailable, autoMarkInStockWhenAvailable)
+  }
+  
+  // Handle payment settings change
+  const handleCashChangeToggle = async () => {
+    const newValue = !cashChangeEnabled
+    await updateGlobalSetting('cashChangeEnabled', newValue, setCashChangeEnabled, cashChangeEnabled)
+  }
+  
+  // Handle printing settings change
+  const handlePrintKitchenCopyToggle = async () => {
+    const newValue = !printKitchenCopy
+    await updateGlobalSetting('printKitchenCopy', newValue, setPrintKitchenCopy, printKitchenCopy)
+  }
+  
+  const handlePrintKitchenCopyForOpenTabToggle = async () => {
+    const newValue = !printKitchenCopyForOpenTab
+    await updateGlobalSetting('printKitchenCopyForOpenTab', newValue, setPrintKitchenCopyForOpenTab, printKitchenCopyForOpenTab)
+  }
+  
+  // Handle experimental features change
+  const handleLinkedOrdersToggle = async () => {
+    const newValue = !linkedOrdersEnabled
+    await updateGlobalSetting('linkedOrdersEnabled', newValue, setLinkedOrdersEnabled, linkedOrdersEnabled)
+  }
+  
+  // Handle order item permissions change
+  const handleAllowVoidOrderItemToggle = async () => {
+    const newValue = !allowVoidOrderItem
+    await updateGlobalSetting('allowVoidOrderItem', newValue, setAllowVoidOrderItem, allowVoidOrderItem)
+  }
+  
+  // Handle cashier permissions changes
+  const handleCashierVoidWithoutPinToggle = async () => {
+    const newValue = !cashierCanVoidWithoutPin
+    await updateGlobalSetting('cashierCanVoidWithoutPin', newValue, setCashierCanVoidWithoutPin, cashierCanVoidWithoutPin)
+  }
+  
+  const handleCashierRefundWithoutPinToggle = async () => {
+    const newValue = !cashierCanRefundWithoutPin
+    await updateGlobalSetting('cashierCanRefundWithoutPin', newValue, setCashierCanRefundWithoutPin, cashierCanRefundWithoutPin)
+  }
+  
+  const handleCashierComplimentaryWithoutPinToggle = async () => {
+    const newValue = !cashierCanComplimentaryWithoutPin
+    await updateGlobalSetting('cashierCanComplimentaryWithoutPin', newValue, setCashierCanComplimentaryWithoutPin, cashierCanComplimentaryWithoutPin)
+  }
+  
+  const handleCashierWriteOffWithoutPinToggle = async () => {
+    const newValue = !cashierCanWriteOffWithoutPin
+    await updateGlobalSetting('cashierCanWriteOffWithoutPin', newValue, setCashierCanWriteOffWithoutPin, cashierCanWriteOffWithoutPin)
+  }
+  
+  const handleCashierVoidAndReorderWithoutPinToggle = async () => {
+    const newValue = !cashierCanVoidAndReorderWithoutPin
+    await updateGlobalSetting('cashierCanVoidAndReorderWithoutPin', newValue, setCashierCanVoidAndReorderWithoutPin, cashierCanVoidAndReorderWithoutPin)
+  }
+  
+  // Handle cashier POS permissions changes
+  const handleCashierServiceAmountToggle = async () => {
+    const newValue = !cashierCanApplyServiceAmount
+    await updateGlobalSetting('cashierCanApplyServiceAmount', newValue, setCashierCanApplyServiceAmount, cashierCanApplyServiceAmount)
+  }
+  
+  const handleCashierDiscountToggle = async () => {
+    const newValue = !cashierCanApplyDiscount
+    await updateGlobalSetting('cashierCanApplyDiscount', newValue, setCashierCanApplyDiscount, cashierCanApplyDiscount)
+  }
+  
+  const handleCashierDeliveryAmountToggle = async () => {
+    const newValue = !cashierCanApplyDeliveryAmount
+    await updateGlobalSetting('cashierCanApplyDeliveryAmount', newValue, setCashierCanApplyDeliveryAmount, cashierCanApplyDeliveryAmount)
   }
 
   // Manually trigger stock status update for all menu items
@@ -339,7 +474,8 @@ export const SettingsPage = () => {
 
         {/* Settings Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Payment Settings */}
+          {/* Payment Settings - Manager Only */}
+          {isManager && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <SectionHeader 
               icon={CreditCard} 
@@ -352,12 +488,14 @@ export const SettingsPage = () => {
                 title="Cash & Change Calculator"
                 description="Show calculator modal to enter cash received and calculate change when marking CASH orders as paid"
                 enabled={cashChangeEnabled}
-                onChange={() => setCashChangeEnabled(!cashChangeEnabled)}
+                onChange={handleCashChangeToggle}
               />
             </div>
           </div>
+          )}
 
-          {/* Printing Settings */}
+          {/* Printing Settings - Manager Only */}
+          {isManager && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <SectionHeader 
               icon={Printer} 
@@ -370,18 +508,19 @@ export const SettingsPage = () => {
                 title="Print Kitchen Copy (2 Receipts)"
                 description="Print an extra receipt for the kitchen when using the print button"
                 enabled={printKitchenCopy}
-                onChange={() => setPrintKitchenCopy(!printKitchenCopy)}
+                onChange={handlePrintKitchenCopyToggle}
               />
               <SettingItem
                 title="Print Kitchen Copy for Open Tab"
                 description="Print a kitchen receipt when clicking Open Tab button in POS"
                 enabled={printKitchenCopyForOpenTab}
-                onChange={() => setPrintKitchenCopyForOpenTab(!printKitchenCopyForOpenTab)}
+                onChange={handlePrintKitchenCopyForOpenTabToggle}
               />
             </div>
           </div>
+          )}
 
-          {/* Toast Notification Settings */}
+          {/* Toast Notification Settings - Available to all roles */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <SectionHeader 
               icon={Info} 
@@ -424,7 +563,8 @@ export const SettingsPage = () => {
             </div>
           </div>
 
-          {/* Inventory Settings */}
+          {/* Inventory Settings - Manager Only */}
+          {isManager && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <SectionHeader 
               icon={Package} 
@@ -472,8 +612,9 @@ export const SettingsPage = () => {
               </div>
             </div>
           </div>
+          )}
 
-          {/* UI Display Settings */}
+          {/* UI Display Settings - Available to all roles */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <SectionHeader 
               icon={LayoutDashboard} 
@@ -501,6 +642,15 @@ export const SettingsPage = () => {
                 onChange={() => setShowOverviewInHeaderOrdersPage(!showOverviewInHeaderOrdersPage)}
                 disabled={!showHeaderInOrdersPage}
               />
+              {/* Allow Void Order Item - Manager Only */}
+              {isManager && (
+              <SettingItem
+                title="Allow Void Order Item"
+                description="Allow voiding individual order items (not the entire order). When disabled, the delete button on order items will be hidden."
+                enabled={allowVoidOrderItem}
+                onChange={handleAllowVoidOrderItemToggle}
+              />
+              )}
               
               {/* Separator Direction Selection */}
               <div className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
@@ -707,6 +857,27 @@ export const SettingsPage = () => {
               </div>
             </div>
           </div>
+
+          {/* Experimental Features - Manager Only */}
+          {isManager && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden lg:col-span-2">
+            <SectionHeader 
+              icon={FlaskConical} 
+              title="Experimental Features" 
+              description="Enable or disable experimental features (use with caution)"
+              color="amber"
+            />
+            <div className="divide-y divide-gray-100">
+              <SettingItem
+                title="Linked Orders"
+                description="Allow linking order items together in the Orders page. When disabled, the link option is hidden from order item menus."
+                enabled={linkedOrdersEnabled}
+                onChange={handleLinkedOrdersToggle}
+                warning={linkedOrdersEnabled}
+              />
+            </div>
+          </div>
+          )}
         </div>
 
         {/* Manager Settings - Only visible to managers/admins */}
@@ -845,35 +1016,35 @@ export const SettingsPage = () => {
                   title="Void Order Without PIN"
                   description="Allow cashiers to void orders without manager PIN"
                   enabled={cashierCanVoidWithoutPin}
-                  onChange={() => setCashierCanVoidWithoutPin(!cashierCanVoidWithoutPin)}
+                  onChange={handleCashierVoidWithoutPinToggle}
                   warning={cashierCanVoidWithoutPin}
                 />
                 <SettingItem
                   title="Refund Order Without PIN"
                   description="Allow cashiers to process refunds without manager PIN"
                   enabled={cashierCanRefundWithoutPin}
-                  onChange={() => setCashierCanRefundWithoutPin(!cashierCanRefundWithoutPin)}
+                  onChange={handleCashierRefundWithoutPinToggle}
                   warning={cashierCanRefundWithoutPin}
                 />
                 <SettingItem
                   title="Mark Complimentary Without PIN"
                   description="Allow cashiers to mark orders as complimentary without PIN"
                   enabled={cashierCanComplimentaryWithoutPin}
-                  onChange={() => setCashierCanComplimentaryWithoutPin(!cashierCanComplimentaryWithoutPin)}
+                  onChange={handleCashierComplimentaryWithoutPinToggle}
                   warning={cashierCanComplimentaryWithoutPin}
                 />
                 <SettingItem
                   title="Write-Off Order Without PIN"
                   description="Allow cashiers to write off unpaid orders without PIN"
                   enabled={cashierCanWriteOffWithoutPin}
-                  onChange={() => setCashierCanWriteOffWithoutPin(!cashierCanWriteOffWithoutPin)}
+                  onChange={handleCashierWriteOffWithoutPinToggle}
                   warning={cashierCanWriteOffWithoutPin}
                 />
                 <SettingItem
                   title="Void & Re-order Without PIN"
                   description="Allow cashiers to void orders and create re-orders without PIN"
                   enabled={cashierCanVoidAndReorderWithoutPin}
-                  onChange={() => setCashierCanVoidAndReorderWithoutPin(!cashierCanVoidAndReorderWithoutPin)}
+                  onChange={handleCashierVoidAndReorderWithoutPinToggle}
                   warning={cashierCanVoidAndReorderWithoutPin}
                 />
               </div>
@@ -892,21 +1063,21 @@ export const SettingsPage = () => {
                   title="Apply Service Amount"
                   description="Allow cashiers to add service charge to orders"
                   enabled={cashierCanApplyServiceAmount}
-                  onChange={() => setCashierCanApplyServiceAmount(!cashierCanApplyServiceAmount)}
+                  onChange={handleCashierServiceAmountToggle}
                   warning={cashierCanApplyServiceAmount}
                 />
                 <SettingItem
                   title="Apply Discount Amount"
                   description="Allow cashiers to apply discounts to orders"
                   enabled={cashierCanApplyDiscount}
-                  onChange={() => setCashierCanApplyDiscount(!cashierCanApplyDiscount)}
+                  onChange={handleCashierDiscountToggle}
                   warning={cashierCanApplyDiscount}
                 />
                 <SettingItem
                   title="Apply Delivery Amount"
                   description="Allow cashiers to add delivery fees to orders"
                   enabled={cashierCanApplyDeliveryAmount}
-                  onChange={() => setCashierCanApplyDeliveryAmount(!cashierCanApplyDeliveryAmount)}
+                  onChange={handleCashierDeliveryAmountToggle}
                   warning={cashierCanApplyDeliveryAmount}
                 />
               </div>

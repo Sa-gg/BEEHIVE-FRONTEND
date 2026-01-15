@@ -51,6 +51,12 @@ interface SettingsState {
   cashierCanApplyDiscount: boolean
   cashierCanApplyDeliveryAmount: boolean
   
+  // Experimental features
+  linkedOrdersEnabled: boolean // Enable/disable linked orders feature (experimental)
+  
+  // Order item permissions
+  allowVoidOrderItem: boolean // Allow voiding individual order items (vs entire order)
+  
   // Actions
   setMarkPaidOnPrintReceipt: (value: boolean) => void
   setCashChangeEnabled: (value: boolean) => void
@@ -80,6 +86,12 @@ interface SettingsState {
   setCashierCanApplyServiceAmount: (value: boolean) => void
   setCashierCanApplyDiscount: (value: boolean) => void
   setCashierCanApplyDeliveryAmount: (value: boolean) => void
+  
+  // Experimental features setters
+  setLinkedOrdersEnabled: (value: boolean) => void
+  
+  // Order item permissions setters
+  setAllowVoidOrderItem: (value: boolean) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -128,6 +140,12 @@ export const useSettingsStore = create<SettingsState>()(
       cashierCanApplyServiceAmount: false,
       cashierCanApplyDiscount: false,
       cashierCanApplyDeliveryAmount: false,
+      
+      // Default settings - Experimental features
+      linkedOrdersEnabled: false, // Default OFF - linked orders is experimental
+      
+      // Default settings - Order item permissions
+      allowVoidOrderItem: true, // Default ON - allow voiding individual items
       
       // Actions
       setMarkPaidOnPrintReceipt: (value: boolean) => 
@@ -207,6 +225,12 @@ export const useSettingsStore = create<SettingsState>()(
         
       setCashierCanApplyDeliveryAmount: (value: boolean) =>
         set({ cashierCanApplyDeliveryAmount: value }),
+        
+      setLinkedOrdersEnabled: (value: boolean) =>
+        set({ linkedOrdersEnabled: value }),
+        
+      setAllowVoidOrderItem: (value: boolean) =>
+        set({ allowVoidOrderItem: value }),
     }),
     {
       name: 'beehive-settings',

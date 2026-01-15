@@ -18,6 +18,42 @@ export interface StockStatusUpdateResult {
   markedInStock: Array<{ id: string; name: string }>;
 }
 
+// Global settings shared across all accounts
+export interface GlobalSettings {
+  openTime: string;
+  closeTime: string;
+  lastResetDate: string | null;
+  
+  // Auto-stock management settings
+  autoOutOfStockWhenIngredientsRunOut: boolean;
+  autoMarkInStockWhenAvailable: boolean;
+  
+  // Payment settings
+  cashChangeEnabled: boolean;
+  
+  // Printing settings
+  printKitchenCopy: boolean;
+  printKitchenCopyForOpenTab: boolean;
+  
+  // Experimental features
+  linkedOrdersEnabled: boolean;
+  
+  // Order permissions
+  allowVoidOrderItem: boolean;
+  
+  // Cashier permissions (whether actions require manager PIN)
+  cashierCanVoidWithoutPin: boolean;
+  cashierCanRefundWithoutPin: boolean;
+  cashierCanComplimentaryWithoutPin: boolean;
+  cashierCanWriteOffWithoutPin: boolean;
+  cashierCanVoidAndReorderWithoutPin: boolean;
+  
+  // Cashier POS permissions
+  cashierCanApplyServiceAmount: boolean;
+  cashierCanApplyDiscount: boolean;
+  cashierCanApplyDeliveryAmount: boolean;
+}
+
 export const settingsApi = {
   getSettings: async (): Promise<Settings> => {
     const response = await api.get<Settings>('/api/settings');
@@ -58,6 +94,17 @@ export const settingsApi = {
   // Manually trigger stock status update for all menu items
   triggerStockStatusUpdate: async (): Promise<StockStatusUpdateResult> => {
     const response = await api.post<StockStatusUpdateResult>('/api/settings/auto-stock/trigger');
+    return response.data;
+  },
+  
+  // Global settings (shared across all accounts)
+  getGlobalSettings: async (): Promise<{ success: boolean; settings: GlobalSettings }> => {
+    const response = await api.get<{ success: boolean; settings: GlobalSettings }>('/api/settings/global');
+    return response.data;
+  },
+  
+  updateGlobalSettings: async (settings: Partial<GlobalSettings>): Promise<{ success: boolean; settings: GlobalSettings }> => {
+    const response = await api.patch<{ success: boolean; settings: GlobalSettings }>('/api/settings/global', settings);
     return response.data;
   },
 };

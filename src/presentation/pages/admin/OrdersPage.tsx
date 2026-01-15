@@ -84,7 +84,9 @@ export const OrdersPage = () => {
     showOverviewCardsInOrdersPage, 
     showOverviewInHeaderOrdersPage,
     statusSeparatorDirection, 
-    setStatusSeparatorDirection 
+    setStatusSeparatorDirection,
+    linkedOrdersEnabled,
+    allowVoidOrderItem
   } = useSettingsStore()
   const [orders, setOrders] = useState<Order[]>([])
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
@@ -200,6 +202,14 @@ export const OrdersPage = () => {
   useEffect(() => {
     localStorage.setItem('orderGridColumns', gridColumns.toString())
   }, [gridColumns])
+
+  // Disable link mode when linked orders feature is disabled
+  useEffect(() => {
+    if (!linkedOrdersEnabled && linkMode) {
+      setLinkMode(false)
+      setSelectedOrdersForLink(new Set())
+    }
+  }, [linkedOrdersEnabled, linkMode])
 
   // Status color configuration for left border
   const statusBorderColors = {
@@ -1182,7 +1192,7 @@ export const OrdersPage = () => {
                           {item.variantName && <span className="text-amber-600 ml-1">({item.variantName})</span>}
                           {' '}(x{item.quantity})
                         </span>
-                        {item.status !== 'VOIDED' && order.status !== 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
+                        {allowVoidOrderItem && item.status !== 'VOIDED' && order.status !== 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -1324,13 +1334,15 @@ export const OrdersPage = () => {
                         <Ban className="h-3 w-3" />
                         Void Order
                       </button>
-                      <button
-                        onClick={() => handleAddLinkedOrder(order)}
-                        className="w-full px-3 py-2 text-left text-xs text-green-600 hover:bg-green-50 flex items-center gap-2"
-                      >
-                        <Link2 className="h-3 w-3" />
-                        Add Linked Order
-                      </button>
+                      {linkedOrdersEnabled && (
+                        <button
+                          onClick={() => handleAddLinkedOrder(order)}
+                          className="w-full px-3 py-2 text-left text-xs text-green-600 hover:bg-green-50 flex items-center gap-2"
+                        >
+                          <Link2 className="h-3 w-3" />
+                          Add Linked Order
+                        </button>
+                      )}
                       <button
                         onClick={() => startAuthorizedAction('voidAndReorder', order.id, order)}
                         className="w-full px-3 py-2 text-left text-xs text-orange-600 hover:bg-orange-50 flex items-center gap-2 last:rounded-b-lg"
@@ -1458,13 +1470,15 @@ export const OrdersPage = () => {
                         <Printer className="h-3 w-3" />
                         Print Bill
                       </button>
-                      <button
-                        onClick={() => handleAddLinkedOrder(order)}
-                        className="w-full px-3 py-2 text-left text-xs text-green-600 hover:bg-green-50 flex items-center gap-2 last:rounded-b-lg"
-                      >
-                        <Link2 className="h-3 w-3" />
-                        Add Linked Order
-                      </button>
+                      {linkedOrdersEnabled && (
+                        <button
+                          onClick={() => handleAddLinkedOrder(order)}
+                          className="w-full px-3 py-2 text-left text-xs text-green-600 hover:bg-green-50 flex items-center gap-2 last:rounded-b-lg"
+                        >
+                          <Link2 className="h-3 w-3" />
+                          Add Linked Order
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1630,8 +1644,8 @@ export const OrdersPage = () => {
 
               {/* Actions: Link Orders + Grid Toggle */}
               <div className="flex items-center gap-3 flex-shrink-0">
-                {/* Link Orders */}
-                {linkMode ? (
+                {/* Link Orders - only show when enabled in settings */}
+                {linkedOrdersEnabled && (linkMode ? (
                   <div className="flex items-center gap-2">
                     <Badge className="bg-blue-100 text-blue-700 border border-blue-200">
                       {selectedOrdersForLink.size} selected
@@ -1667,7 +1681,7 @@ export const OrdersPage = () => {
                     <Link2 className="h-3 w-3 mr-1" />
                     Link Orders
                   </Button>
-                )}
+                ))}
 
                 {/* Grid Layout Toggle */}
                 <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-1 bg-gray-50">
@@ -1773,17 +1787,19 @@ export const OrdersPage = () => {
                   <span className="absolute -top-1 -right-1 h-3 w-3 bg-orange-500 rounded-full animate-pulse" />
                 )}
               </Button>
-              <Button
-                variant={selectedStatus === 'linked' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedStatus('linked')}
-                className="whitespace-nowrap text-blue-600 relative"
-              >
-                🔗 Linked
-                {orders.some(o => o.paymentStatus !== 'VOIDED' && (o.linkedOrderId !== null || orders.some(ord => ord.linkedOrderId === o.id && ord.paymentStatus !== 'VOIDED'))) && selectedStatus !== 'linked' && (
-                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-blue-500 rounded-full animate-pulse" />
-                )}
-              </Button>
+              {linkedOrdersEnabled && (
+                <Button
+                  variant={selectedStatus === 'linked' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setSelectedStatus('linked')}
+                  className="whitespace-nowrap text-blue-600 relative"
+                >
+                  🔗 Linked
+                  {orders.some(o => o.paymentStatus !== 'VOIDED' && (o.linkedOrderId !== null || orders.some(ord => ord.linkedOrderId === o.id && ord.paymentStatus !== 'VOIDED'))) && selectedStatus !== 'linked' && (
+                    <span className="absolute -top-1 -right-1 h-3 w-3 bg-blue-500 rounded-full animate-pulse" />
+                  )}
+                </Button>
+              )}
               <Button
                 variant={selectedStatus === 'cancelled' ? 'default' : 'outline'}
                 size="sm"
@@ -2506,7 +2522,7 @@ export const OrdersPage = () => {
                                       {item.variantName && <span className="text-amber-600 ml-1">({item.variantName})</span>}
                                       {' '}(x{item.quantity})
                                     </span>
-                                    {item.status !== 'VOIDED' && order.status !== 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
+                                    {allowVoidOrderItem && item.status !== 'VOIDED' && order.status !== 'COMPLETED' && order.paymentStatus === 'UNPAID' && (
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation()
@@ -2672,13 +2688,15 @@ export const OrdersPage = () => {
                                       <Ban className="h-4 w-4" />
                                       Void Order
                                     </button>
-                                    <button
-                                      onClick={() => handleAddLinkedOrder(order)}
-                                      className="w-full px-4 py-2.5 text-left text-sm text-green-600 hover:bg-green-50 flex items-center gap-2"
-                                    >
-                                      <Link2 className="h-4 w-4" />
-                                      Add Linked Order
-                                    </button>
+                                    {linkedOrdersEnabled && (
+                                      <button
+                                        onClick={() => handleAddLinkedOrder(order)}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-green-600 hover:bg-green-50 flex items-center gap-2"
+                                      >
+                                        <Link2 className="h-4 w-4" />
+                                        Add Linked Order
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => startAuthorizedAction('voidAndReorder', order.id, order)}
                                       className="w-full px-4 py-2.5 text-left text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-2 last:rounded-b-lg"
@@ -2869,13 +2887,15 @@ export const OrdersPage = () => {
                                       <Printer className="h-4 w-4" />
                                       Print Total Bill
                                     </button>
-                                    <button
-                                      onClick={() => handleAddLinkedOrder(order)}
-                                      className="w-full px-4 py-2.5 text-left text-sm text-green-600 hover:bg-green-50 flex items-center gap-2"
-                                    >
-                                      <Link2 className="h-4 w-4" />
-                                      Add Linked Order
-                                    </button>
+                                    {linkedOrdersEnabled && (
+                                      <button
+                                        onClick={() => handleAddLinkedOrder(order)}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-green-600 hover:bg-green-50 flex items-center gap-2"
+                                      >
+                                        <Link2 className="h-4 w-4" />
+                                        Add Linked Order
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => startAuthorizedAction('voidAndReorder', order.id, order)}
                                       className="w-full px-4 py-2.5 text-left text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-2 last:rounded-b-lg"
@@ -3132,7 +3152,7 @@ export const OrdersPage = () => {
                             )}
                             </div>
                             {/* Void button for items that are not voided and order is not completed/paid */}
-                            {item.status !== 'VOIDED' && selectedOrder.status !== 'COMPLETED' && selectedOrder.paymentStatus === 'UNPAID' && (
+                            {allowVoidOrderItem && item.status !== 'VOIDED' && selectedOrder.status !== 'COMPLETED' && selectedOrder.paymentStatus === 'UNPAID' && (
                               <button
                                 onClick={() => {
                                   startAuthorizedAction('voidItem', selectedOrder.id, selectedOrder, item.id, item.name)

@@ -180,8 +180,33 @@ export const AddonsVariantsModal = ({
 
   // Handle item quantity change and update displayed variant stock in real-time
   const updateQuantity = (delta: number) => {
+    // Get current max based on stock
+    const currentMaxQuantity = (() => {
+      if (!autoOutOfStockWhenIngredientsRunOut) return Infinity
+      
+      // Check if this item has variants
+      if (variants.length > 0) {
+        if (selectedVariantId && initialVariantServings[selectedVariantId] !== undefined) {
+          const stock = initialVariantServings[selectedVariantId]
+          if (stock === -1) return Infinity
+          return Math.max(1, stock)
+        }
+        if (initialVariantServings['base'] !== undefined) {
+          const stock = initialVariantServings['base']
+          if (stock === -1) return Infinity
+          return Math.max(1, stock)
+        }
+      } else {
+        if (baseMaxServings !== undefined && baseMaxServings !== -1) {
+          return Math.max(1, baseMaxServings)
+        }
+      }
+      return Infinity
+    })()
+    
     setQuantity(prev => {
-      const newQuantity = Math.max(1, prev + delta) // Minimum 1
+      // Apply stock cap when increasing and setting is enabled
+      const newQuantity = Math.max(1, Math.min(prev + delta, currentMaxQuantity))
       
       // Update displayed variant servings based on new quantity
       // Shows what stock remains AFTER this order is placed
@@ -257,6 +282,40 @@ export const AddonsVariantsModal = ({
   const hasVariants = variants.length > 0
   const hasAddons = addonLinks.length > 0
   const finalPrice = calculatePrice()
+  
+  // Calculate max quantity based on stock when auto out-of-stock is enabled
+  // For items without variants, use baseMaxServings from POSPage
+  const getMaxQuantity = () => {
+    if (!autoOutOfStockWhenIngredientsRunOut) {
+      return Infinity // No limit when setting is off
+    }
+    
+    if (hasVariants) {
+      // For variants, use the selected variant's stock from initial servings
+      // (initialVariantServings represents stock BEFORE this modal's quantity is deducted)
+      if (selectedVariantId && initialVariantServings[selectedVariantId] !== undefined) {
+        const stock = initialVariantServings[selectedVariantId]
+        if (stock === -1) return Infinity // Unlimited
+        return Math.max(1, stock) // At least 1 if we have any stock
+      }
+      // Check base product stock as fallback
+      if (initialVariantServings['base'] !== undefined) {
+        const stock = initialVariantServings['base']
+        if (stock === -1) return Infinity
+        return Math.max(1, stock)
+      }
+    } else {
+      // For items without variants (only add-ons or plain items), use baseMaxServings
+      if (baseMaxServings !== undefined && baseMaxServings !== -1) {
+        return Math.max(1, baseMaxServings)
+      }
+    }
+    
+    return Infinity // No limit if no stock data
+  }
+  
+  const maxQuantity = getMaxQuantity()
+  const isAtMaxQuantity = quantity >= maxQuantity && maxQuantity !== Infinity
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -434,7 +493,22 @@ export const AddonsVariantsModal = ({
         <div className="p-4 border-t bg-gray-50">
           {/* Quantity Control */}
           <div className="flex items-center justify-between mb-3">
-            <span className="text-gray-700 font-medium">Quantity</span>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-700 font-medium">Quantity</span>
+              {/* Stock indicator for items without variants when auto out-of-stock is enabled */}
+              {!hasVariants && autoOutOfStockWhenIngredientsRunOut && baseMaxServings !== undefined && baseMaxServings !== -1 && (
+                <div className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5 ${
+                  baseMaxServings <= 0
+                    ? 'bg-red-100 text-red-700 border border-red-300'
+                    : baseMaxServings <= 5
+                      ? 'bg-yellow-100 text-yellow-700 border border-yellow-300'
+                      : 'bg-green-100 text-green-700 border border-green-300'
+                }`}>
+                  <Package className="h-2.5 w-2.5" />
+                  {Math.max(0, baseMaxServings)} left
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => updateQuantity(-1)}
@@ -446,7 +520,12 @@ export const AddonsVariantsModal = ({
               <span className="w-8 text-center font-bold text-lg">{quantity}</span>
               <button
                 onClick={() => updateQuantity(1)}
-                className="w-8 h-8 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center transition-colors"
+                disabled={isAtMaxQuantity}
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                  isAtMaxQuantity
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-amber-500 hover:bg-amber-600 text-white'
+                }`}
               >
                 <Plus className="w-4 h-4" />
               </button>

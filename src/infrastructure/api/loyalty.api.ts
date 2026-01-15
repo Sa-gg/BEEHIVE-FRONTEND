@@ -92,7 +92,7 @@ export const loyaltyApi = {
     if (params.customerEmail) queryParams.append('email', params.customerEmail)
     if (params.deviceId) queryParams.append('deviceId', params.deviceId)
     
-    const response = await api.get(`/loyalty/lookup?${queryParams.toString()}`)
+    const response = await api.get(`/api/loyalty/lookup?${queryParams.toString()}`)
     return response.data
   },
 
@@ -103,55 +103,55 @@ export const loyaltyApi = {
     if (params.customerEmail) queryParams.append('email', params.customerEmail)
     if (params.deviceId) queryParams.append('deviceId', params.deviceId)
     
-    const response = await api.get(`/loyalty/status?${queryParams.toString()}`)
+    const response = await api.get(`/api/loyalty/status?${queryParams.toString()}`)
     return response.data
   },
 
   // Find or create customer loyalty record
   findOrCreate: async (params: LoyaltyLookupDTO & { customerName?: string }): Promise<{ success: boolean; customer: CustomerLoyaltyDTO }> => {
-    const response = await api.post('/loyalty/customer', params)
+    const response = await api.post('/api/loyalty/customer', params)
     return response.data
   },
 
   // Get customer by ID
   getById: async (id: string): Promise<{ success: boolean; customer: CustomerLoyaltyDTO }> => {
-    const response = await api.get(`/loyalty/customer/${id}`)
+    const response = await api.get(`/api/loyalty/customer/${id}`)
     return response.data
   },
 
   // Get all loyalty customers
   getAll: async (): Promise<{ success: boolean; customers: CustomerLoyaltyDTO[] }> => {
-    const response = await api.get('/loyalty/customers')
+    const response = await api.get('/api/loyalty/customers')
     return response.data
   },
 
   // Award stamp (called automatically when order is paid)
   awardStamp: async (data: AwardStampDTO): Promise<AwardStampResponse> => {
-    const response = await api.post('/loyalty/stamp/award', data)
+    const response = await api.post('/api/loyalty/stamp/award', data)
     return response.data
   },
 
   // Reverse stamp (called when order is voided)
   reverseStamp: async (data: { orderId: string; orderNumber: string } & LoyaltyLookupDTO & { notes?: string }): Promise<{ success: boolean; message: string }> => {
-    const response = await api.post('/loyalty/stamp/reverse', data)
+    const response = await api.post('/api/loyalty/stamp/reverse', data)
     return response.data
   },
 
   // Check if stamp can be awarded
   canAwardStamp: async (orderId: string): Promise<{ success: boolean; canAward: boolean }> => {
-    const response = await api.get(`/loyalty/stamp/check/${orderId}`)
+    const response = await api.get(`/api/loyalty/stamp/check/${orderId}`)
     return response.data
   },
 
   // Redeem a reward
   redeemReward: async (data: RedeemRewardDTO): Promise<RedeemRewardResponse> => {
-    const response = await api.post('/loyalty/reward/redeem', data)
+    const response = await api.post('/api/loyalty/reward/redeem', data)
     return response.data
   },
 
   // Get transaction history
   getTransactions: async (loyaltyId: string, limit?: number): Promise<{ success: boolean; transactions: LoyaltyTransactionDTO[] }> => {
-    const url = limit ? `/loyalty/transactions/${loyaltyId}?limit=${limit}` : `/loyalty/transactions/${loyaltyId}`
+    const url = limit ? `/api/loyalty/transactions/${loyaltyId}?limit=${limit}` : `/api/loyalty/transactions/${loyaltyId}`
     const response = await api.get(url)
     return response.data
   }

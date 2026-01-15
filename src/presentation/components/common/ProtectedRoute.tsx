@@ -10,15 +10,18 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Record<string, boolean>> = {
     viewDashboard: true,
     accessPOS: true,
     viewOrders: true,
+    manageOrders: true,
     viewInventory: true,
     viewSales: true,
     viewProducts: true,
+    viewSettings: true,
   },
   COOK: {
     viewDashboard: true,
     viewOrders: true,
     viewInventory: true,
     viewProducts: true,
+    viewSettings: true,
   },
   MANAGER: {
     viewDashboard: true,
