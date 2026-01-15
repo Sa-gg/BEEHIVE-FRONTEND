@@ -362,7 +362,7 @@ export const OrdersPage = () => {
 
   const markAsPaid = async (orderId: string) => {
     try {
-      await ordersApi.update(orderId, { paymentStatus: 'PAID' })
+      const result = await ordersApi.update(orderId, { paymentStatus: 'PAID' })
       setOrders(prev => prev.map(order => 
         order.id === orderId 
           ? { ...order, paymentStatus: 'PAID' }
@@ -371,6 +371,15 @@ export const OrdersPage = () => {
       // Update selected order if it's the one being paid
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder({ ...selectedOrder, paymentStatus: 'PAID' })
+      }
+      
+      // Show loyalty stamp notification if awarded
+      if (result.loyaltyStampAwarded) {
+        if (result.loyaltyRewardUnlocked) {
+          toast.success('🎉 Loyalty Reward!', result.loyaltyMessage || 'Free drink reward unlocked!')
+        } else {
+          toast.success('🎟️ Stamp Earned!', result.loyaltyMessage || 'Loyalty stamp awarded!')
+        }
       }
     } catch (error: any) {
       console.error('Failed to update payment status:', error)

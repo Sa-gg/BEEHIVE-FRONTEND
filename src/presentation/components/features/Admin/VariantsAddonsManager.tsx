@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Loader2, GripVertical, Settings2 } from 'lucide-react'
+import { X, Plus, Trash2, Loader2, GripVertical, Settings2, AlertCircle, CheckCircle } from 'lucide-react'
 import { Button } from '../../common/ui/button'
 import { Input } from '../../common/ui/input'
 import { Label } from '../../common/ui/label'
@@ -164,6 +164,18 @@ export const VariantsAddonsManager = ({
       onUpdate?.()
     } catch (error: any) {
       console.error('Failed to toggle variant:', error)
+      toast.error('Failed to update variant')
+    }
+  }
+
+  const handleToggleVariantOutOfStock = async (variant: VariantDTO) => {
+    try {
+      await addonsApi.updateVariant(variant.id, { outOfStock: !variant.outOfStock })
+      toast.success(variant.outOfStock ? 'Variant marked in stock' : 'Variant marked out of stock')
+      await fetchData()
+      onUpdate?.()
+    } catch (error: any) {
+      console.error('Failed to toggle variant out of stock:', error)
       toast.error('Failed to update variant')
     }
   }
@@ -350,18 +362,22 @@ export const VariantsAddonsManager = ({
                         <div
                           key={variant.id}
                           className={`flex items-center gap-3 p-3 rounded-lg border ${
-                            variant.isActive ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'
+                            !variant.isActive ? 'border-gray-100 bg-gray-50 opacity-60' : 
+                            variant.outOfStock ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'
                           }`}
                         >
                           <GripVertical className="w-4 h-4 text-gray-300" />
                           <div className="flex-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-medium">{variant.name}</span>
                               {variant.isDefault && (
                                 <Badge variant="secondary" className="text-xs">Default</Badge>
                               )}
                               {!variant.isActive && (
                                 <Badge variant="outline" className="text-xs text-gray-400">Inactive</Badge>
+                              )}
+                              {variant.outOfStock && variant.isActive && (
+                                <Badge variant="destructive" className="text-xs bg-red-600 text-white">Out of Stock</Badge>
                               )}
                             </div>
                             <span className="text-sm text-gray-500">
@@ -370,7 +386,28 @@ export const VariantsAddonsManager = ({
                               {variant.priceDelta === 0 && 'Base price'}
                             </span>
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {/* Out of Stock Toggle - only show if variant is active */}
+                            {variant.isActive && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleToggleVariantOutOfStock(variant)}
+                                className={`text-xs ${variant.outOfStock ? 'text-green-600 hover:text-green-700 hover:bg-green-50' : 'text-red-600 hover:text-red-700 hover:bg-red-50'}`}
+                              >
+                                {variant.outOfStock ? (
+                                  <>
+                                    <CheckCircle className="w-3 h-3 mr-1" />
+                                    Mark In Stock
+                                  </>
+                                ) : (
+                                  <>
+                                    <AlertCircle className="w-3 h-3 mr-1" />
+                                    Mark Out
+                                  </>
+                                )}
+                              </Button>
+                            )}
                             {!variant.isDefault && variant.isActive && (
                               <Button
                                 variant="ghost"

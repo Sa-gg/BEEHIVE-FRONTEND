@@ -1371,6 +1371,8 @@ export const POSPage = () => {
           }))}
           // Pass base product max servings for real-time variant stock display
           baseMaxServings={maxServings[selectedMenuItemForAddons.id]}
+          // Pass auto out-of-stock setting for variant stock behavior
+          autoOutOfStockWhenIngredientsRunOut={autoOutOfStockWhenIngredientsRunOut}
           onConfirm={(data) => {
             addItemWithAddonsToOrder(
               selectedMenuItemForAddons,

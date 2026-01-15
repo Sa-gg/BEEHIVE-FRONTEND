@@ -34,11 +34,13 @@ import {
   AlertTriangle,
   Eye,
   Eraser,
-  ImageIcon
+  ImageIcon,
+  Book
 } from 'lucide-react'
 import { ImageViewer } from '../../components/common/ImageViewer'
 import { processImage, formatFileSize } from '../../../shared/utils/imageProcessing'
 import { VariantsAddonsManager } from '../../components/features/Admin/VariantsAddonsManager'
+import { RecipeEditorModal } from '../../components/features/Admin/RecipeEditorModal'
 import { menuItemsApi, uploadApi } from '../../../infrastructure/api/menuItems.api'
 import type { MenuItemDTO } from '../../../infrastructure/api/menuItems.api'
 import { categoriesApi } from '../../../infrastructure/api/categories.api'
@@ -167,6 +169,12 @@ export const ProductsPage = () => {
   // Variants & Add-ons modal state
   const [variantsAddonsProduct, setVariantsAddonsProduct] = useState<Product | null>(null)
 
+  // Recipe/Components editor modal state
+  const [recipeStats, setRecipeStats] = useState<Map<string, number>>(new Map())
+  const [recipeFilter, setRecipeFilter] = useState<'all' | 'with-recipe' | 'no-recipe'>('all')
+  const [selectedMenuItemForRecipe, setSelectedMenuItemForRecipe] = useState<{ id: string; name: string } | null>(null)
+  const [showRecipeEditor, setShowRecipeEditor] = useState(false)
+
   // Helper function to get category display name
   const getCategoryDisplayName = (categoryId: string) => {
     const cat = categories.find(c => c.id === categoryId)
@@ -243,6 +251,20 @@ export const ProductsPage = () => {
         archived: item.archived ?? false
       }))
       setProducts(mappedProducts)
+      
+      // Load recipe counts for all items (for Components feature)
+      const stats = new Map<string, number>()
+      await Promise.all(
+        mappedProducts.map(async (item) => {
+          try {
+            const recipe = await recipeApi.getRecipe(item.id)
+            stats.set(item.id, recipe.length)
+          } catch {
+            stats.set(item.id, 0)
+          }
+        })
+      )
+      setRecipeStats(stats)
     } catch (error) {
       console.error('Failed to fetch products:', error)
       toast.error('Failed to load products', 'Please try again.')
@@ -802,7 +824,16 @@ export const ProductsPage = () => {
     const matchesItemType = itemTypeFilter === 'all' || product.itemType === itemTypeFilter
     // When an ingredient is selected, only show products using that ingredient
     const matchesIngredient = !selectedIngredient || selectedIngredientProducts.some(p => p.id === product.id)
-    return matchesSearch && matchesCategory && matchesStock && matchesAvailability && matchesItemType && matchesIngredient
+    
+    // Recipe filter logic
+    let matchesRecipe = true
+    if (recipeFilter === 'with-recipe') {
+      matchesRecipe = (recipeStats.get(product.id) || 0) > 0
+    } else if (recipeFilter === 'no-recipe') {
+      matchesRecipe = (recipeStats.get(product.id) || 0) === 0
+    }
+    
+    return matchesSearch && matchesCategory && matchesStock && matchesAvailability && matchesItemType && matchesIngredient && matchesRecipe
   })
 
   // Calculate statistics
@@ -812,6 +843,10 @@ export const ProductsPage = () => {
   const inStockProducts = products.filter(p => !p.outOfStock).length
   const outOfStockProducts = products.filter(p => p.outOfStock).length
   const featuredProducts = products.filter(p => p.featured).length
+  
+  // Recipe statistics
+  const configuredRecipeProducts = products.filter(p => (recipeStats.get(p.id) || 0) > 0).length
+  const notConfiguredRecipeProducts = products.length - configuredRecipeProducts
   
   // Products needing attention:
   // 1. Marked out of stock but have stock available
@@ -946,9 +981,10 @@ export const ProductsPage = () => {
         {/* Filters and Search */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
           <div className="p-4">
-            <div className="flex flex-col lg:flex-row gap-4">
+            {/* Row 1: Search, Category, Type */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-3">
               {/* Search */}
-              <div className="flex-1 relative">
+              <div className="flex-1 relative min-w-0">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   type="text"
@@ -963,7 +999,7 @@ export const ProductsPage = () => {
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white min-w-[140px]"
               >
                 <option value="all">All Categories</option>
                 {categories.filter(cat => cat.isActive).map(cat => (
@@ -977,16 +1013,17 @@ export const ProductsPage = () => {
               <select
                 value={itemTypeFilter}
                 onChange={(e) => setItemTypeFilter(e.target.value as 'all' | 'BASE' | 'ADDON' | 'DRINK')}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white min-w-[120px]"
               >
                 <option value="all">All Types</option>
                 <option value="BASE">Base Items</option>
                 <option value="ADDON">Add-ons</option>
                 <option value="DRINK">Drinks</option>
               </select>
+            </div>
 
-              {/* Stock Status Filters - Based on ingredients availability */}
-              <div className="flex items-center gap-1">
+            {/* Row 2: Filter buttons - wrappable */}
+            <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-gray-500 mr-1">Stock:</span>
                 <Button
                   variant={stockFilter === 'all' ? 'default' : 'outline'}
@@ -1028,7 +1065,6 @@ export const ProductsPage = () => {
                     </span>
                   )}
                 </Button>
-              </div>
 
               {/* For Sale Filters - Manager decision to include in sale */}
               <div className="flex items-center gap-1">
@@ -1059,24 +1095,37 @@ export const ProductsPage = () => {
                 </Button>
               </div>
 
-              {/* View Mode Toggle */}
-              <div className="flex gap-2">
+              {/* Recipe Filter */}
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500 mr-1">Recipe:</span>
                 <Button
-                  variant={viewMode === 'grid' ? 'default' : 'outline'}
-                  onClick={() => setViewMode('grid')}
-                  className="px-3"
+                  variant={recipeFilter === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setRecipeFilter('all')}
+                  className="h-7 px-2 text-xs"
                 >
-                  <Grid3x3 className="h-4 w-4" />
+                  All
                 </Button>
                 <Button
-                  variant={viewMode === 'list' ? 'default' : 'outline'}
-                  onClick={() => setViewMode('list')}
-                  className="px-3"
+                  variant={recipeFilter === 'with-recipe' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setRecipeFilter('with-recipe')}
+                  className={`h-7 px-2 text-xs ${recipeFilter === 'with-recipe' ? 'bg-emerald-500 hover:bg-emerald-600' : ''}`}
                 >
-                  <List className="h-4 w-4" />
+                  <Book className="h-3 w-3 mr-1" />
+                  Configured
+                </Button>
+                <Button
+                  variant={recipeFilter === 'no-recipe' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setRecipeFilter('no-recipe')}
+                  className={`h-7 px-2 text-xs ${recipeFilter === 'no-recipe' ? 'bg-orange-500 hover:bg-orange-600' : ''}`}
+                >
+                  <Book className="h-3 w-3 mr-1" />
+                  Not Configured
                 </Button>
               </div>
-              
+
               {/* Selection Mode Toggle */}
               <Button
                 variant={isSelectionMode ? 'default' : 'outline'}
@@ -1090,6 +1139,26 @@ export const ProductsPage = () => {
                 <Layers className="h-4 w-4 mr-1" />
                 {isSelectionMode ? 'Cancel' : 'Select'}
               </Button>
+
+              {/* View Mode Toggle */}
+              <div className="flex gap-1 ml-auto">
+                <Button
+                  variant={viewMode === 'grid' ? 'default' : 'outline'}
+                  onClick={() => setViewMode('grid')}
+                  size="sm"
+                  className="h-7 px-2"
+                >
+                  <Grid3x3 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'list' ? 'default' : 'outline'}
+                  onClick={() => setViewMode('list')}
+                  size="sm"
+                  className="h-7 px-2"
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -1421,6 +1490,11 @@ export const ProductsPage = () => {
                       {product.featured && (
                         <Badge className="bg-yellow-100 text-yellow-800 text-[10px] px-1.5 py-0.5">Featured</Badge>
                       )}
+                      {(recipeStats.get(product.id) || 0) > 0 ? (
+                        <Badge className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5">Recipe ✓</Badge>
+                      ) : (
+                        <Badge className="bg-orange-100 text-orange-800 text-[10px] px-1.5 py-0.5">No Recipe</Badge>
+                      )}
                       {product.outOfStock && (
                         <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5 bg-red-600 text-white shadow-sm">Out of Stock</Badge>
                       )}
@@ -1489,6 +1563,25 @@ export const ProductsPage = () => {
                       >
                         <Layers className="h-3 w-3 mr-1" />
                         Variants
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedMenuItemForRecipe({ id: product.id, name: product.name })
+                          setShowRecipeEditor(true)
+                        }}
+                        className={`w-full text-xs h-7 ${
+                          (recipeStats.get(product.id) || 0) > 0 
+                            ? 'text-emerald-600 border-emerald-200 hover:bg-emerald-50' 
+                            : 'text-orange-600 border-orange-200 hover:bg-orange-50'
+                        }`}
+                      >
+                        <Book className="h-3 w-3 mr-1" />
+                        Components
+                        {(recipeStats.get(product.id) || 0) > 0 && (
+                          <span className="ml-1 text-[10px] font-bold">({recipeStats.get(product.id)})</span>
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -1566,6 +1659,11 @@ export const ProductsPage = () => {
                                 {product.featured && (
                                   <Badge className="bg-yellow-100 text-yellow-800 text-xs">⭐</Badge>
                                 )}
+                                {(recipeStats.get(product.id) || 0) > 0 ? (
+                                  <Badge className="bg-emerald-100 text-emerald-700 text-xs">📋</Badge>
+                                ) : (
+                                  <Badge className="bg-orange-100 text-orange-700 text-xs">?</Badge>
+                                )}
                               </div>
                               <p className="text-xs text-gray-500 line-clamp-1">{product.description}</p>
                             </div>
@@ -1641,6 +1739,20 @@ export const ProductsPage = () => {
                               title="Variants & Add-ons"
                             >
                               <Layers className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedMenuItemForRecipe({ id: product.id, name: product.name })
+                                setShowRecipeEditor(true)
+                              }}
+                              className={`p-1.5 rounded-md transition-colors ${
+                                (recipeStats.get(product.id) || 0) > 0 
+                                  ? 'text-emerald-600 hover:bg-emerald-50' 
+                                  : 'text-orange-600 hover:bg-orange-50'
+                              }`}
+                              title={`Components (${recipeStats.get(product.id) || 0} configured)`}
+                            >
+                              <Book className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => toggleFeatured(product.id)}
@@ -2488,6 +2600,23 @@ MOOD BENEFITS:
             onUpdate={fetchProducts}
           />
         )}
+
+        {/* Recipe Editor Modal */}
+        {showRecipeEditor && selectedMenuItemForRecipe && (
+          <RecipeEditorModal
+            menuItemId={selectedMenuItemForRecipe.id}
+            menuItemName={selectedMenuItemForRecipe.name}
+            onClose={() => {
+              setShowRecipeEditor(false)
+              setSelectedMenuItemForRecipe(null)
+            }}
+            onSuccess={() => {
+              fetchProducts()
+              setShowRecipeEditor(false)
+              setSelectedMenuItemForRecipe(null)
+            }}
+          />
+        )}
         
         {/* Image Viewer Modal */}
         {imageViewerOpen && formData.image && (
@@ -2498,6 +2627,6 @@ MOOD BENEFITS:
           />
         )}
       </div>
-    </AdminLayout>
+    </AdminLayout> 
   )
 }

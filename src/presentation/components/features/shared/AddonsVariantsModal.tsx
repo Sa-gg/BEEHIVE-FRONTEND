@@ -51,6 +51,8 @@ interface AddonsVariantsModalProps {
   cartItems?: CartItemForStock[]
   // Base product max servings from POSPage (for real-time display)
   baseMaxServings?: number
+  // Whether to auto out-of-stock variants when ingredients run out
+  autoOutOfStockWhenIngredientsRunOut?: boolean
 }
 
 export const AddonsVariantsModal = ({
@@ -60,7 +62,8 @@ export const AddonsVariantsModal = ({
   menuItem,
   initialQuantity = 1,
   cartItems = [],
-  baseMaxServings
+  baseMaxServings,
+  autoOutOfStockWhenIngredientsRunOut = false
 }: AddonsVariantsModalProps) => {
   const [loading, setLoading] = useState(true)
   const [variants, setVariants] = useState<VariantDTO[]>([])
@@ -304,7 +307,12 @@ export const AddonsVariantsModal = ({
                     {variants.map(variant => {
                       const stock = variantServings[variant.id]
                       const hasStock = stock !== undefined && stock !== -1
-                      const isOutOfStock = hasStock && stock <= 0
+                      // Variant is out of stock if:
+                      // 1. Manually marked as out of stock (variant.outOfStock) - always respected
+                      // 2. Auto out of stock setting is ON AND ingredient stock is 0
+                      const isManuallyOutOfStock = variant.outOfStock
+                      const isIngredientOutOfStock = autoOutOfStockWhenIngredientsRunOut && hasStock && stock <= 0
+                      const isOutOfStock = isManuallyOutOfStock || isIngredientOutOfStock
                       const isLowStock = hasStock && stock > 0 && stock <= 5
                       
                       return (
@@ -340,7 +348,9 @@ export const AddonsVariantsModal = ({
                             </div>
                           )}
                           {isOutOfStock && (
-                            <div className="text-[10px] text-red-600 mt-1 font-medium">Out of stock</div>
+                            <div className="text-[10px] text-red-600 mt-1 font-medium">
+                              {isManuallyOutOfStock ? 'Marked out of stock' : 'Out of stock'}
+                            </div>
                           )}
                         </button>
                       )

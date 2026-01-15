@@ -16,6 +16,7 @@ import { MoodReflectionModal } from '../../components/features/CustomerMenu/Mood
 import { CustomerDropdown } from '../../components/features/CustomerMenu/CustomerDropdown'
 import { MyOrdersModal } from '../../components/features/CustomerMenu/MyOrdersModal'
 import { AddonsVariantsModal } from '../../components/features/shared/AddonsVariantsModal'
+import { LoyaltyCard } from '../../components/features/Loyalty/LoyaltyCard'
 import { Button } from '../../components/common/ui/button'
 import { ShoppingBag, Sparkles, Loader2, Bell } from 'lucide-react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
@@ -1142,6 +1143,9 @@ export const MenuPage = () => {
                 )}
               </div>
             )}
+
+            {/* Loyalty Card - Shows stamp progress */}
+            <LoyaltyCard deviceId={deviceId} className="mb-4" />
             
             {/* Recommended Items for Mood */}
             {selectedMood && recommendedItems.length > 0 && (

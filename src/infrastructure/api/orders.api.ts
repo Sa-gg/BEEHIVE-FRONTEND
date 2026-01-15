@@ -97,6 +97,12 @@ export interface OrderResponse {
   updatedAt: string;
   completedAt: string | null;
   paidAt: string | null;  // When payment was received
+  // Loyalty info (included when payment is processed)
+  loyaltyStampAwarded?: boolean;
+  loyaltyMessage?: string;
+  loyaltyRewardUnlocked?: boolean;
+  currentStamps?: number;
+  availableRewards?: number;
   order_items: Array<{
     id: string;
     orderId: string;
@@ -117,7 +123,6 @@ export interface OrderResponse {
     updatedAt: string;
   }>;
 }
-
 export const ordersApi = {
   // Get all orders (optionally filtered by status)
   getAll: async (status?: string): Promise<OrderResponse[]> => {

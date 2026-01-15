@@ -14,6 +14,7 @@ export interface VariantDTO {
   isDefault: boolean;
   sortOrder: number;
   isActive: boolean;
+  outOfStock: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +34,7 @@ export interface UpdateVariantDTO {
   isDefault?: boolean;
   sortOrder?: number;
   isActive?: boolean;
+  outOfStock?: boolean;
 }
 
 export interface AddonItemDTO {
