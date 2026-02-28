@@ -44,6 +44,9 @@ const LoyaltyPage = lazy(() => import('../pages/admin/LoyaltyPage').then(m => ({
 // Error Pages
 const NotFoundPage = lazy(() => import('../pages/error/NotFoundPage').then(m => ({ default: m.NotFoundPage })))
 
+// Utility Pages (standalone, no layout)
+const QRConnectPage = lazy(() => import('../pages/QRConnectPage').then(m => ({ default: m.QRConnectPage })))
+
 /**
  * Route Configuration
  * Organized by feature areas following clean architecture
@@ -260,6 +263,11 @@ export const routes: RouteObject[] = [
         element: <Suspense fallback={<LoadingFallback />}><NotFoundPage /></Suspense>,
       },
     ],
+  },
+  // Standalone utility pages (no layout wrapper)
+  {
+    path: '/qr-connect',
+    element: <Suspense fallback={<LoadingFallback />}><QRConnectPage /></Suspense>,
   },
 ]
 

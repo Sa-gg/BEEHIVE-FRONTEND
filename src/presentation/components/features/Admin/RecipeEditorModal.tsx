@@ -39,12 +39,19 @@ export const RecipeEditorModal = ({ menuItemId, menuItemName, onClose, onSuccess
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Update dropdown position when opening
+  // Update dropdown position when opening - show above if not enough space below
   useEffect(() => {
     if (isDropdownOpen && dropdownRef.current) {
       const rect = dropdownRef.current.getBoundingClientRect()
+      const dropdownHeight = 320 // max-h-80 = 320px
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      
+      // Show above if not enough space below and more space above
+      const showAbove = spaceBelow < dropdownHeight && spaceAbove > spaceBelow
+      
       setDropdownPosition({
-        top: rect.bottom + 4, // Add small gap
+        top: showAbove ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
         left: rect.left,
         width: rect.width
       })

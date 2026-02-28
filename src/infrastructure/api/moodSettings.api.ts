@@ -245,5 +245,17 @@ export const moodSettingsApi = {
   resetAllMoodStatistics: async (): Promise<{ message: string }> => {
     const response = await api.post('/api/mood-settings/reset/all');
     return response.data;
+  },
+
+  // Bulk update multiple mood settings
+  bulkUpdateMoodSettings: async (updates: Array<UpdateMoodSettingDTO & { mood: string }>): Promise<{
+    success: boolean;
+    updated: number;
+    failed: number;
+    results: any[];
+    errors: any[];
+  }> => {
+    const response = await api.post('/api/mood-settings/bulk/update', { updates });
+    return response.data;
   }
 };

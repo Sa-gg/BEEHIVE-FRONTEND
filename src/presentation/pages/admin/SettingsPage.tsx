@@ -116,8 +116,9 @@ export const SettingsPage = () => {
   const isManager = user?.role === 'MANAGER' || user?.role === 'ADMIN'
   const isCashier = user?.role === 'CASHIER'
   const isCook = user?.role === 'COOK'
-  // Cashier and Cook can see UI settings, but not global/permission settings
-  const canSeeUISettings = isManager || isCashier || isCook
+  // Note: Cashier and Cook can see UI settings, but not global/permission settings
+  void isCashier
+  void isCook
   
   const {
     printKitchenCopy,
@@ -145,6 +146,7 @@ export const SettingsPage = () => {
     cashierCanApplyDiscount,
     cashierCanApplyDeliveryAmount,
     linkedOrdersEnabled,
+    loyaltySystemEnabled,
     allowVoidOrderItem,
     setPrintKitchenCopy,
     setPrintKitchenCopyForOpenTab,
@@ -171,6 +173,7 @@ export const SettingsPage = () => {
     setCashierCanApplyDiscount,
     setCashierCanApplyDeliveryAmount,
     setLinkedOrdersEnabled,
+    setLoyaltySystemEnabled,
     setAllowVoidOrderItem,
   } = useSettingsStore()
 
@@ -222,6 +225,9 @@ export const SettingsPage = () => {
         // Experimental features
         if (globalSettings.linkedOrdersEnabled !== linkedOrdersEnabled) {
           setLinkedOrdersEnabled(globalSettings.linkedOrdersEnabled)
+        }
+        if (globalSettings.loyaltySystemEnabled !== undefined && globalSettings.loyaltySystemEnabled !== loyaltySystemEnabled) {
+          setLoyaltySystemEnabled(globalSettings.loyaltySystemEnabled)
         }
         
         // Order permissions
@@ -374,6 +380,11 @@ export const SettingsPage = () => {
   const handleLinkedOrdersToggle = async () => {
     const newValue = !linkedOrdersEnabled
     await updateGlobalSetting('linkedOrdersEnabled', newValue, setLinkedOrdersEnabled, linkedOrdersEnabled)
+  }
+  
+  const handleLoyaltySystemToggle = async () => {
+    const newValue = !loyaltySystemEnabled
+    await updateGlobalSetting('loyaltySystemEnabled', newValue, setLoyaltySystemEnabled, loyaltySystemEnabled)
   }
   
   // Handle order item permissions change
@@ -874,6 +885,13 @@ export const SettingsPage = () => {
                 enabled={linkedOrdersEnabled}
                 onChange={handleLinkedOrdersToggle}
                 warning={linkedOrdersEnabled}
+              />
+              <SettingItem
+                title="Loyalty System"
+                description="Enable the loyalty stamp system. When disabled, the Loyalty page is hidden from the navbar, loyalty modals don't appear in POS, and loyalty stamps are hidden from customer menus."
+                enabled={loyaltySystemEnabled}
+                onChange={handleLoyaltySystemToggle}
+                warning={loyaltySystemEnabled}
               />
             </div>
           </div>

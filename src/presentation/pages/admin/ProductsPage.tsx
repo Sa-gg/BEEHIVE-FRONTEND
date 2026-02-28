@@ -48,6 +48,7 @@ import type { CategoryDTO } from '../../../infrastructure/api/categories.api'
 import { recipeApi } from '../../../infrastructure/api/recipe.api'
 import { inventoryApi } from '../../../infrastructure/api/inventory.api'
 import type { InventoryItemDTO } from '../../../infrastructure/api/inventory.api'
+import { ConfirmationModal } from '../../components/common/ConfirmationModal'
 import { toast } from '../../components/common/ToastNotification'
 import type { MenuItemType } from '../../../infrastructure/api/menuItems.api'
 
@@ -135,6 +136,8 @@ export const ProductsPage = () => {
   const [originalFileSize, setOriginalFileSize] = useState<number | null>(null)
   const [processedFileSize, setProcessedFileSize] = useState<number | null>(null)
   const [imageViewerOpen, setImageViewerOpen] = useState(false)
+  // Silence unused warning - processedFileSize is tracked but not displayed yet
+  void processedFileSize
 
   // Form state
   const [formData, setFormData] = useState({
@@ -174,6 +177,10 @@ export const ProductsPage = () => {
   const [recipeFilter, setRecipeFilter] = useState<'all' | 'with-recipe' | 'no-recipe'>('all')
   const [selectedMenuItemForRecipe, setSelectedMenuItemForRecipe] = useState<{ id: string; name: string } | null>(null)
   const [showRecipeEditor, setShowRecipeEditor] = useState(false)
+  
+  // Delete confirmation modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null)
 
   // Helper function to get category display name
   const getCategoryDisplayName = (categoryId: string) => {
@@ -574,19 +581,25 @@ export const ProductsPage = () => {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this product?')) {
-      return
-    }
+  const handleDeleteClick = (id: string, name: string) => {
+    setProductToDelete({ id, name })
+    setShowDeleteModal(true)
+  }
+  
+  const handleDeleteConfirm = async () => {
+    if (!productToDelete) return
 
     try {
-      await menuItemsApi.delete(id)
+      await menuItemsApi.delete(productToDelete.id)
       toast.success('Product deleted successfully!')
       await fetchProducts()
     } catch (error) {
       console.error('Failed to delete product:', error)
       const err = error as { response?: { data?: { message?: string } } }
       toast.error('Failed to delete product', err.response?.data?.message || 'Please try again.')
+    } finally {
+      setShowDeleteModal(false)
+      setProductToDelete(null)
     }
   }
 
@@ -605,6 +618,8 @@ export const ProductsPage = () => {
       toast.error('Failed to update product', err.response?.data?.message || 'Please try again.')
     }
   }
+  // Silence unused warning - utility function for availability toggle
+  void toggleAvailability
 
   const toggleOutOfStock = async (id: string) => {
     try {
@@ -847,6 +862,11 @@ export const ProductsPage = () => {
   // Recipe statistics
   const configuredRecipeProducts = products.filter(p => (recipeStats.get(p.id) || 0) > 0).length
   const notConfiguredRecipeProducts = products.length - configuredRecipeProducts
+  
+  // Silence unused warnings - these are useful metrics available for future use
+  void unavailableProducts
+  void featuredProducts
+  void notConfiguredRecipeProducts
   
   // Products needing attention:
   // 1. Marked out of stock but have stock available
@@ -1766,7 +1786,7 @@ export const ProductsPage = () => {
                               <Star className={`h-4 w-4 ${product.featured ? 'fill-current' : ''}`} />
                             </button>
                             <button
-                              onClick={() => handleDelete(product.id)}
+                              onClick={() => handleDeleteClick(product.id, product.name)}
                               className="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors"
                               title="Delete"
                             >
@@ -2154,26 +2174,7 @@ export const ProductsPage = () => {
                           </div>
                         </div>
 
-                        {/* Key Nutrients (moved here from above) */}
-                        <div>
-                          <Label htmlFor="nutrients" className="text-sm font-semibold text-gray-700 mb-2 block">
-                            <span className="flex items-center gap-2">
-                              <Sparkles className="h-4 w-4 text-green-600" />
-                              Key Nutrients
-                              <span className="text-xs font-normal text-gray-500">(from AI analysis or manual)</span>
-                            </span>
-                          </Label>
-                          <Input
-                            id="nutrients"
-                            type="text"
-                            value={formData.nutrients}
-                            onChange={(e) => setFormData({ ...formData, nutrients: e.target.value })}
-                            placeholder="e.g., Vitamin B12, Iron, Protein, Omega-3 (paste from AI response)"
-                          />
-                          <p className="text-xs text-gray-500 mt-1">The AI prompt below will identify nutrients - paste them here after getting the response</p>
-                        </div>
-
-                        {/* AI Prompt Template */}
+                        {/* AI Prompt Template - MOVED TO TOP */}
                         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-4">
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
@@ -2194,7 +2195,7 @@ export const ProductsPage = () => {
 
 **YOUR TASK:**
 
-1. **IDENTIFY KEY NUTRIENTS** in this item that affect mood/mental state (e.g., Omega-3, Vitamin B12, Magnesium, Tryptophan, Caffeine, L-Theanine, etc.)
+1. **IDENTIFY KEY NUTRIENTS** (maximum 3 most important) in this item that affect mood/mental state (e.g., Omega-3, Vitamin B12, Magnesium, Tryptophan, Caffeine, L-Theanine, etc.)
 
 2. **SELECT ONLY APPLICABLE MOODS** from this list - NOT every product helps every mood:
    - 😊 Happy (maintains positive mood)
@@ -2208,11 +2209,11 @@ export const ProductsPage = () => {
    - 😔 Depressed (supports mental health)
    - 😠 Angry (helps cool down)
 
-3. **PROVIDE SCIENTIFIC EXPLANATIONS** (2-3 sentences each) only for moods this item genuinely helps.
+3. **PROVIDE SCIENTIFIC EXPLANATIONS** (1 sentence max) only for moods this item genuinely helps.
 
 **RESPONSE FORMAT:**
 
-KEY NUTRIENTS: [comma-separated list]
+KEY NUTRIENTS: [comma-separated list, max 3]
 
 MOOD BENEFITS:
 [Only include moods this product actually helps with]
@@ -2221,7 +2222,14 @@ MOOD BENEFITS:
 ⚡ Energetic: [explanation if applicable]
 [etc - skip moods that don't apply]
 
-**IMPORTANT:** Be selective! A pizza might help "Happy" and "Excited" but not "Anxious" or "Depressed". A calming tea might help "Stressed" and "Relaxed" but not "Energetic".`
+**QUICK IMPORT FORMAT (IMPORTANT - ALWAYS INCLUDE THIS AT THE END):**
+After your analysis, provide a single-line JSON string for easy copy-paste import:
+\`\`\`
+{"nutrients":"Nutrient1, Nutrient2, Nutrient3","happy":"explanation","energetic":"explanation","relaxed":"explanation","excited":"explanation","tired":"explanation","stressed":"explanation","anxious":"explanation","sad":"explanation","depressed":"explanation","angry":"explanation"}
+\`\`\`
+Only include mood keys that have explanations. Omit moods that don't apply.
+
+**IMPORTANT:** Be selective! A pizza might help "Happy" and "Excited" but not "Anxious" or "Depressed". A calming tea might help "Stressed" and "Relaxed" but not "Energetic". Maximum 3 key nutrients.`
                                 navigator.clipboard.writeText(prompt)
                                 setPromptCopied(true)
                                 setTimeout(() => setPromptCopied(false), 2000)
@@ -2236,7 +2244,7 @@ MOOD BENEFITS:
                             </Button>
                           </div>
                           <p className="text-xs text-purple-700 mb-2">
-                            Copy this prompt → Paste in ChatGPT/Claude → Get nutrients & mood explanations → Paste results below
+                            Copy this prompt → Paste in ChatGPT/Claude → Get nutrients & mood explanations → Paste the JSON line below for auto-fill
                           </p>
                           <div className="bg-white/70 rounded p-2 text-xs text-gray-600 max-h-20 overflow-y-auto">
                             <p className="font-semibold text-purple-800">Current Product Info:</p>
@@ -2244,6 +2252,82 @@ MOOD BENEFITS:
                             <p>• Category: <span className="text-gray-800">{formData.categoryId ? getCategoryDisplayName(formData.categoryId) : '(select category)'}</span></p>
                             <p>• Description: <span className="text-gray-800">{formData.description ? formData.description.substring(0, 60) + '...' : '(add description with ingredients)'}</span></p>
                           </div>
+                          
+                          {/* Quick Import Field */}
+                          <div className="mt-3 pt-3 border-t border-purple-200">
+                            <Label className="text-xs font-semibold text-purple-800 mb-1 block">
+                              Quick Import (paste JSON from AI response)
+                            </Label>
+                            <div className="flex gap-2">
+                              <Input
+                                type="text"
+                                placeholder='Paste JSON: {"nutrients":"...","happy":"...","energetic":"..."}'
+                                className="flex-1 text-xs font-mono"
+                                onPaste={(e) => {
+                                  const pastedText = e.clipboardData.getData('text')
+                                  try {
+                                    // Try to extract JSON from the pasted text (might have markdown code blocks)
+                                    let jsonStr = pastedText
+                                    const jsonMatch = pastedText.match(/\{[^{}]*"nutrients"[^{}]*\}/)
+                                    if (jsonMatch) {
+                                      jsonStr = jsonMatch[0]
+                                    }
+                                    
+                                    const data = JSON.parse(jsonStr)
+                                    
+                                    // Update nutrients
+                                    if (data.nutrients) {
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        nutrients: data.nutrients,
+                                        moodBenefits: {
+                                          ...prev.moodBenefits,
+                                          ...(data.happy && { happy: data.happy }),
+                                          ...(data.energetic && { energetic: data.energetic }),
+                                          ...(data.relaxed && { relaxed: data.relaxed }),
+                                          ...(data.excited && { excited: data.excited }),
+                                          ...(data.tired && { tired: data.tired }),
+                                          ...(data.stressed && { stressed: data.stressed }),
+                                          ...(data.anxious && { anxious: data.anxious }),
+                                          ...(data.sad && { sad: data.sad }),
+                                          ...(data.depressed && { depressed: data.depressed }),
+                                          ...(data.angry && { angry: data.angry }),
+                                        }
+                                      }))
+                                      toast.success('Auto-filled!', 'Nutrients and mood benefits imported successfully')
+                                      e.preventDefault()
+                                      ;(e.target as HTMLInputElement).value = ''
+                                    }
+                                  } catch {
+                                    // If JSON parsing fails, let the paste happen normally
+                                    console.log('Not valid JSON for auto-import')
+                                  }
+                                }}
+                              />
+                            </div>
+                            <p className="text-[10px] text-purple-600 mt-1">
+                              Paste the JSON line from the AI response to auto-fill all fields instantly
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Key Nutrients */}
+                        <div>
+                          <Label htmlFor="nutrients" className="text-sm font-semibold text-gray-700 mb-2 block">
+                            <span className="flex items-center gap-2">
+                              <Sparkles className="h-4 w-4 text-green-600" />
+                              Key Nutrients
+                              <span className="text-xs font-normal text-gray-500">(from AI analysis or manual)</span>
+                            </span>
+                          </Label>
+                          <Input
+                            id="nutrients"
+                            type="text"
+                            value={formData.nutrients}
+                            onChange={(e) => setFormData({ ...formData, nutrients: e.target.value })}
+                            placeholder="e.g., Vitamin B12, Iron, Protein, Omega-3 (paste from AI response)"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">The AI prompt above will identify nutrients - paste them here after getting the response</p>
                         </div>
                         
                         {/* Mood Benefits Grid */}
@@ -2326,12 +2410,10 @@ MOOD BENEFITS:
                     <Button
                       type="button"
                       variant="destructive"
-                      onClick={async () => {
+                      onClick={() => {
                         if (editingProduct) {
                           setIsModalOpen(false)
-                          await handleDelete(editingProduct.id)
-                          resetForm()
-                          setEditingProduct(null)
+                          handleDeleteClick(editingProduct.id, editingProduct.name)
                         }
                       }}
                       disabled={submitting}
@@ -2626,6 +2708,25 @@ MOOD BENEFITS:
             onClose={() => setImageViewerOpen(false)}
           />
         )}
+        
+        {/* Delete Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={showDeleteModal}
+          onClose={() => {
+            setShowDeleteModal(false)
+            setProductToDelete(null)
+          }}
+          onConfirm={handleDeleteConfirm}
+          title="Delete Product"
+          message={productToDelete ? [
+            `Are you sure you want to delete "${productToDelete.name}"?`,
+            '',
+            'This action cannot be undone.'
+          ] : []}
+          type="danger"
+          confirmText="Delete Product"
+          cancelText="Cancel"
+        />
       </div>
     </AdminLayout> 
   )

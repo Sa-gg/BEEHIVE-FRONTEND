@@ -212,8 +212,8 @@ export const DashboardPage = () => {
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#9CA3AF' }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#9CA3AF' }} tickFormatter={val => `₱${(val/1000).toFixed(0)}k`} />
                   <Tooltip 
-                    formatter={(value: number, name: string) => [
-                      name === 'sales' ? `₱${value.toLocaleString()}` : value,
+                    formatter={(value, name) => [
+                      name === 'sales' ? `₱${(value as number)?.toLocaleString() ?? 0}` : value,
                       name === 'sales' ? 'Sales' : 'Orders'
                     ]}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
@@ -260,7 +260,7 @@ export const DashboardPage = () => {
                         <Cell key={`cell-${index}`} fill={`url(#pieGradient${index % COLORS.length})`} stroke="none" />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value: number) => `₱${value.toLocaleString()}`} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                    <Tooltip formatter={(value) => `₱${(value as number)?.toLocaleString() ?? 0}`} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="flex-1 space-y-2">
@@ -305,8 +305,8 @@ export const DashboardPage = () => {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
                   <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9CA3AF' }} />
                   <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#374151' }} width={90} />
-                  <Tooltip formatter={(value: number, name: string) => [
-                    name === 'revenue' ? `₱${value.toLocaleString()}` : value,
+                  <Tooltip formatter={(value, name) => [
+                    name === 'revenue' ? `₱${(value as number)?.toLocaleString() ?? 0}` : value,
                     name === 'revenue' ? 'Revenue' : 'Quantity'
                   ]} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
                   <Bar dataKey="quantity" fill="url(#barGradientGreen)" radius={[0, 8, 8, 0]} barSize={24} />
@@ -342,8 +342,8 @@ export const DashboardPage = () => {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                   <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9CA3AF' }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9CA3AF' }} />
-                  <Tooltip formatter={(value: number, name: string) => [
-                    name === 'revenue' ? `₱${value.toLocaleString()}` : value,
+                  <Tooltip formatter={(value, name) => [
+                    name === 'revenue' ? `₱${(value as number)?.toLocaleString() ?? 0}` : value,
                     name === 'revenue' ? 'Revenue' : 'Orders'
                   ]} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
                   <Bar dataKey="orders" fill="url(#barGradientBlue)" radius={[8, 8, 0, 0]} barSize={20} />

@@ -7,7 +7,6 @@ import { ArrowLeft, ShoppingBag, User, MapPin, CreditCard, MessageSquare, Utensi
 import { useAuthStore } from '../../../store/authStore'
 import { ordersApi } from '../../../../infrastructure/api/orders.api'
 import { MyOrdersModal } from './MyOrdersModal'
-import { getDeviceId } from '../../../../shared/utils/deviceId'
 
 interface CheckoutFormProps {
   items: OrderItem[]
@@ -28,7 +27,6 @@ export const CheckoutForm = ({ items, onSubmit, onBack, isSubmitting = false }: 
   const [orderNotifications, setOrderNotifications] = useState(0)
   const [hasOrderUpdates, setHasOrderUpdates] = useState(false)
   const [showMyOrders, setShowMyOrders] = useState(false)
-  const deviceId = getDeviceId()
 
   // Pre-fill customer name if user is authenticated
   useEffect(() => {

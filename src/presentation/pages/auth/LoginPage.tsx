@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { Button } from '../../components/common/ui/button'
 import { Input } from '../../components/common/ui/input'
 import { Label } from '../../components/common/ui/label'
-import { Loader2, Mail, Lock, ArrowRight, Eye, EyeOff, Phone } from 'lucide-react'
+import { Loader2, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react'
 
 export const LoginPage = () => {
   const navigate = useNavigate()
@@ -90,7 +90,7 @@ export const LoginPage = () => {
               <Input
                 id="emailOrPhone"
                 type="text"
-                placeholder="you@example.com or +63 912 345 6789"
+                placeholder="Enter phone or email"
                 value={emailOrPhone}
                 onChange={(e) => setEmailOrPhone(e.target.value)}
                 disabled={isLoading}

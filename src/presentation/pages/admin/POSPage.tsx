@@ -20,6 +20,7 @@ import { toast } from '../../components/common/ToastNotification'
 import { ConfirmationModal } from '../../components/common/ConfirmationModal'
 import { AddonsVariantsModal, type AddonSelection, type VariantSelection } from '../../components/features/shared/AddonsVariantsModal'
 import { addonsApi } from '../../../infrastructure/api/addons.api'
+import { LoyaltySelectModal, type LoyaltySelection } from '../../components/features/POS/LoyaltySelectModal'
 
 // Helper to format order number - removes date prefix for cleaner display
 const formatOrderNumber = (orderNumber: string): string => {
@@ -38,7 +39,7 @@ export const POSPage = () => {
   const reorderFrom = location.state?.reorderFrom
   const linkToOrder = location.state?.linkToOrder // New: Link to existing order (empty cart)
   const addToTab = location.state?.addToTab // New: Add items to existing tab order
-  const { markPaidOnPrintReceipt, printKitchenCopy, printKitchenCopyForOpenTab, cashChangeEnabled, posMobileColumnsPerRow, posMobileCardSize, autoOutOfStockWhenIngredientsRunOut } = useSettingsStore()
+  const { markPaidOnPrintReceipt, printKitchenCopy, printKitchenCopyForOpenTab, cashChangeEnabled, posMobileColumnsPerRow, posMobileCardSize, autoOutOfStockWhenIngredientsRunOut, loyaltySystemEnabled } = useSettingsStore()
   
   // Transform order items from backend format to POS format
   const transformOrderItems = (items: any[]): OrderItem[] => {
@@ -105,6 +106,11 @@ export const POSPage = () => {
   const [showAddonsModal, setShowAddonsModal] = useState(false)
   const [selectedMenuItemForAddons, setSelectedMenuItemForAddons] = useState<MenuItem | null>(null)
   const [menuItemsWithAddons, setMenuItemsWithAddons] = useState<Set<string>>(new Set())
+  
+  // Loyalty modal state
+  const [showLoyaltyModal, setShowLoyaltyModal] = useState(false)
+  const [loyaltySelection, setLoyaltySelection] = useState<LoyaltySelection | null>(null)
+  const [loyaltyPendingAction, setLoyaltyPendingAction] = useState<'confirm' | 'print' | null>(null)
   
   // Race condition prevention - track processing state for each menu item
   const [processingItemIds, setProcessingItemIds] = useState<Set<string>>(new Set())
@@ -491,6 +497,7 @@ export const POSPage = () => {
     setDeliveryFee(0)
     setServiceFee(0)
     setDiscountAmount(0)
+    setLoyaltySelection(null)
   }
 
   // Fee modal handlers
@@ -552,6 +559,13 @@ export const POSPage = () => {
       setStockWarnings(warnings)
       setStockWarningAction('print')
       setShowStockWarningModal(true)
+      return
+    }
+    
+    // For new orders (not edit mode), show loyalty modal first (only if loyalty system is enabled)
+    if (!isEditMode && !isAddingToTab && loyaltySystemEnabled) {
+      setLoyaltyPendingAction('print')
+      setShowLoyaltyModal(true)
       return
     }
     
@@ -629,6 +643,13 @@ export const POSPage = () => {
       return
     }
     
+    // For new orders (not edit mode), show loyalty modal first (only if loyalty system is enabled)
+    if (!isEditMode && !isAddingToTab && loyaltySystemEnabled) {
+      setLoyaltyPendingAction('confirm')
+      setShowLoyaltyModal(true)
+      return
+    }
+    
     executeConfirmOrder(0, 0)
   }
   
@@ -637,18 +658,52 @@ export const POSPage = () => {
     setShowStockWarningModal(false)
     
     if (stockWarningAction === 'print') {
-      if (paymentMethod === 'CASH' && cashChangeEnabled) {
+      // For new orders, show loyalty modal first (only if loyalty system is enabled)
+      if (!isEditMode && !isAddingToTab && loyaltySystemEnabled) {
+        setLoyaltyPendingAction('print')
+        setShowLoyaltyModal(true)
+      } else if (paymentMethod === 'CASH' && cashChangeEnabled) {
         setPendingAction('print')
         setShowCashModal(true)
       } else {
         executePrintReceipt(0, 0)
       }
     } else if (stockWarningAction === 'confirm') {
-      executeConfirmOrder(0, 0)
+      // For new orders, show loyalty modal first (only if loyalty system is enabled)
+      if (!isEditMode && !isAddingToTab && loyaltySystemEnabled) {
+        setLoyaltyPendingAction('confirm')
+        setShowLoyaltyModal(true)
+      } else {
+        executeConfirmOrder(0, 0)
+      }
     }
     
     setStockWarningAction(null)
     setStockWarnings([])
+  }
+
+  // Handle loyalty selection confirmation
+  const handleLoyaltyConfirm = (selection: LoyaltySelection) => {
+    setLoyaltySelection(selection)
+    setShowLoyaltyModal(false)
+    
+    // Update customer name if provided
+    if (selection.customerName) {
+      setCustomerName(selection.customerName)
+    }
+    
+    if (loyaltyPendingAction === 'print') {
+      if (paymentMethod === 'CASH' && cashChangeEnabled) {
+        setPendingAction('print')
+        setShowCashModal(true)
+      } else {
+        executePrintReceipt(0, 0)
+      }
+    } else if (loyaltyPendingAction === 'confirm') {
+      executeConfirmOrder(0, 0)
+    }
+    
+    setLoyaltyPendingAction(null)
   }
 
   const printReceiptForOrder = (order: any, cashReceived?: number, changeAmount?: number) => {
@@ -731,7 +786,9 @@ export const POSPage = () => {
     // Confirm the order first (save to database) for new orders
     try {
       const orderData = {
-        customerName: customerName || undefined,
+        customerName: customerName || loyaltySelection?.customerName || undefined,
+        customerPhone: loyaltySelection?.customerPhone || undefined,
+        loyaltyCardCode: loyaltySelection?.cardCode || undefined,
         tableNumber: tableNumber || undefined,
         orderType: orderType,
         paymentMethod: paymentMethod,
@@ -948,7 +1005,9 @@ export const POSPage = () => {
       // Create order via API
       try {
         const orderData = {
-          customerName: customerName || undefined,
+          customerName: customerName || loyaltySelection?.customerName || undefined,
+          customerPhone: loyaltySelection?.customerPhone || undefined,
+          loyaltyCardCode: loyaltySelection?.cardCode || undefined,
           tableNumber: tableNumber || undefined,
           orderType: orderType,
           paymentMethod: paymentMethod,
@@ -1405,6 +1464,17 @@ export const POSPage = () => {
         type="warning"
         confirmText="Proceed Anyway"
         cancelText="Go Back"
+      />
+
+      {/* Loyalty Selection Modal */}
+      <LoyaltySelectModal
+        open={showLoyaltyModal}
+        onClose={() => {
+          setShowLoyaltyModal(false)
+          setLoyaltyPendingAction(null)
+        }}
+        onConfirm={handleLoyaltyConfirm}
+        currentCustomerName={customerName}
       />
     </AdminLayout>
   )

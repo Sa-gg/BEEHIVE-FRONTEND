@@ -21,19 +21,23 @@ import {
   Settings,
   Plus,
   Trash2,
-  Save
+  Save,
+  CreditCard,
+  Link
 } from 'lucide-react'
-import { loyaltyApi, type CustomerLoyaltyDTO, type LoyaltyTransactionDTO, STAMPS_FOR_REWARD } from '../../../infrastructure/api/loyalty.api'
+import { loyaltyApi, type CustomerLoyaltyDTO, type LoyaltyTransactionDTO, STAMPS_FOR_REWARD, type IssueCardDTO } from '../../../infrastructure/api/loyalty.api'
 import { toast } from '../../components/common/ToastNotification'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/common/ui/dialog'
 import { Label } from '../../components/common/ui/label'
 import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
+import { categoriesApi, type CategoryDTO } from '../../../infrastructure/api/categories.api'
 
 interface MenuItem {
   id: string
   name: string
   price: number
   itemType: string
+  categoryId?: string
   available?: boolean
 }
 
@@ -57,9 +61,24 @@ export const LoyaltyPage = () => {
   
   // Settings state
   const [allMenuItems, setAllMenuItems] = useState<MenuItem[]>([])
+  const [categories, setCategories] = useState<CategoryDTO[]>([])
   const [redeemableDrinks, setRedeemableDrinks] = useState<string[]>([])
+  const [redeemableCategories, setRedeemableCategories] = useState<string[]>([])
   const [savingSettings, setSavingSettings] = useState(false)
   const [settingsSearch, setSettingsSearch] = useState('')
+  
+  // Issue Card modal state
+  const [showIssueCardModal, setShowIssueCardModal] = useState(false)
+  const [cardCode, setCardCode] = useState('')
+  const [cardCustomerName, setCardCustomerName] = useState('')
+  const [cardCustomerPhone, setCardCustomerPhone] = useState('')
+  const [issuingCard, setIssuingCard] = useState(false)
+  
+  // Link Card modal state
+  const [showLinkCardModal, setShowLinkCardModal] = useState(false)
+  const [linkCardCode, setLinkCardCode] = useState('')
+  const [linkingCard, setLinkingCard] = useState(false)
+  const [customerToLink, setCustomerToLink] = useState<CustomerLoyaltyDTO | null>(null)
 
   // Fetch all loyalty customers
   const fetchCustomers = async () => {
@@ -80,18 +99,30 @@ export const LoyaltyPage = () => {
       const response = await menuItemsApi.getAll()
       const allDrinks = (response.data || []).filter((item: any) => item.itemType === 'DRINK' && item.available)
       
-      // Load saved redeemable drinks from localStorage (or could be from API)
+      // Load saved redeemable drinks and categories from localStorage
       const savedRedeemable = localStorage.getItem('loyalty_redeemable_drinks')
+      const savedCategories = localStorage.getItem('loyalty_redeemable_categories')
+      
+      let redeemableItemIds: string[] = []
+      let redeemableCatIds: string[] = []
+      
       if (savedRedeemable) {
-        const redeemableIds = JSON.parse(savedRedeemable) as string[]
-        setRedeemableDrinks(redeemableIds)
-        // Filter to only redeemable drinks if any are configured
-        if (redeemableIds.length > 0) {
-          const redeemable = allDrinks.filter((d: MenuItem) => redeemableIds.includes(d.id))
-          setDrinkItems(redeemable.length > 0 ? redeemable : allDrinks)
-        } else {
-          setDrinkItems(allDrinks)
-        }
+        redeemableItemIds = JSON.parse(savedRedeemable) as string[]
+        setRedeemableDrinks(redeemableItemIds)
+      }
+      
+      if (savedCategories) {
+        redeemableCatIds = JSON.parse(savedCategories) as string[]
+        setRedeemableCategories(redeemableCatIds)
+      }
+      
+      // Filter drinks based on selected items AND categories
+      if (redeemableItemIds.length > 0 || redeemableCatIds.length > 0) {
+        const redeemable = allDrinks.filter((d: MenuItem) => 
+          redeemableItemIds.includes(d.id) || 
+          (d.categoryId && redeemableCatIds.includes(d.categoryId))
+        )
+        setDrinkItems(redeemable.length > 0 ? redeemable : allDrinks)
       } else {
         setDrinkItems(allDrinks)
       }
@@ -100,12 +131,16 @@ export const LoyaltyPage = () => {
     }
   }
   
-  // Fetch all menu items for settings
+  // Fetch all menu items and categories for settings
   const fetchAllMenuItems = async () => {
     try {
-      const response = await menuItemsApi.getAll()
-      const drinks = (response.data || []).filter((item: any) => item.itemType === 'DRINK')
+      const [menuResponse, categoriesResponse] = await Promise.all([
+        menuItemsApi.getAll(),
+        categoriesApi.getAll()
+      ])
+      const drinks = (menuResponse.data || []).filter((item: any) => item.itemType === 'DRINK')
       setAllMenuItems(drinks)
+      setCategories(categoriesResponse.data || [])
     } catch (error) {
       console.error('Failed to fetch all menu items:', error)
     }
@@ -182,6 +217,79 @@ export const LoyaltyPage = () => {
     }
   }
 
+  // Issue new physical loyalty card
+  const handleIssueCard = async () => {
+    if (!cardCode) return
+    
+    // Validate card code format
+    if (!/^[A-Za-z0-9-]{4,20}$/.test(cardCode)) {
+      toast.error('Invalid Card Code', 'Card code must be 4-20 alphanumeric characters (dashes allowed)')
+      return
+    }
+    
+    setIssuingCard(true)
+    try {
+      const data: IssueCardDTO = {
+        cardCode: cardCode.toUpperCase(),
+        customerName: cardCustomerName || undefined,
+        customerPhone: cardCustomerPhone || undefined
+      }
+      
+      const result = await loyaltyApi.issueCard(data)
+      
+      toast.success('Card Issued!', result.message)
+      setShowIssueCardModal(false)
+      setCardCode('')
+      setCardCustomerName('')
+      setCardCustomerPhone('')
+      
+      // Refresh customer data
+      fetchCustomers()
+    } catch (error: any) {
+      toast.error('Failed to issue card', error.response?.data?.error || error.message)
+    } finally {
+      setIssuingCard(false)
+    }
+  }
+
+  // Link physical card to existing customer
+  const handleLinkCard = async () => {
+    if (!linkCardCode || !customerToLink) return
+    
+    // Validate card code format
+    if (!/^[A-Za-z0-9-]{4,20}$/.test(linkCardCode)) {
+      toast.error('Invalid Card Code', 'Card code must be 4-20 alphanumeric characters (dashes allowed)')
+      return
+    }
+    
+    setLinkingCard(true)
+    try {
+      const result = await loyaltyApi.linkCard({
+        cardCode: linkCardCode.toUpperCase(),
+        loyaltyId: customerToLink.id
+      })
+      
+      toast.success('Card Linked!', result.message)
+      setShowLinkCardModal(false)
+      setLinkCardCode('')
+      setCustomerToLink(null)
+      
+      // Refresh customer data
+      fetchCustomers()
+    } catch (error: any) {
+      toast.error('Failed to link card', error.response?.data?.error || error.message)
+    } finally {
+      setLinkingCard(false)
+    }
+  }
+
+  // Open link card modal
+  const handleLinkCardClick = (customer: CustomerLoyaltyDTO) => {
+    setCustomerToLink(customer)
+    setLinkCardCode('')
+    setShowLinkCardModal(true)
+  }
+
   // Filter customers
   const filteredCustomers = customers.filter(c => {
     if (!searchQuery) return true
@@ -218,10 +326,20 @@ export const LoyaltyPage = () => {
               Manage customer stamps and rewards
             </p>
           </div>
-          <Button onClick={fetchCustomers} variant="outline" className="gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => setShowIssueCardModal(true)} 
+              className="gap-2"
+              style={{ backgroundColor: '#F9C900', color: '#000' }}
+            >
+              <CreditCard className="h-4 w-4" />
+              Issue Card
+            </Button>
+            <Button onClick={fetchCustomers} variant="outline" className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -381,6 +499,12 @@ export const LoyaltyPage = () => {
                             {customer.availableRewards} FREE DRINK{customer.availableRewards > 1 ? 'S' : ''}!
                           </span>
                         )}
+                        {customer.cardCode && (
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full flex items-center gap-1">
+                            <CreditCard className="h-3 w-3" />
+                            {customer.cardCode}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-sm text-gray-500 mt-0.5">
                         {customer.customerPhone && (
@@ -437,6 +561,22 @@ export const LoyaltyPage = () => {
                       </Button>
                     )}
                     
+                    {/* Link Card Button (only show if no card) */}
+                    {!customer.cardCode && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleLinkCardClick(customer)
+                        }}
+                        className="gap-1"
+                      >
+                        <Link className="h-4 w-4" />
+                        Link Card
+                      </Button>
+                    )}
+                    
                     {/* Expand Toggle */}
                     {expandedCustomer === customer.id ? (
                       <ChevronUp className="h-5 w-5 text-gray-400" />
@@ -478,12 +618,20 @@ export const LoyaltyPage = () => {
                               {tx.type === 'STAMP_REVERSED' && (
                                 <AlertCircle className="h-5 w-5 text-red-500" />
                               )}
+                              {tx.type === 'CARD_ISSUED' && (
+                                <CreditCard className="h-5 w-5 text-blue-500" />
+                              )}
+                              {tx.type === 'CARD_LINKED' && (
+                                <Link className="h-5 w-5 text-blue-500" />
+                              )}
                               <div>
                                 <p className="text-sm font-medium text-gray-900">
                                   {tx.type === 'STAMP_EARNED' && 'Stamp Earned'}
                                   {tx.type === 'REWARD_REDEEMED' && `Reward Redeemed: ${tx.rewardItemName}`}
                                   {tx.type === 'REWARD_UNLOCKED' && 'Free Drink Unlocked! 🎉'}
                                   {tx.type === 'STAMP_REVERSED' && 'Stamp Reversed'}
+                                  {tx.type === 'CARD_ISSUED' && 'Physical Card Issued'}
+                                  {tx.type === 'CARD_LINKED' && 'Physical Card Linked'}
                                 </p>
                                 <p className="text-xs text-gray-500">
                                   {tx.orderNumber && `Order ${tx.orderNumber} • `}
@@ -575,17 +723,88 @@ export const LoyaltyPage = () => {
                         )
                       })}
                     </div>
-                  ) : (
+                  ) : redeemableCategories.length === 0 ? (
                     <p className="text-sm text-gray-500 mb-4 italic">
-                      No specific drinks selected - customers can redeem any drink
+                      No specific drinks or categories selected - customers can redeem any drink
                     </p>
+                  ) : null}
+                  
+                  {/* Selected Categories */}
+                  {redeemableCategories.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {redeemableCategories.map(catId => {
+                        const category = categories.find(c => c.id === catId)
+                        if (!category) return null
+                        return (
+                          <span 
+                            key={catId}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-800 rounded-full text-sm"
+                          >
+                            <Star className="h-3.5 w-3.5" />
+                            {category.displayName} (Category)
+                            <button
+                              onClick={() => setRedeemableCategories(prev => prev.filter(id => id !== catId))}
+                              className="ml-1 p-0.5 hover:bg-blue-200 rounded-full transition-colors"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </span>
+                        )
+                      })}
+                    </div>
                   )}
                 </div>
 
-                {/* Add Drinks */}
+                {/* Redeemable Categories Selection */}
                 <div>
                   <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                    Add Drinks to Redeemable List
+                    Select Drink Categories (all drinks in selected categories will be redeemable)
+                  </Label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
+                    {categories
+                      .filter(cat => {
+                        // Only show categories that have DRINK items
+                        const drinksInCat = allMenuItems.filter(item => item.categoryId === cat.id)
+                        return drinksInCat.length > 0
+                      })
+                      .map(category => {
+                        const isSelected = redeemableCategories.includes(category.id)
+                        const drinksCount = allMenuItems.filter(item => item.categoryId === category.id).length
+                        return (
+                          <button
+                            key={category.id}
+                            onClick={() => {
+                              if (isSelected) {
+                                setRedeemableCategories(prev => prev.filter(id => id !== category.id))
+                              } else {
+                                setRedeemableCategories(prev => [...prev, category.id])
+                              }
+                            }}
+                            className={`flex items-center justify-between p-3 rounded-lg border transition-all ${
+                              isSelected 
+                                ? 'bg-blue-50 border-blue-300 text-blue-800' 
+                                : 'bg-white border-gray-200 hover:border-blue-200 hover:bg-blue-50/50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                                isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
+                              }`}>
+                                {isSelected && <CheckCircle className="h-3.5 w-3.5 text-white" />}
+                              </div>
+                              <span className="font-medium">{category.displayName}</span>
+                            </div>
+                            <span className="text-xs text-gray-500">{drinksCount} drinks</span>
+                          </button>
+                        )
+                      })}
+                  </div>
+                </div>
+
+                {/* Add Individual Drinks */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Add Individual Drinks to Redeemable List
                   </Label>
                   <div className="relative mb-3">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -636,7 +855,9 @@ export const LoyaltyPage = () => {
                     variant="outline"
                     onClick={() => {
                       setRedeemableDrinks([])
+                      setRedeemableCategories([])
                       localStorage.removeItem('loyalty_redeemable_drinks')
+                      localStorage.removeItem('loyalty_redeemable_categories')
                       fetchDrinkItems()
                       toast.success('Reset', 'All drinks are now redeemable')
                     }}
@@ -647,10 +868,20 @@ export const LoyaltyPage = () => {
                     onClick={() => {
                       setSavingSettings(true)
                       localStorage.setItem('loyalty_redeemable_drinks', JSON.stringify(redeemableDrinks))
+                      localStorage.setItem('loyalty_redeemable_categories', JSON.stringify(redeemableCategories))
                       fetchDrinkItems()
                       setTimeout(() => {
                         setSavingSettings(false)
-                        toast.success('Settings Saved', `${redeemableDrinks.length > 0 ? redeemableDrinks.length + ' drinks' : 'All drinks'} available for redemption`)
+                        const drinksCount = redeemableDrinks.length
+                        const catsCount = redeemableCategories.length
+                        if (drinksCount > 0 || catsCount > 0) {
+                          const parts = []
+                          if (drinksCount > 0) parts.push(`${drinksCount} drinks`)
+                          if (catsCount > 0) parts.push(`${catsCount} categories`)
+                          toast.success('Settings Saved', `${parts.join(' and ')} available for redemption`)
+                        } else {
+                          toast.success('Settings Saved', 'All drinks available for redemption')
+                        }
                       }, 500)
                     }}
                     disabled={savingSettings}
@@ -767,6 +998,150 @@ export const LoyaltyPage = () => {
                 <>
                   <Gift className="h-4 w-4 mr-2" />
                   Confirm Redemption
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Issue Card Modal */}
+      <Dialog open={showIssueCardModal} onOpenChange={setShowIssueCardModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-amber-500" />
+              Issue New Loyalty Card
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800">
+                <strong>Note:</strong> Issuing a card does NOT award a stamp. 
+                Stamps are only earned when an order is paid.
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="cardCode">Card Code *</Label>
+              <Input
+                id="cardCode"
+                placeholder="e.g., BEEHIVE-001"
+                value={cardCode}
+                onChange={(e) => setCardCode(e.target.value.toUpperCase())}
+                className="font-mono"
+              />
+              <p className="text-xs text-gray-500">
+                Enter the code printed on the physical card (4-20 characters)
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="cardCustomerName">Customer Name (Optional)</Label>
+              <Input
+                id="cardCustomerName"
+                placeholder="e.g., Juan Dela Cruz"
+                value={cardCustomerName}
+                onChange={(e) => setCardCustomerName(e.target.value)}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="cardCustomerPhone">Phone Number (Optional)</Label>
+              <Input
+                id="cardCustomerPhone"
+                placeholder="e.g., 09171234567"
+                value={cardCustomerPhone}
+                onChange={(e) => setCardCustomerPhone(e.target.value)}
+              />
+              <p className="text-xs text-gray-500">
+                If phone matches existing customer, card will be linked to their account
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowIssueCardModal(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleIssueCard}
+              disabled={!cardCode || issuingCard}
+              style={{ backgroundColor: '#F9C900', color: '#000' }}
+            >
+              {issuingCard ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Issuing...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Issue Card
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Link Card Modal */}
+      <Dialog open={showLinkCardModal} onOpenChange={setShowLinkCardModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link className="h-5 w-5 text-blue-500" />
+              Link Card to Account
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {customerToLink && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="font-medium text-amber-800">
+                  {customerToLink.customerName || 'Guest Customer'}
+                </p>
+                <p className="text-sm text-amber-600">
+                  {customerToLink.customerPhone || customerToLink.customerEmail || 'No contact info'}
+                  {' • '}{customerToLink.currentStamps}/{STAMPS_FOR_REWARD} stamps
+                </p>
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              <Label htmlFor="linkCardCode">Card Code *</Label>
+              <Input
+                id="linkCardCode"
+                placeholder="e.g., BEEHIVE-001"
+                value={linkCardCode}
+                onChange={(e) => setLinkCardCode(e.target.value.toUpperCase())}
+                className="font-mono"
+              />
+              <p className="text-xs text-gray-500">
+                Enter the code printed on the physical card to link to this account
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLinkCardModal(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleLinkCard}
+              disabled={!linkCardCode || linkingCard}
+              className="bg-blue-500 hover:bg-blue-600 text-white"
+            >
+              {linkingCard ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Linking...
+                </>
+              ) : (
+                <>
+                  <Link className="h-4 w-4 mr-2" />
+                  Link Card
                 </>
               )}
             </Button>

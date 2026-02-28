@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { X, Plus, Minus, Upload, Trash2, Search, Package, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, CheckCircle, Loader2, Eye } from 'lucide-react';
+import { X, Plus, Upload, Trash2, Search, Package, ArrowDownToLine, ArrowUpFromLine, CheckCircle, Loader2, Eye } from 'lucide-react';
 import { Button } from '@/presentation/components/common/ui/button';
 import { Input } from '@/presentation/components/common/ui/input';
 import { Label } from '@/presentation/components/common/ui/label';

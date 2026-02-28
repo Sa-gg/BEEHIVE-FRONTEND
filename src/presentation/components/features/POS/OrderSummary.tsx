@@ -161,15 +161,19 @@ export const OrderSummary = ({
           </div>
         ) : (
           <div className="space-y-1">
-            {items.map((item, index) => (
-              <OrderItemRow
-                key={`${item.menuItemId}-${item.variantId || 'base'}-${index}`}
-                item={item}
-                onUpdateQuantity={onUpdateQuantity}
-                onRemove={onRemove}
-                itemIndex={item.variantId || item.addons?.length ? index : undefined}
-              />
-            ))}
+            {items.map((item, index) => {
+              // Pass itemIndex for items with variants, addons, or notes (can't be aggregated)
+              const hasVariantOrAddons = item.variantId || (item.addons && item.addons.length > 0) || item.notes
+              return (
+                <OrderItemRow
+                  key={`${item.menuItemId}-${item.variantId || 'base'}-${index}`}
+                  item={item}
+                  onUpdateQuantity={onUpdateQuantity}
+                  onRemove={onRemove}
+                  itemIndex={hasVariantOrAddons ? index : undefined}
+                />
+              )
+            })}
           </div>
         )}
       </div>

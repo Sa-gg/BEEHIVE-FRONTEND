@@ -93,8 +93,8 @@ export async function removeImageBackground(
         const percent = 20 + Math.round((current / total) * 75);
         onProgress?.(Math.min(percent, 95));
       },
-      // Use lower quality model for faster processing
-      model: 'small',
+      // Use quantized model for faster processing
+      model: 'isnet_quint8',
     });
 
     onProgress?.(100);

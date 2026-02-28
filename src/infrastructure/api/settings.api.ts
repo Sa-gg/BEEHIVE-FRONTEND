@@ -37,6 +37,7 @@ export interface GlobalSettings {
   
   // Experimental features
   linkedOrdersEnabled: boolean;
+  loyaltySystemEnabled: boolean;
   
   // Order permissions
   allowVoidOrderItem: boolean;

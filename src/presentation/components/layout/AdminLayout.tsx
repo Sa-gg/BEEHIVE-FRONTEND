@@ -1,13 +1,12 @@
 import { type ReactNode, useState, useEffect, useCallback, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, X, LogOut, Bell, LayoutDashboard, CreditCard, Package, ClipboardList, ChefHat, TrendingUp, FileText, Wallet, Tag, Users, Brain, Settings, Coffee } from 'lucide-react'
+import { Menu, X, LogOut, Bell, LayoutDashboard, CreditCard, Package, ClipboardList, TrendingUp, FileText, Wallet, Tag, Users, Brain, Settings, Coffee } from 'lucide-react'
 // Solid icons from react-icons
 import { 
   RiDashboardFill, 
   RiBankCardFill, 
   RiFileList3Fill, 
   RiArchiveFill,
-  RiRestaurantFill,
   RiLineChartFill,
   RiFileTextFill,
   RiWalletFill,
@@ -53,7 +52,7 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
     return saved !== 'true'
   })
   const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [sidebarNeedsScroll, setSidebarNeedsScroll] = useState(false)
+  const [, setSidebarNeedsScroll] = useState(false)
   const sidebarContentRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
   const navigate = useNavigate()
@@ -197,10 +196,11 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
   const userPermissions = user?.role ? DEFAULT_PERMISSIONS[user.role as UserRole] || {} : {}
   
   // Get only the settings we need for the navbar - use shallow to prevent unnecessary re-renders
-  const { navbarIconStyle, navbarBackgroundStyle } = useSettingsStore(
+  const { navbarIconStyle, navbarBackgroundStyle, loyaltySystemEnabled } = useSettingsStore(
     useShallow((state) => ({
       navbarIconStyle: state.navbarIconStyle,
-      navbarBackgroundStyle: state.navbarBackgroundStyle
+      navbarBackgroundStyle: state.navbarBackgroundStyle,
+      loyaltySystemEnabled: state.loyaltySystemEnabled
     }))
   )
 
@@ -226,6 +226,8 @@ export const AdminLayout = ({ children, hideHeader = false, hideHeaderOnDesktop 
   // Filter menu items based on user's permissions
   const menuItems = allMenuItems.filter(item => {
     if (!user?.role) return false
+    // Hide Loyalty page if loyalty system is disabled
+    if (item.label === 'Loyalty' && !loyaltySystemEnabled) return false
     return userPermissions[item.permission] === true
   })
 

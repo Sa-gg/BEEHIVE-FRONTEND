@@ -80,6 +80,10 @@ export const AddonsVariantsModal = ({
   const [selectedAddons, setSelectedAddons] = useState<Map<string, { quantity: number; unitPrice: number; name: string }>>(new Map())
   const [notes, setNotes] = useState('')
   const [quantity, setQuantity] = useState(initialQuantity)
+  
+  // Editable quantity state
+  const [isEditingQuantity, setIsEditingQuantity] = useState(false)
+  const [editQuantityValue, setEditQuantityValue] = useState('')
 
   // Helper function to get full image URL
   const getImageUrl = (imagePath: string | null | undefined) => {
@@ -157,6 +161,8 @@ export const AddonsVariantsModal = ({
       setNotes('')
       setQuantity(1) // Reset quantity to 1
       setInitialVariantServings({}) // Reset initial servings
+      setIsEditingQuantity(false)
+      setEditQuantityValue('')
     }
   }, [isOpen])
 
@@ -178,57 +184,98 @@ export const AddonsVariantsModal = ({
     })
   }
 
-  // Handle item quantity change and update displayed variant stock in real-time
-  const updateQuantity = (delta: number) => {
-    // Get current max based on stock
-    const currentMaxQuantity = (() => {
-      if (!autoOutOfStockWhenIngredientsRunOut) return Infinity
+  // Get max quantity helper (extracted for reuse)
+  const getCurrentMaxQuantity = () => {
+    if (!autoOutOfStockWhenIngredientsRunOut) return Infinity
+    
+    // Check if this item has variants
+    if (variants.length > 0) {
+      if (selectedVariantId && initialVariantServings[selectedVariantId] !== undefined) {
+        const stock = initialVariantServings[selectedVariantId]
+        if (stock === -1) return Infinity
+        return Math.max(1, stock)
+      }
+      if (initialVariantServings['base'] !== undefined) {
+        const stock = initialVariantServings['base']
+        if (stock === -1) return Infinity
+        return Math.max(1, stock)
+      }
+    } else {
+      if (baseMaxServings !== undefined && baseMaxServings !== -1) {
+        return Math.max(1, baseMaxServings)
+      }
+    }
+    return Infinity
+  }
+
+  // Update variant servings display when quantity changes
+  const updateVariantServingsDisplay = (newQuantity: number) => {
+    if (Object.keys(initialVariantServings).length > 0) {
+      const updatedServings: Record<string, number> = {}
       
-      // Check if this item has variants
-      if (variants.length > 0) {
-        if (selectedVariantId && initialVariantServings[selectedVariantId] !== undefined) {
-          const stock = initialVariantServings[selectedVariantId]
-          if (stock === -1) return Infinity
-          return Math.max(1, stock)
-        }
-        if (initialVariantServings['base'] !== undefined) {
-          const stock = initialVariantServings['base']
-          if (stock === -1) return Infinity
-          return Math.max(1, stock)
-        }
-      } else {
-        if (baseMaxServings !== undefined && baseMaxServings !== -1) {
-          return Math.max(1, baseMaxServings)
+      for (const [key, initialValue] of Object.entries(initialVariantServings)) {
+        if (initialValue === -1) {
+          updatedServings[key] = -1
+        } else {
+          updatedServings[key] = Math.max(0, initialValue - newQuantity)
         }
       }
-      return Infinity
-    })()
+      
+      setVariantServings(updatedServings)
+    }
+  }
+
+  // Handle item quantity change and update displayed variant stock in real-time
+  const updateQuantity = (delta: number) => {
+    const currentMaxQuantity = getCurrentMaxQuantity()
     
     setQuantity(prev => {
       // Apply stock cap when increasing and setting is enabled
       const newQuantity = Math.max(1, Math.min(prev + delta, currentMaxQuantity))
       
       // Update displayed variant servings based on new quantity
-      // Shows what stock remains AFTER this order is placed
-      if (Object.keys(initialVariantServings).length > 0) {
-        const updatedServings: Record<string, number> = {}
-        
-        for (const [key, initialValue] of Object.entries(initialVariantServings)) {
-          if (initialValue === -1) {
-            // -1 means unlimited/no recipe, keep as is
-            updatedServings[key] = -1
-          } else {
-            // Reduce stock by the full quantity being ordered
-            // All variants are affected because they likely share base ingredients
-            updatedServings[key] = Math.max(0, initialValue - newQuantity)
-          }
-        }
-        
-        setVariantServings(updatedServings)
-      }
+      updateVariantServingsDisplay(newQuantity)
       
       return newQuantity
     })
+  }
+
+  // Handle direct quantity edit (click on number to edit)
+  const handleQuantityClick = () => {
+    setEditQuantityValue(quantity.toString())
+    setIsEditingQuantity(true)
+  }
+
+  const handleQuantityInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Only allow digits
+    const value = e.target.value.replace(/\D/g, '')
+    setEditQuantityValue(value)
+  }
+
+  const handleQuantityInputBlur = () => {
+    const currentMaxQuantity = getCurrentMaxQuantity()
+    let newValue = parseInt(editQuantityValue, 10)
+    
+    // Validate and constrain the value
+    if (isNaN(newValue) || newValue < 1) {
+      newValue = 1
+    } else if (currentMaxQuantity !== Infinity && newValue > currentMaxQuantity) {
+      newValue = currentMaxQuantity
+    }
+    
+    setQuantity(newValue)
+    updateVariantServingsDisplay(newValue)
+    setIsEditingQuantity(false)
+    setEditQuantityValue('')
+  }
+
+  const handleQuantityInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleQuantityInputBlur()
+    } else if (e.key === 'Escape') {
+      setIsEditingQuantity(false)
+      setEditQuantityValue('')
+    }
   }
 
   // Handle addon quantity change
@@ -393,8 +440,8 @@ export const AddonsVariantsModal = ({
                             {variant.priceDelta < 0 && `-₱${Math.abs(variant.priceDelta).toFixed(2)}`}
                             {variant.priceDelta === 0 && 'Base price'}
                           </div>
-                          {/* Stock indicator for variant */}
-                          {hasStock && (
+                          {/* Stock indicator for variant - only show when auto out-of-stock is enabled */}
+                          {autoOutOfStockWhenIngredientsRunOut && hasStock && (
                             <div className={`absolute -top-1 -right-1 text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5 ${
                               isOutOfStock
                                 ? 'bg-red-100 text-red-700 border border-red-300'
@@ -517,7 +564,25 @@ export const AddonsVariantsModal = ({
               >
                 <Minus className="w-4 h-4" />
               </button>
-              <span className="w-8 text-center font-bold text-lg">{quantity}</span>
+              {isEditingQuantity ? (
+                <input
+                  type="text"
+                  value={editQuantityValue}
+                  onChange={handleQuantityInputChange}
+                  onBlur={handleQuantityInputBlur}
+                  onKeyDown={handleQuantityInputKeyDown}
+                  autoFocus
+                  className="w-12 h-8 text-center font-bold text-lg border border-amber-400 rounded bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              ) : (
+                <button
+                  onClick={handleQuantityClick}
+                  className="w-10 h-8 text-center font-bold text-lg cursor-pointer hover:bg-gray-100 rounded transition-colors border border-transparent hover:border-gray-300"
+                  title="Click to edit quantity"
+                >
+                  {quantity}
+                </button>
+              )}
               <button
                 onClick={() => updateQuantity(1)}
                 disabled={isAtMaxQuantity}

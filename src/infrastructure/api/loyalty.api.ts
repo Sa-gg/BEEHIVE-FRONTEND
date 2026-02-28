@@ -7,6 +7,7 @@ export interface CustomerLoyaltyDTO {
   customerEmail?: string | null
   deviceId?: string | null
   customerName?: string | null
+  cardCode?: string | null    // Physical card code
   currentStamps: number       // 0-9 (resets after reward)
   totalStamps: number         // Lifetime total
   rewardsEarned: number       // Total 10-stamp milestones
@@ -21,7 +22,7 @@ export interface CustomerLoyaltyDTO {
 export interface LoyaltyTransactionDTO {
   id: string
   customerLoyaltyId: string
-  type: 'STAMP_EARNED' | 'STAMP_REVERSED' | 'REWARD_UNLOCKED' | 'REWARD_REDEEMED'
+  type: 'STAMP_EARNED' | 'STAMP_REVERSED' | 'REWARD_UNLOCKED' | 'REWARD_REDEEMED' | 'CARD_ISSUED' | 'CARD_LINKED'
   orderId?: string | null
   orderNumber?: string | null
   stampsBefore: number
@@ -38,6 +39,7 @@ export interface LoyaltyLookupDTO {
   customerPhone?: string
   customerEmail?: string
   deviceId?: string
+  cardCode?: string           // Look up by physical card
 }
 
 export interface AwardStampDTO {
@@ -78,6 +80,27 @@ export interface RedeemRewardResponse {
   success: boolean
   loyalty: CustomerLoyaltyDTO
   transaction: LoyaltyTransactionDTO
+  message: string
+}
+
+// Physical card types
+export interface IssueCardDTO {
+  cardCode: string            // Unique code printed on physical card
+  customerName?: string       // Optional name
+  customerPhone?: string      // Optional - link to existing phone
+}
+
+export interface LinkCardDTO {
+  cardCode: string
+  loyaltyId: string           // Link by ID
+}
+
+export interface IssueCardResponse {
+  success: boolean
+  loyalty: CustomerLoyaltyDTO
+  transaction: LoyaltyTransactionDTO
+  isNewAccount: boolean        // True if new account was created
+  linkedToExisting: boolean    // True if linked to existing phone account
   message: string
 }
 
@@ -153,6 +176,24 @@ export const loyaltyApi = {
   getTransactions: async (loyaltyId: string, limit?: number): Promise<{ success: boolean; transactions: LoyaltyTransactionDTO[] }> => {
     const url = limit ? `/api/loyalty/transactions/${loyaltyId}?limit=${limit}` : `/api/loyalty/transactions/${loyaltyId}`
     const response = await api.get(url)
+    return response.data
+  },
+
+  // Look up by physical card code
+  lookupByCard: async (cardCode: string): Promise<{ success: boolean; found: boolean; customer: CustomerLoyaltyDTO | null }> => {
+    const response = await api.get(`/api/loyalty/card/${encodeURIComponent(cardCode)}`)
+    return response.data
+  },
+
+  // Issue new physical loyalty card
+  issueCard: async (data: IssueCardDTO): Promise<IssueCardResponse> => {
+    const response = await api.post('/api/loyalty/card/issue', data)
+    return response.data
+  },
+
+  // Link physical card to existing account
+  linkCard: async (data: LinkCardDTO): Promise<IssueCardResponse> => {
+    const response = await api.post('/api/loyalty/card/link', data)
     return response.data
   }
 }

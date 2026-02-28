@@ -872,6 +872,8 @@ export const OrdersPage = () => {
     const group = getLinkedOrderGroup(parentOrderId)
     return group.reduce((sum, o) => sum + o.totalAmount, 0)
   }
+  // Silence unused warning - utility for linked orders
+  void getLinkedOrdersTotal
 
   // Mark all linked orders as paid
   const markAllLinkedOrdersAsPaid = async (parentOrderId: string) => {

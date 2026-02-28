@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../../store/authStore'
+import { useSettingsStore } from '../../../store/settingsStore'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +14,7 @@ import { Button } from '../../common/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../common/ui/dialog'
 import { Input } from '../../common/ui/input'
 import { Label } from '../../common/ui/label'
-import { User, ShoppingBag, Coffee, Star, LogOut, LogIn, Settings, Award } from 'lucide-react'
+import { User, ShoppingBag, Coffee, Star, LogOut, Settings } from 'lucide-react'
 import { loyaltyApi, type CustomerLoyaltyDTO, STAMPS_FOR_REWARD } from '../../../../infrastructure/api/loyalty.api'
 import { authApi } from '../../../../infrastructure/api/auth.api'
 import { getDeviceId } from '../../../../shared/utils/deviceId'
@@ -24,6 +25,7 @@ interface CustomerDropdownProps {
 
 export const CustomerDropdown = ({ onViewOrders }: CustomerDropdownProps) => {
   const { user, isAuthenticated, logout, setUser } = useAuthStore()
+  const { loyaltySystemEnabled } = useSettingsStore()
   const navigate = useNavigate()
   const [loyalty, setLoyalty] = useState<CustomerLoyaltyDTO | null>(null)
   const [loadingLoyalty, setLoadingLoyalty] = useState(false)
@@ -36,10 +38,10 @@ export const CustomerDropdown = ({ onViewOrders }: CustomerDropdownProps) => {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  // Fetch loyalty data when dropdown opens or user changes
+  // Fetch loyalty data when dropdown opens or user changes (only if loyalty system is enabled)
   useEffect(() => {
     const fetchLoyalty = async () => {
-      if (!isAuthenticated || !user) return
+      if (!isAuthenticated || !user || !loyaltySystemEnabled) return
       
       setLoadingLoyalty(true)
       try {
@@ -60,7 +62,7 @@ export const CustomerDropdown = ({ onViewOrders }: CustomerDropdownProps) => {
     }
 
     fetchLoyalty()
-  }, [isAuthenticated, user])
+  }, [isAuthenticated, user, loyaltySystemEnabled])
 
   const handleLogin = () => {
     navigate('/login')
@@ -154,7 +156,7 @@ export const CustomerDropdown = ({ onViewOrders }: CustomerDropdownProps) => {
           <DropdownMenuLabel>Welcome Guest</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleLogin} className="cursor-pointer">
-            <LogIn className="mr-2 h-4 w-4" />
+            <User className="mr-2 h-4 w-4" />
             <span>Sign In</span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={handleRegister} className="cursor-pointer">
@@ -172,7 +174,7 @@ export const CustomerDropdown = ({ onViewOrders }: CustomerDropdownProps) => {
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="icon" className="rounded-full border-2 border-gray-300 hover:border-yellow-400 hover:bg-yellow-50 relative">
             <User className="h-5 w-5" />
-            {loyalty && loyalty.availableRewards > 0 && (
+            {loyaltySystemEnabled && loyalty && loyalty.availableRewards > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
                 {loyalty.availableRewards}
               </span>
@@ -190,7 +192,9 @@ export const CustomerDropdown = ({ onViewOrders }: CustomerDropdownProps) => {
             </div>
           </DropdownMenuLabel>
           
-          {/* Loyalty Stamps Section */}
+          {/* Loyalty Stamps Section - Only show if loyalty system is enabled */}
+          {loyaltySystemEnabled && (
+          <>
           <DropdownMenuSeparator />
           <div className="px-2 py-3">
             <div className="flex items-center justify-between mb-2">
@@ -267,6 +271,8 @@ export const CustomerDropdown = ({ onViewOrders }: CustomerDropdownProps) => {
               </div>
             )}
           </div>
+          </>
+          )}
           
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleViewOrders} className="cursor-pointer">
@@ -276,10 +282,6 @@ export const CustomerDropdown = ({ onViewOrders }: CustomerDropdownProps) => {
           <DropdownMenuItem onClick={handleEditProfile} className="cursor-pointer">
             <Settings className="mr-2 h-4 w-4" />
             <span>Edit Profile</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-default hover:bg-transparent focus:bg-transparent">
-            <Award className="mr-2 h-4 w-4 text-yellow-500" />
-            <span className="font-medium">Loyalty Points: <span style={{ color: '#F9C900' }}>{user?.loyaltyPoints || 0}</span></span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer hover:bg-red-50 focus:bg-red-50">

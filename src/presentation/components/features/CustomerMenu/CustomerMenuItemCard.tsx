@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import type { MenuItem } from '../../../../core/domain/entities/MenuItem.entity'
 import type { MoodType } from '../../../../shared/utils/moodSystem'
 import { Badge } from '../../common/ui/badge'
@@ -13,7 +13,8 @@ interface CustomerMenuItemCardProps {
   getImageUrl?: (imagePath: string | null) => string | null
 }
 
-export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact = false, getImageUrl }: CustomerMenuItemCardProps) => {
+// Memoized component to prevent unnecessary re-renders during scroll
+export const CustomerMenuItemCard = memo(function CustomerMenuItemCard({ item, onAddToCart, currentMood, compact = false, getImageUrl }: CustomerMenuItemCardProps) {
   const [showExplanation, setShowExplanation] = useState(false)
   
   // Use database moodBenefits and nutrients (database-only, no static fallback)
@@ -143,4 +144,4 @@ export const CustomerMenuItemCard = ({ item, onAddToCart, currentMood, compact =
       )}
     </div>
   )
-}
+})

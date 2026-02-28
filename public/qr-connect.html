@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BEEHIVE - Connect via QR Code</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #FFF9E6 0%, #FFF3CC 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+      padding: 40px;
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+    }
+    
+    .logo {
+      font-size: 48px;
+      margin-bottom: 8px;
+    }
+    
+    h1 {
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+    
+    .qr-section {
+      margin-bottom: 24px;
+    }
+    
+    .qr-label {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 16px;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    
+    .qr-container {
+      background: white;
+      border: 3px solid #F9C900;
+      border-radius: 16px;
+      padding: 20px;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+    
+    #qr-menu, #qr-home {
+      display: block;
+    }
+    
+    .url-display {
+      background: #f5f5f5;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 13px;
+      color: #333;
+      word-break: break-all;
+      margin-top: 8px;
+    }
+    
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      background: #f5f5f5;
+      padding: 4px;
+      border-radius: 12px;
+    }
+    
+    .tab {
+      flex: 1;
+      padding: 12px 16px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      color: #666;
+      transition: all 0.2s;
+    }
+    
+    .tab.active {
+      background: #F9C900;
+      color: #000;
+      box-shadow: 0 2px 8px rgba(249, 201, 0, 0.3);
+    }
+    
+    .tab:hover:not(.active) {
+      background: #e5e5e5;
+    }
+    
+    .qr-panel {
+      display: none;
+    }
+    
+    .qr-panel.active {
+      display: block;
+    }
+    
+    .instructions {
+      background: linear-gradient(135deg, #FFF9E6 0%, #FFF3CC 100%);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 24px;
+    }
+    
+    .instructions h3 {
+      color: #333;
+      font-size: 14px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .instructions ol {
+      text-align: left;
+      color: #555;
+      font-size: 13px;
+      padding-left: 20px;
+    }
+    
+    .instructions li {
+      margin-bottom: 8px;
+    }
+    
+    .network-info {
+      margin-top: 24px;
+      padding: 16px;
+      background: #f0f9ff;
+      border-radius: 12px;
+      border: 1px solid #bae6fd;
+    }
+    
+    .network-info h4 {
+      color: #0369a1;
+      font-size: 12px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .network-info p {
+      color: #333;
+      font-size: 13px;
+    }
+    
+    .warning {
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #fef3c7;
+      border-radius: 8px;
+      border: 1px solid #f59e0b;
+      font-size: 12px;
+      color: #92400e;
+      text-align: left;
+    }
+    
+    .warning strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+    
+    .copy-btn {
+      margin-top: 8px;
+      padding: 8px 16px;
+      background: #F9C900;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    
+    .copy-btn:hover {
+      background: #e5b800;
+      transform: translateY(-1px);
+    }
+    
+    .copy-btn:active {
+      transform: translateY(0);
+    }
+    
+    .footer {
+      margin-top: 24px;
+      color: #999;
+      font-size: 12px;
+    }
+    
+    .bee-decoration {
+      position: fixed;
+      font-size: 24px;
+      opacity: 0.3;
+      animation: float 6s ease-in-out infinite;
+    }
+    
+    .bee-1 { top: 10%; left: 10%; animation-delay: 0s; }
+    .bee-2 { top: 20%; right: 15%; animation-delay: 2s; }
+    .bee-3 { bottom: 15%; left: 20%; animation-delay: 4s; }
+    
+    @keyframes float {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-20px) rotate(10deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="bee-decoration bee-1">🐝</div>
+  <div class="bee-decoration bee-2">🐝</div>
+  <div class="bee-decoration bee-3">🐝</div>
+  
+  <div class="container">
+    <div class="logo">🍯</div>
+    <h1>BEEHIVE</h1>
+    <p class="subtitle">Scan QR code to connect on your phone</p>
+    
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('menu')">📱 Menu Page</button>
+      <button class="tab" onclick="switchTab('home')">🏠 Home Page</button>
+      <button class="tab" onclick="switchTab('admin')">⚙️ Admin Panel</button>
+    </div>
+    
+    <div id="panel-menu" class="qr-panel active">
+      <div class="qr-section">
+        <div class="qr-label">📱 Customer Menu</div>
+        <div class="qr-container">
+          <div id="qr-menu"></div>
+        </div>
+        <div class="url-display" id="url-menu"></div>
+        <button class="copy-btn" onclick="copyUrl('menu')">📋 Copy URL</button>
+      </div>
+    </div>
+    
+    <div id="panel-home" class="qr-panel">
+      <div class="qr-section">
+        <div class="qr-label">🏠 Home Page</div>
+        <div class="qr-container">
+          <div id="qr-home"></div>
+        </div>
+        <div class="url-display" id="url-home"></div>
+        <button class="copy-btn" onclick="copyUrl('home')">📋 Copy URL</button>
+      </div>
+    </div>
+    
+    <div id="panel-admin" class="qr-panel">
+      <div class="qr-section">
+        <div class="qr-label">⚙️ Admin Panel</div>
+        <div class="qr-container">
+          <div id="qr-admin"></div>
+        </div>
+        <div class="url-display" id="url-admin"></div>
+        <button class="copy-btn" onclick="copyUrl('admin')">📋 Copy URL</button>
+      </div>
+    </div>
+    
+    <div class="instructions">
+      <h3>📝 How to Connect</h3>
+      <ol>
+        <li>Make sure your phone is on the <strong>same WiFi network</strong></li>
+        <li>Open your phone's camera app</li>
+        <li>Point at the QR code above</li>
+        <li>Tap the link that appears</li>
+      </ol>
+    </div>
+    
+    <div class="network-info">
+      <h4>🌐 Network Info</h4>
+      <p id="network-details">Loading...</p>
+    </div>
+    
+    <div class="warning">
+      <strong>⚠️ Not Working?</strong>
+      Make sure both devices are on the same WiFi. If using a VPN, try disabling it. 
+      The QR code uses your current network IP address.
+    </div>
+    
+    <p class="footer">BEEHIVE POS System • For Testing Purposes</p>
+  </div>
+
+  <script>
+    // Get the base URL dynamically from current window location
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    const port = window.location.port || '5173';
+    
+    const baseUrl = `${protocol}//${hostname}:${port}`;
+    
+    const urls = {
+      menu: `${baseUrl}/menu`,
+      home: `${baseUrl}/`,
+      admin: `${baseUrl}/admin`
+    };
+    
+    // Generate QR codes using qrcode.js library
+    function generateQR(elementId, url) {
+      const element = document.getElementById(elementId);
+      element.innerHTML = ''; // Clear any existing content
+      
+      new QRCode(element, {
+        text: url,
+        width: 200,
+        height: 200,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    }
+    
+    // Wait for DOM to be ready
+    document.addEventListener('DOMContentLoaded', function() {
+      // Initialize all QR codes
+      generateQR('qr-menu', urls.menu);
+      generateQR('qr-home', urls.home);
+      generateQR('qr-admin', urls.admin);
+      
+      // Display URLs
+      document.getElementById('url-menu').textContent = urls.menu;
+      document.getElementById('url-home').textContent = urls.home;
+      document.getElementById('url-admin').textContent = urls.admin;
+      
+      // Display network info
+      document.getElementById('network-details').innerHTML = `
+        <strong>Server:</strong> ${hostname}<br>
+        <strong>Port:</strong> ${port}<br>
+        <strong>Full Base URL:</strong> ${baseUrl}
+      `;
+    });
+    
+    // Tab switching
+    function switchTab(tab) {
+      // Update tabs
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      
+      // Update panels
+      document.querySelectorAll('.qr-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById(`panel-${tab}`).classList.add('active');
+    }
+    
+    // Copy URL to clipboard
+    function copyUrl(type) {
+      navigator.clipboard.writeText(urls[type]).then(() => {
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = '✅ Copied!';
+        setTimeout(() => {
+          btn.textContent = originalText;
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -25,6 +25,8 @@ export interface OrderItem {
 
 export interface CreateOrderRequest {
   customerName?: string;
+  customerPhone?: string;         // For loyalty tracking from POS
+  loyaltyCardCode?: string;       // Physical loyalty card code
   tableNumber?: string;
   orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
   moodContext?: string;
@@ -72,6 +74,8 @@ export interface OrderResponse {
   id: string;
   orderNumber: string;
   customerName: string | null;
+  customerPhone: string | null;      // For loyalty tracking from POS
+  loyaltyCardCode: string | null;    // Physical loyalty card code
   tableNumber: string | null;
   orderType: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
   status: OrderStatus;

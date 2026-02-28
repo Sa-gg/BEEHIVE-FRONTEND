@@ -53,6 +53,7 @@ interface SettingsState {
   
   // Experimental features
   linkedOrdersEnabled: boolean // Enable/disable linked orders feature (experimental)
+  loyaltySystemEnabled: boolean // Enable/disable loyalty system feature (experimental)
   
   // Order item permissions
   allowVoidOrderItem: boolean // Allow voiding individual order items (vs entire order)
@@ -89,6 +90,7 @@ interface SettingsState {
   
   // Experimental features setters
   setLinkedOrdersEnabled: (value: boolean) => void
+  setLoyaltySystemEnabled: (value: boolean) => void
   
   // Order item permissions setters
   setAllowVoidOrderItem: (value: boolean) => void
@@ -143,6 +145,7 @@ export const useSettingsStore = create<SettingsState>()(
       
       // Default settings - Experimental features
       linkedOrdersEnabled: false, // Default OFF - linked orders is experimental
+      loyaltySystemEnabled: false, // Default OFF - loyalty system is experimental
       
       // Default settings - Order item permissions
       allowVoidOrderItem: true, // Default ON - allow voiding individual items
@@ -228,6 +231,9 @@ export const useSettingsStore = create<SettingsState>()(
         
       setLinkedOrdersEnabled: (value: boolean) =>
         set({ linkedOrdersEnabled: value }),
+        
+      setLoyaltySystemEnabled: (value: boolean) =>
+        set({ loyaltySystemEnabled: value }),
         
       setAllowVoidOrderItem: (value: boolean) =>
         set({ allowVoidOrderItem: value }),

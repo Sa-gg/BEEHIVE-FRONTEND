@@ -159,6 +159,14 @@ export const menuItemsApi = {
     });
     return response.data;
   },
+
+  // Bulk update mood benefits for multiple menu items
+  bulkUpdateMoodBenefits: async (updates: Array<{ id: string; moodBenefits: string | null }>) => {
+    const response = await api.post<ApiResponse<{ count: number; updated: string[] }>>('/api/menu-items/bulk/mood-benefits', {
+      updates
+    });
+    return response.data;
+  },
 };
 
 // Upload API

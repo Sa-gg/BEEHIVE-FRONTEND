@@ -8,7 +8,6 @@ import {
   Plus, 
   Search, 
   Pencil, 
-  Trash2, 
   X, 
   Users,
   UserCheck,
@@ -23,11 +22,14 @@ import {
   ChefHat,
   Store,
   Eye,
-  EyeOff
+  EyeOff,
+  Archive,
+  RotateCcw
 } from 'lucide-react'
 import { authApi, type User as UserType } from '../../../infrastructure/api/auth.api'
 import { useAuthStore } from '../../store/authStore'
 import { toast } from '../../components/common/ToastNotification'
+import { ConfirmationModal } from '../../components/common/ConfirmationModal'
 
 // Role definitions
 const ROLES = [
@@ -191,6 +193,10 @@ export const AccountsPage = () => {
   const [selectedUserForPermissions, setSelectedUserForPermissions] = useState<UserType | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   
+  // Archive confirmation modal state
+  const [showArchiveModal, setShowArchiveModal] = useState(false)
+  const [userToArchive, setUserToArchive] = useState<{ id: string; name: string } | null>(null)
+  
   // Check if current user is admin (can manage permissions)
   const isAdmin = currentUser?.role === 'ADMIN'
   const isManager = currentUser?.role === 'MANAGER'
@@ -341,7 +347,7 @@ export const AccountsPage = () => {
           name: formData.name,
           email: formData.email,
           password: formData.password,
-          phone: formData.phone || undefined,
+          phone: formData.phone || '',
           role: formData.role
         })
       }
@@ -356,14 +362,35 @@ export const AccountsPage = () => {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this account?')) return
-
+  // Archive account instead of deleting (industry standard - set isActive to false)
+  const handleArchiveClick = (id: string, userName: string) => {
+    setUserToArchive({ id, name: userName })
+    setShowArchiveModal(true)
+  }
+  
+  const handleArchiveConfirm = async () => {
+    if (!userToArchive) return
+    
     try {
-      await authApi.deleteUser(id)
+      await authApi.updateUser(userToArchive.id, { isActive: false })
+      toast.success('Account Archived', `${userToArchive.name}'s account has been archived and can no longer log in.`)
       await loadUsers()
     } catch (err) {
-      toast.error('Delete Failed', err instanceof Error ? err.message : 'Failed to delete account')
+      toast.error('Archive Failed', err instanceof Error ? err.message : 'Failed to archive account')
+    } finally {
+      setShowArchiveModal(false)
+      setUserToArchive(null)
+    }
+  }
+
+  // Restore an archived account
+  const handleRestore = async (id: string, userName: string) => {
+    try {
+      await authApi.updateUser(id, { isActive: true })
+      toast.success('Account Restored', `${userName}'s account has been restored and can now log in.`)
+      await loadUsers()
+    } catch (err) {
+      toast.error('Restore Failed', err instanceof Error ? err.message : 'Failed to restore account')
     }
   }
 
@@ -676,13 +703,23 @@ export const AccountsPage = () => {
                             >
                               <Pencil className="h-4 w-4" />
                             </button>
-                            <button
-                              onClick={() => handleDelete(user.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {user.isActive ? (
+                              <button
+                                onClick={() => handleArchiveClick(user.id, user.name)}
+                                className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                                title="Archive Account"
+                              >
+                                <Archive className="h-4 w-4" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleRestore(user.id, user.name)}
+                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                title="Restore Account"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1067,6 +1104,25 @@ export const AccountsPage = () => {
             </div>
           </div>
         )}
+        
+        {/* Archive Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={showArchiveModal}
+          onClose={() => {
+            setShowArchiveModal(false)
+            setUserToArchive(null)
+          }}
+          onConfirm={handleArchiveConfirm}
+          title="Archive Account"
+          message={userToArchive ? [
+            `Are you sure you want to archive "${userToArchive.name}"?`,
+            '',
+            'The user will no longer be able to log in, but their data will be preserved.'
+          ] : []}
+          type="warning"
+          confirmText="Archive Account"
+          cancelText="Cancel"
+        />
       </div>
     </AdminLayout>
   )

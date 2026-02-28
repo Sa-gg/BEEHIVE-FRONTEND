@@ -31,11 +31,17 @@ import {
   Trash2,
   AlertTriangle,
   Package,
-  Eye
+  Eye,
+  Copy,
+  Wand2,
+  Sparkles,
+  Search
 } from 'lucide-react'
 import { moodSettingsApi } from '../../../infrastructure/api/moodSettings.api'
 import type { MoodSetting, MoodFeedbackConfig, MoodAnalytics, UpdateMoodSettingDTO, UpdateFeedbackConfigDTO } from '../../../infrastructure/api/moodSettings.api'
 import { categoriesApi, type CategoryDTO } from '../../../infrastructure/api/categories.api'
+import { menuItemsApi } from '../../../infrastructure/api/menuItems.api'
+import { toast } from '../../components/common/ToastNotification'
 
 // ==================== SCORE CALCULATION HELPERS ====================
 // These mirror the exact algorithm in MenuPage.tsx for accurate analytics
@@ -267,7 +273,7 @@ const ToggleSwitch = ({
 export const MoodSettingsPage = () => {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<'settings' | 'analytics' | 'config' | 'how-it-works'>('settings')
+  const [activeTab, setActiveTab] = useState<'settings' | 'analytics' | 'config' | 'how-it-works' | 'bulk-update' | 'product-explanations'>('settings')
   
   // Data
   const [moodSettings, setMoodSettings] = useState<MoodSetting[]>([])
@@ -296,6 +302,28 @@ export const MoodSettingsPage = () => {
   const [selectedMoodForItems, setSelectedMoodForItems] = useState<string | null>(null)
   const [itemAnalytics, setItemAnalytics] = useState<any[]>([])
   const [loadingItemAnalytics, setLoadingItemAnalytics] = useState(false)
+  
+  // AI prompt copy state
+  const [promptCopied, setPromptCopied] = useState(false)
+  
+  // Bulk update states
+  const [showBulkProductsModal, setShowBulkProductsModal] = useState(false)
+  const [showBulkMoodsModal, setShowBulkMoodsModal] = useState(false)
+  const [showBulkCombinedModal, setShowBulkCombinedModal] = useState(false)
+  const [bulkProductsPromptCopied, setBulkProductsPromptCopied] = useState(false)
+  const [bulkMoodsPromptCopied, setBulkMoodsPromptCopied] = useState(false)
+  const [bulkCombinedPromptCopied, setBulkCombinedPromptCopied] = useState(false)
+  const [bulkUpdating, setBulkUpdating] = useState(false)
+  const [allProducts, setAllProducts] = useState<any[]>([])
+  const [loadingProducts, setLoadingProducts] = useState(false)
+  
+  // Product explanations tab state
+  const [productExplanationsSearch, setProductExplanationsSearch] = useState('')
+  const [productExplanationsFilter, setProductExplanationsFilter] = useState<'all' | 'configured' | 'missing'>('all')
+  const [editingProductMood, setEditingProductMood] = useState<{ productId: string; productName: string } | null>(null)
+  const [productMoodForm, setProductMoodForm] = useState<{ nutrients: string; moodBenefits: Record<string, string> }>({ nutrients: '', moodBenefits: {} })
+  const [savingProductMood, setSavingProductMood] = useState(false)
+  const [unconfiguredPromptCopied, setUnconfiguredPromptCopied] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -507,6 +535,301 @@ export const MoodSettingsPage = () => {
     }
   }
 
+  // Load all products for bulk update
+  const loadAllProducts = async () => {
+    try {
+      setLoadingProducts(true)
+      const response = await menuItemsApi.getAll()
+      setAllProducts(response.data || [])
+    } catch (error) {
+      console.error('Error loading products:', error)
+      setAllProducts([])
+    } finally {
+      setLoadingProducts(false)
+    }
+  }
+
+  // Generate bulk products prompt
+  const generateBulkProductsPrompt = () => {
+    const productsList = allProducts.map(p => {
+      const categoryName = categories.find(c => c.id === p.categoryId)?.displayName || 'Unknown'
+      return `- ${p.name} (ID: ${p.id}, Category: ${categoryName}${p.description ? `, Description: ${p.description.substring(0, 80)}` : ''})`
+    }).join('\n')
+
+    return `You are a nutritional psychology expert. I need help generating scientific explanations for how each product affects different moods.
+
+**ALL PRODUCTS (${allProducts.length} items):**
+${productsList}
+
+**AVAILABLE MOODS:**
+- happy, energetic, relaxed, excited, tired, stressed, anxious, sad, depressed, angry
+
+**YOUR TASK:**
+For EACH product, analyze its nutritional properties and determine which moods it genuinely helps with. Provide a 1-sentence scientific explanation for each applicable mood.
+
+**RESPONSE FORMAT:**
+Provide a JSON array where each object has:
+- id: the product ID
+- nutrients: comma-separated key nutrients (max 3)
+- moodBenefits: object with mood keys and 1-sentence explanations
+
+\`\`\`json
+[
+  {
+    "id": "product-id-1",
+    "nutrients": "Omega-3, Vitamin B12, Magnesium",
+    "moodBenefits": {
+      "happy": "Rich in tryptophan which supports serotonin production.",
+      "energetic": "B vitamins support cellular energy metabolism."
+    }
+  },
+  {
+    "id": "product-id-2",
+    "nutrients": "L-Theanine, Caffeine",
+    "moodBenefits": {
+      "tired": "L-theanine and caffeine synergize for alert calmness.",
+      "stressed": "L-theanine promotes alpha brain waves for relaxation."
+    }
+  }
+]
+\`\`\`
+
+**IMPORTANT:**
+- Only include moods that the product GENUINELY helps with
+- Maximum 3 key nutrients per product
+- 1 sentence max per mood explanation
+- Use the EXACT product IDs from the list above
+- Focus on nutritional science, not taste preferences`
+  }
+
+  // Generate bulk moods prompt with category context
+  const generateBulkMoodsPrompt = () => {
+    const categoriesWithProducts = categories.map(cat => {
+      const productsInCategory = allProducts.filter(p => p.categoryId === cat.id)
+      return `- ${cat.displayName} (ID: ${cat.id}): ${productsInCategory.length} items - ${productsInCategory.slice(0, 5).map(p => p.name).join(', ')}${productsInCategory.length > 5 ? '...' : ''}`
+    }).join('\n')
+
+    const currentMoods = moodSettings.map(m => 
+      `- ${m.emoji} ${m.label} (${m.mood}): ${m.description || 'No description'}`
+    ).join('\n')
+
+    return `You are a nutritional psychology expert. I need help configuring mood settings for a food recommendation system.
+
+**AVAILABLE FOOD CATEGORIES WITH PRODUCTS:**
+${categoriesWithProducts}
+
+**CURRENT MOODS:**
+${currentMoods}
+
+**YOUR TASK:**
+For EACH mood, provide:
+1. Scientific explanation (1 sentence) of how food affects this mood state
+2. Beneficial nutrients that help with this mood (max 3)
+3. Preferred categories (IDs from above that are beneficial)
+4. Excluded categories (IDs to avoid for this mood, if any)
+5. Description and support message
+
+**RESPONSE FORMAT:**
+\`\`\`json
+[
+  {
+    "mood": "HAPPY",
+    "description": "Feeling joyful and content",
+    "supportMessage": "Great to see you're feeling happy!",
+    "scientificExplanation": "Foods rich in omega-3 and tryptophan support dopamine and serotonin pathways that maintain positive mood.",
+    "beneficialNutrients": ["Omega-3", "Tryptophan", "Vitamin D"],
+    "preferredCategories": ["category-id-1", "category-id-2"],
+    "excludeCategories": []
+  }
+]
+\`\`\`
+
+**IMPORTANT:**
+- Use EXACT category IDs from the list above
+- Include all 10 moods: HAPPY, ENERGETIC, RELAXED, EXCITED, TIRED, STRESSED, ANXIOUS, SAD, DEPRESSED, ANGRY
+- Be scientific and evidence-based
+- Consider which categories are genuinely helpful or harmful for each mood state`
+  }
+
+  // Generate combined bulk prompt
+  const generateCombinedPrompt = () => {
+    const productsList = allProducts.slice(0, 50).map(p => {
+      const categoryName = categories.find(c => c.id === p.categoryId)?.displayName || 'Unknown'
+      return `- ${p.name} (ID: ${p.id}, Category: ${categoryName})`
+    }).join('\n')
+
+    const categoriesWithProducts = categories.map(cat => {
+      const productsInCategory = allProducts.filter(p => p.categoryId === cat.id)
+      return `- ${cat.displayName} (ID: ${cat.id}): ${productsInCategory.length} items`
+    }).join('\n')
+
+    return `You are a nutritional psychology expert. I need to update BOTH mood settings AND product scientific explanations to ensure they are coherent and connected.
+
+**FOOD CATEGORIES:**
+${categoriesWithProducts}
+
+**SAMPLE PRODUCTS (first 50):**
+${productsList}
+${allProducts.length > 50 ? `\n... and ${allProducts.length - 50} more products` : ''}
+
+**MOODS:**
+HAPPY, ENERGETIC, RELAXED, EXCITED, TIRED, STRESSED, ANXIOUS, SAD, DEPRESSED, ANGRY
+
+**YOUR TASK:**
+Create a COHERENT system where mood explanations reference the same nutrients mentioned in product explanations.
+
+**RESPONSE FORMAT:**
+\`\`\`json
+{
+  "moodSettings": [
+    {
+      "mood": "HAPPY",
+      "description": "Feeling joyful",
+      "supportMessage": "Great to see you happy!",
+      "scientificExplanation": "Omega-3 fatty acids and tryptophan support serotonin production.",
+      "beneficialNutrients": ["Omega-3", "Tryptophan", "Vitamin D"],
+      "preferredCategories": ["cat-id"],
+      "excludeCategories": []
+    }
+  ],
+  "productUpdates": [
+    {
+      "id": "product-id",
+      "nutrients": "Omega-3, Tryptophan",
+      "moodBenefits": {
+        "happy": "Rich in omega-3 which supports serotonin synthesis."
+      }
+    }
+  ]
+}
+\`\`\`
+
+**CRITICAL:**
+- Mood scientific explanations should mention the same nutrients found in products
+- Product mood benefits should connect to the mood's beneficial nutrients
+- Use exact category and product IDs`
+  }
+
+  // Handle bulk products import
+  const handleBulkProductsImport = async (jsonText: string) => {
+    try {
+      setBulkUpdating(true)
+      let data = JSON.parse(jsonText)
+      
+      // Handle if wrapped in markdown code block
+      if (typeof data === 'string') {
+        const match = data.match(/\[[\s\S]*\]/)
+        if (match) data = JSON.parse(match[0])
+      }
+      
+      if (!Array.isArray(data)) {
+        alert('Invalid format: expected an array of products')
+        return
+      }
+
+      const updates = data.map((item: any) => ({
+        id: item.id,
+        moodBenefits: item.moodBenefits ? JSON.stringify(item.moodBenefits) : null
+      }))
+
+      const result = await menuItemsApi.bulkUpdateMoodBenefits(updates)
+      alert(`✅ Updated ${result.data.count} products successfully!`)
+      setShowBulkProductsModal(false)
+    } catch (error) {
+      console.error('Bulk import error:', error)
+      alert('Failed to parse or import data. Please check the JSON format.')
+    } finally {
+      setBulkUpdating(false)
+    }
+  }
+
+  // Handle bulk moods import
+  const handleBulkMoodsImport = async (jsonText: string) => {
+    try {
+      setBulkUpdating(true)
+      let data = JSON.parse(jsonText)
+      
+      if (typeof data === 'string') {
+        const match = data.match(/\[[\s\S]*\]/)
+        if (match) data = JSON.parse(match[0])
+      }
+      
+      if (!Array.isArray(data)) {
+        alert('Invalid format: expected an array of mood settings')
+        return
+      }
+
+      const updates = data.map((item: any) => ({
+        mood: item.mood,
+        description: item.description,
+        supportMessage: item.supportMessage,
+        scientificExplanation: item.scientificExplanation,
+        beneficialNutrients: item.beneficialNutrients,
+        preferredCategories: item.preferredCategories,
+        excludeCategories: item.excludeCategories
+      }))
+
+      const result = await moodSettingsApi.bulkUpdateMoodSettings(updates)
+      alert(`✅ Updated ${result.updated} moods successfully!${result.failed > 0 ? ` (${result.failed} failed)` : ''}`)
+      setShowBulkMoodsModal(false)
+      await loadData()
+    } catch (error) {
+      console.error('Bulk import error:', error)
+      alert('Failed to parse or import data. Please check the JSON format.')
+    } finally {
+      setBulkUpdating(false)
+    }
+  }
+
+  // Handle combined import
+  const handleCombinedImport = async (jsonText: string) => {
+    try {
+      setBulkUpdating(true)
+      const data = JSON.parse(jsonText)
+      
+      if (!data.moodSettings && !data.productUpdates) {
+        alert('Invalid format: expected { moodSettings: [...], productUpdates: [...] }')
+        return
+      }
+
+      const results: string[] = []
+
+      // Update mood settings
+      if (data.moodSettings && Array.isArray(data.moodSettings)) {
+        const moodUpdates = data.moodSettings.map((item: any) => ({
+          mood: item.mood,
+          description: item.description,
+          supportMessage: item.supportMessage,
+          scientificExplanation: item.scientificExplanation,
+          beneficialNutrients: item.beneficialNutrients,
+          preferredCategories: item.preferredCategories,
+          excludeCategories: item.excludeCategories
+        }))
+        const moodResult = await moodSettingsApi.bulkUpdateMoodSettings(moodUpdates)
+        results.push(`Moods: ${moodResult.updated} updated`)
+      }
+
+      // Update products
+      if (data.productUpdates && Array.isArray(data.productUpdates)) {
+        const productUpdates = data.productUpdates.map((item: any) => ({
+          id: item.id,
+          moodBenefits: item.moodBenefits ? JSON.stringify(item.moodBenefits) : null
+        }))
+        const productResult = await menuItemsApi.bulkUpdateMoodBenefits(productUpdates)
+        results.push(`Products: ${productResult.data.count} updated`)
+      }
+
+      alert(`✅ ${results.join(', ')}`)
+      setShowBulkCombinedModal(false)
+      await loadData()
+    } catch (error) {
+      console.error('Combined import error:', error)
+      alert('Failed to parse or import data. Please check the JSON format.')
+    } finally {
+      setBulkUpdating(false)
+    }
+  }
+
   if (loading) {
     return (
       <AdminLayout>
@@ -570,6 +893,7 @@ export const MoodSettingsPage = () => {
         </div>
 
         {/* Tabs */}
+        {/* Tabs - Order: How It Works, Mood Settings, Product Explanations, AI Bulk Update, Analytics, Algorithm Config */}
         <div className="flex gap-2 border-b border-gray-200 pb-2 flex-wrap">
           <button
             onClick={() => setActiveTab('how-it-works')}
@@ -592,6 +916,40 @@ export const MoodSettingsPage = () => {
           >
             <Settings className="h-4 w-4" />
             Mood Settings
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('product-explanations')
+              if (allProducts.length === 0) loadAllProducts()
+            }}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+              activeTab === 'product-explanations'
+                ? 'bg-purple-100 text-purple-700'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <Package className="h-4 w-4" />
+            Product Explanations
+            {/* Badge showing missing count */}
+            {allProducts.filter(p => p.itemType !== 'ADDON' && !p.moodBenefits).length > 0 && (
+              <span className="bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                {allProducts.filter(p => p.itemType !== 'ADDON' && !p.moodBenefits).length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('bulk-update')
+              if (allProducts.length === 0) loadAllProducts()
+            }}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+              activeTab === 'bulk-update'
+                ? 'bg-purple-100 text-purple-700'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <Wand2 className="h-4 w-4" />
+            AI Bulk Update
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
@@ -2058,6 +2416,890 @@ export const MoodSettingsPage = () => {
           </div>
         )}
 
+        {/* AI Bulk Update Tab */}
+        {activeTab === 'bulk-update' && (
+          <div className="space-y-6">
+            {/* Overview */}
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200">
+              <h2 className="text-xl font-bold text-purple-900 mb-3 flex items-center gap-2">
+                <Wand2 className="h-6 w-6" />
+                AI-Powered Bulk Update
+              </h2>
+              <p className="text-purple-800 mb-4">
+                Use AI to generate scientific explanations for products and configure mood settings in bulk. 
+                This ensures coherence between mood recommendations and product benefits.
+              </p>
+            </div>
+
+            {/* Loading Products */}
+            {loadingProducts && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-purple-500 mr-2" />
+                <span className="text-gray-600">Loading products...</span>
+              </div>
+            )}
+
+            {!loadingProducts && (
+              <div className="grid md:grid-cols-3 gap-4">
+                {/* Bulk Products Update */}
+                <div className="bg-white rounded-xl border shadow-sm p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Package className="h-5 w-5 text-blue-500" />
+                    <h3 className="font-semibold text-gray-900">Product Scientific Explanations</h3>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Update mood benefits for all {allProducts.length} products at once. AI will analyze each product and generate scientific explanations.
+                  </p>
+                  <Button
+                    onClick={() => setShowBulkProductsModal(true)}
+                    className="w-full bg-blue-500 hover:bg-blue-600"
+                    disabled={allProducts.length === 0}
+                  >
+                    <Wand2 className="h-4 w-4 mr-2" />
+                    Generate Product Prompts
+                  </Button>
+                </div>
+
+                {/* Bulk Mood Settings Update */}
+                <div className="bg-white rounded-xl border shadow-sm p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Brain className="h-5 w-5 text-purple-500" />
+                    <h3 className="font-semibold text-gray-900">All Mood Settings</h3>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Update all {moodSettings.length} mood settings at once - categories, scientific explanations, nutrients, and more.
+                  </p>
+                  <Button
+                    onClick={() => setShowBulkMoodsModal(true)}
+                    className="w-full bg-purple-500 hover:bg-purple-600"
+                  >
+                    <Wand2 className="h-4 w-4 mr-2" />
+                    Generate Mood Prompts
+                  </Button>
+                </div>
+
+                {/* Combined Update */}
+                <div className="rounded-xl border shadow-sm p-5 border-amber-300 bg-amber-50">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="h-5 w-5 text-amber-500" />
+                    <h3 className="font-semibold text-gray-900">Combined Update</h3>
+                    <Badge className="bg-amber-100 text-amber-700 text-xs">Recommended</Badge>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Update both products AND moods together for coherent connections between mood science and product benefits.
+                  </p>
+                  <Button
+                    onClick={() => setShowBulkCombinedModal(true)}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                  >
+                    <Wand2 className="h-4 w-4 mr-2" />
+                    Generate Combined Prompt
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* How It Works */}
+            <div className="bg-white rounded-xl border shadow-sm p-5">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <Info className="h-5 w-5 text-gray-500" />
+                How to Use AI Bulk Update
+              </h3>
+              <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
+                <li>Click one of the buttons above to generate an AI prompt</li>
+                <li>Copy the prompt and paste it into ChatGPT, Claude, or another AI assistant</li>
+                <li>The AI will return a JSON response with scientific data</li>
+                <li>Copy the JSON and paste it into the import field to update all items at once</li>
+                <li><strong>Tip:</strong> Use "Combined Update" to ensure mood settings and product explanations reference the same nutrients</li>
+              </ol>
+            </div>
+
+            {/* Connection Info */}
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+              <h4 className="font-medium text-green-800 mb-2 flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                Connecting Moods & Products
+              </h4>
+              <p className="text-sm text-green-700">
+                For best results, ensure that the <strong>beneficial nutrients</strong> listed in each mood setting 
+                match the nutrients mentioned in the product scientific explanations. This creates a coherent system 
+                where the recommendation algorithm correctly prioritizes products that contain mood-beneficial nutrients.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Product Explanations Tab */}
+        {activeTab === 'product-explanations' && (
+          <div className="space-y-6">
+            {/* Overview */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+              <h2 className="text-xl font-bold text-blue-900 mb-3 flex items-center gap-2">
+                <Package className="h-6 w-6" />
+                Product Scientific Explanations
+              </h2>
+              <p className="text-blue-800">
+                Manage scientific mood explanations for each product. Products with explanations will appear in mood-based recommendations.
+                Only BASE items and DRINKS can have mood explanations (add-ons are excluded).
+              </p>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {(() => {
+                const baseAndDrinkProducts = allProducts.filter(p => p.itemType !== 'ADDON')
+                const configuredProducts = baseAndDrinkProducts.filter(p => {
+                  if (!p.moodBenefits) return false
+                  try {
+                    const benefits = typeof p.moodBenefits === 'string' ? JSON.parse(p.moodBenefits) : p.moodBenefits
+                    return Object.keys(benefits).length > 0
+                  } catch { return false }
+                })
+                const missingProducts = baseAndDrinkProducts.filter(p => {
+                  if (!p.moodBenefits) return true
+                  try {
+                    const benefits = typeof p.moodBenefits === 'string' ? JSON.parse(p.moodBenefits) : p.moodBenefits
+                    return Object.keys(benefits).length === 0
+                  } catch { return true }
+                })
+                
+                return (
+                  <>
+                    <div className="bg-white rounded-xl border shadow-sm p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Package className="h-5 w-5 text-gray-500" />
+                        <span className="text-sm text-gray-600">Total Products</span>
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">{baseAndDrinkProducts.length}</p>
+                      <p className="text-xs text-gray-500 mt-1">Excludes {allProducts.filter(p => p.itemType === 'ADDON').length} add-ons</p>
+                    </div>
+                    <div className="bg-white rounded-xl border shadow-sm p-4 border-green-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle className="h-5 w-5 text-green-500" />
+                        <span className="text-sm text-gray-600">Configured</span>
+                      </div>
+                      <p className="text-2xl font-bold text-green-600">{configuredProducts.length}</p>
+                      <p className="text-xs text-gray-500 mt-1">Have mood explanations</p>
+                    </div>
+                    <div className="bg-white rounded-xl border shadow-sm p-4 border-orange-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertCircle className="h-5 w-5 text-orange-500" />
+                        <span className="text-sm text-gray-600">Missing</span>
+                      </div>
+                      <p className="text-2xl font-bold text-orange-600">{missingProducts.length}</p>
+                      <p className="text-xs text-gray-500 mt-1">Need configuration</p>
+                    </div>
+                    <div className="bg-white rounded-xl border shadow-sm p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Target className="h-5 w-5 text-purple-500" />
+                        <span className="text-sm text-gray-600">Coverage</span>
+                      </div>
+                      <p className="text-2xl font-bold text-purple-600">
+                        {baseAndDrinkProducts.length > 0 
+                          ? Math.round((configuredProducts.length / baseAndDrinkProducts.length) * 100)
+                          : 0}%
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">Products with explanations</p>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+
+            {/* AI Prompt Generator for Unconfigured Products */}
+            {(() => {
+              const unconfiguredProducts = allProducts.filter(p => {
+                if (p.itemType === 'ADDON') return false
+                if (!p.moodBenefits) return true
+                try {
+                  const benefits = typeof p.moodBenefits === 'string' ? JSON.parse(p.moodBenefits) : p.moodBenefits
+                  return Object.keys(benefits).length === 0
+                } catch { return true }
+              })
+
+              if (unconfiguredProducts.length === 0) return null
+
+              const generateUnconfiguredPrompt = () => {
+                const productsList = unconfiguredProducts.map(p => {
+                  const categoryName = categories.find(c => c.id === p.categoryId)?.displayName || p.categoryId
+                  return `- ID: ${p.id}\n  Name: ${p.name}\n  Category: ${categoryName}\n  Description: ${p.description || 'No description'}`
+                }).join('\n\n')
+
+                return `You are a nutritional psychology expert. I need help generating scientific explanations for how each product affects different moods.
+
+**UNCONFIGURED PRODUCTS (${unconfiguredProducts.length} items needing mood explanations):**
+
+${productsList}
+
+**AVAILABLE MOODS:**
+- happy, energetic, relaxed, excited, tired, stressed, anxious, sad, depressed, angry
+
+**YOUR TASK:**
+For EACH product above, analyze its nutritional properties and determine which moods it genuinely helps with. Provide a 1-sentence scientific explanation for each applicable mood.
+
+**RESPONSE FORMAT:**
+Provide a JSON array where each object has:
+- id: the product ID (use EXACT IDs from above)
+- nutrients: comma-separated key nutrients (max 3)
+- moodBenefits: object with mood keys and 1-sentence explanations
+
+\`\`\`json
+[
+  {
+    "id": "exact-product-id-from-list",
+    "nutrients": "Omega-3, Vitamin B12, Magnesium",
+    "moodBenefits": {
+      "happy": "Rich in tryptophan which supports serotonin production.",
+      "energetic": "B vitamins support cellular energy metabolism."
+    }
+  }
+]
+\`\`\`
+
+**IMPORTANT:**
+- Only include moods that the product GENUINELY helps with (not all 10 for every product)
+- Maximum 3 key nutrients per product
+- 1 sentence max per mood explanation
+- Use the EXACT product IDs from the list above
+- Focus on nutritional science, not taste preferences`
+              }
+
+              return (
+                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200 p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Wand2 className="h-5 w-5 text-purple-600" />
+                      <h3 className="font-semibold text-purple-900">AI Prompt for Unconfigured Products</h3>
+                      <Badge className="bg-orange-100 text-orange-700">{unconfiguredProducts.length} products</Badge>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generateUnconfiguredPrompt())
+                        setUnconfiguredPromptCopied(true)
+                        setTimeout(() => setUnconfiguredPromptCopied(false), 2000)
+                      }}
+                      className={unconfiguredPromptCopied ? 'bg-green-100 border-green-300 text-green-700' : 'border-purple-300 text-purple-700 hover:bg-purple-100'}
+                    >
+                      {unconfiguredPromptCopied ? <><CheckCircle className="h-4 w-4 mr-1" /> Copied!</> : <><Copy className="h-4 w-4 mr-1" /> Copy AI Prompt</>}
+                    </Button>
+                  </div>
+                  <p className="text-sm text-purple-700 mb-3">
+                    Copy this prompt → Paste in ChatGPT/Claude → Get mood explanations for all {unconfiguredProducts.length} unconfigured products → Paste JSON below to import
+                  </p>
+                  <div className="bg-white/70 rounded-lg p-3 text-xs text-gray-600 max-h-32 overflow-y-auto mb-3">
+                    <p className="font-semibold text-purple-800 mb-2">Products included in prompt:</p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-1">
+                      {unconfiguredProducts.slice(0, 12).map(p => (
+                        <span key={p.id} className="truncate">• {p.name}</span>
+                      ))}
+                      {unconfiguredProducts.length > 12 && (
+                        <span className="text-purple-600 font-medium">...and {unconfiguredProducts.length - 12} more</span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Quick Import Field */}
+                  <div className="border-t border-purple-200 pt-3 mt-3">
+                    <Label className="text-sm font-semibold text-purple-800 mb-2 block">
+                      Quick Import (paste JSON from AI response)
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        id="quickImportUnconfigured"
+                        placeholder='Paste JSON array: [{"id":"...","nutrients":"...","moodBenefits":{...}}]'
+                        className="flex-1 text-xs font-mono"
+                        onPaste={async (e) => {
+                          const pastedText = e.clipboardData.getData('text')
+                          try {
+                            // Try to extract JSON array from the pasted text
+                            let jsonStr = pastedText
+                            const jsonMatch = pastedText.match(/\[[\s\S]*\]/)
+                            if (jsonMatch) {
+                              jsonStr = jsonMatch[0]
+                            }
+                            
+                            const data = JSON.parse(jsonStr)
+                            
+                            if (Array.isArray(data) && data.length > 0) {
+                              setBulkUpdating(true)
+                              
+                              const updates = data.map((item: { id: string; nutrients?: string; moodBenefits?: Record<string, string> }) => ({
+                                id: item.id,
+                                moodBenefits: item.moodBenefits ? JSON.stringify(item.moodBenefits) : null,
+                                nutrients: item.nutrients || null
+                              }))
+                              
+                              // Update products via API
+                              await menuItemsApi.bulkUpdateMoodBenefits(updates)
+                              
+                              // Also update nutrients for each product
+                              for (const item of data) {
+                                if (item.nutrients) {
+                                  await menuItemsApi.update(item.id, { nutrients: item.nutrients })
+                                }
+                              }
+                              
+                              toast.success('Import Successful!', `Updated ${data.length} products with mood explanations`)
+                              
+                              // Reload products
+                              await loadAllProducts()
+                              
+                              e.preventDefault()
+                              const input = document.getElementById('quickImportUnconfigured') as HTMLInputElement
+                              if (input) input.value = ''
+                              
+                              setBulkUpdating(false)
+                            }
+                          } catch (error) {
+                            console.error('Import error:', error)
+                            toast.error('Import Failed', 'Could not parse JSON. Make sure you copied the correct format.')
+                            setBulkUpdating(false)
+                          }
+                        }}
+                      />
+                      {bulkUpdating && <Loader2 className="h-5 w-5 animate-spin text-purple-500" />}
+                    </div>
+                    <p className="text-[10px] text-purple-600 mt-1">
+                      Paste the JSON array from the AI response to auto-import all mood explanations
+                    </p>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Filters */}
+            <div className="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Search products..."
+                  value={productExplanationsSearch}
+                  onChange={(e) => setProductExplanationsSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <select
+                value={productExplanationsFilter}
+                onChange={(e) => setProductExplanationsFilter(e.target.value as 'all' | 'configured' | 'missing')}
+                className="h-10 px-4 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="all">All Products</option>
+                <option value="configured">✅ Configured</option>
+                <option value="missing">⚠️ Missing Explanations</option>
+              </select>
+            </div>
+
+            {/* Products List */}
+            {loadingProducts ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-purple-500 mr-2" />
+                <span className="text-gray-600">Loading products...</span>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Product</th>
+                        <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Category</th>
+                        <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Type</th>
+                        <th className="text-left px-4 py-3 text-sm font-semibold text-gray-700">Key Nutrients</th>
+                        <th className="text-center px-4 py-3 text-sm font-semibold text-gray-700">Mood Explanations</th>
+                        <th className="text-center px-4 py-3 text-sm font-semibold text-gray-700">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        // Filter products (exclude addons)
+                        const filteredProducts = allProducts
+                          .filter(p => p.itemType !== 'ADDON')
+                          .filter(p => {
+                            if (productExplanationsSearch) {
+                              const search = productExplanationsSearch.toLowerCase()
+                              return p.name.toLowerCase().includes(search) || 
+                                     (p.description?.toLowerCase().includes(search))
+                            }
+                            return true
+                          })
+                          .filter(p => {
+                            if (productExplanationsFilter === 'all') return true
+                            
+                            const hasBenefits = (() => {
+                              if (!p.moodBenefits) return false
+                              try {
+                                const benefits = typeof p.moodBenefits === 'string' ? JSON.parse(p.moodBenefits) : p.moodBenefits
+                                return Object.keys(benefits).length > 0
+                              } catch { return false }
+                            })()
+                            
+                            if (productExplanationsFilter === 'configured') return hasBenefits
+                            if (productExplanationsFilter === 'missing') return !hasBenefits
+                            return true
+                          })
+                          .sort((a, b) => {
+                            // Sort: missing first, then configured
+                            const aHas = a.moodBenefits ? 1 : 0
+                            const bHas = b.moodBenefits ? 1 : 0
+                            if (aHas !== bHas) return aHas - bHas
+                            return a.name.localeCompare(b.name)
+                          })
+
+                        if (filteredProducts.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
+                                {productExplanationsSearch || productExplanationsFilter !== 'all' 
+                                  ? 'No products match your filters'
+                                  : 'No products found'}
+                              </td>
+                            </tr>
+                          )
+                        }
+
+                        return filteredProducts.map(product => {
+                          // Parse mood benefits
+                          let moodBenefits: Record<string, string> = {}
+                          if (product.moodBenefits) {
+                            try {
+                              moodBenefits = typeof product.moodBenefits === 'string' 
+                                ? JSON.parse(product.moodBenefits) 
+                                : product.moodBenefits
+                            } catch { /* ignore parse errors */ }
+                          }
+                          const moodCount = Object.keys(moodBenefits).length
+                          const hasConfig = moodCount > 0
+
+                          return (
+                            <tr key={product.id} className={`border-b hover:bg-gray-50 ${!hasConfig ? 'bg-orange-50/50' : ''}`}>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  {product.image ? (
+                                    <img 
+                                      src={product.image.startsWith('http') ? product.image : `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${product.image}`} 
+                                      alt={product.name}
+                                      className="w-10 h-10 rounded-lg object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                                      <Package className="h-5 w-5 text-gray-400" />
+                                    </div>
+                                  )}
+                                  <div>
+                                    <p className="font-medium text-gray-900">{product.name}</p>
+                                    <p className="text-xs text-gray-500 truncate max-w-[200px]">
+                                      {product.description || 'No description'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="text-sm text-gray-600">
+                                  {categories.find(c => c.id === product.categoryId)?.displayName || product.categoryId}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <Badge className={
+                                  product.itemType === 'DRINK' 
+                                    ? 'bg-blue-100 text-blue-700' 
+                                    : 'bg-gray-100 text-gray-700'
+                                }>
+                                  {product.itemType}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-3">
+                                {product.nutrients ? (
+                                  <span className="text-sm text-green-700 bg-green-50 px-2 py-1 rounded">
+                                    {product.nutrients}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-gray-400 italic">Not set</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                {hasConfig ? (
+                                  <div className="flex items-center justify-center gap-1">
+                                    <CheckCircle className="h-4 w-4 text-green-500" />
+                                    <span className="text-sm text-green-700 font-medium">{moodCount} mood{moodCount !== 1 ? 's' : ''}</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-center gap-1">
+                                    <AlertCircle className="h-4 w-4 text-orange-500" />
+                                    <span className="text-sm text-orange-600">Not configured</span>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingProductMood({ productId: product.id, productName: product.name })
+                                    setProductMoodForm({
+                                      nutrients: product.nutrients || '',
+                                      moodBenefits: moodBenefits
+                                    })
+                                  }}
+                                  className="text-purple-600 border-purple-200 hover:bg-purple-50"
+                                >
+                                  <Pencil className="h-3 w-3 mr-1" />
+                                  Edit
+                                </Button>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Edit Product Mood Explanations Modal */}
+        {editingProductMood && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-lg">Edit Mood Explanations</h3>
+                  <p className="text-sm text-gray-500">{editingProductMood.productName}</p>
+                </div>
+                <button
+                  onClick={() => setEditingProductMood(null)}
+                  className="p-2 hover:bg-gray-100 rounded-lg"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <div className="p-4 space-y-4 overflow-y-auto flex-1">
+                {/* Key Nutrients */}
+                <div>
+                  <Label className="mb-2 block font-medium">Key Nutrients</Label>
+                  <Input
+                    value={productMoodForm.nutrients}
+                    onChange={(e) => setProductMoodForm({ ...productMoodForm, nutrients: e.target.value })}
+                    placeholder="e.g., Omega-3, Vitamin B12, Protein"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Comma-separated list of key nutrients in this product</p>
+                </div>
+
+                {/* Mood Explanations Grid */}
+                <div>
+                  <Label className="mb-3 block font-medium">Scientific Explanations per Mood</Label>
+                  <p className="text-xs text-gray-500 mb-3">Only add explanations for moods this product genuinely helps with. Leave blank for non-applicable moods.</p>
+                  
+                  <div className="grid gap-3">
+                    {[
+                      { value: 'happy', emoji: '😊', label: 'Happy' },
+                      { value: 'energetic', emoji: '⚡', label: 'Energetic' },
+                      { value: 'relaxed', emoji: '😌', label: 'Relaxed' },
+                      { value: 'excited', emoji: '🎉', label: 'Excited' },
+                      { value: 'tired', emoji: '😴', label: 'Tired' },
+                      { value: 'stressed', emoji: '😰', label: 'Stressed' },
+                      { value: 'anxious', emoji: '😟', label: 'Anxious' },
+                      { value: 'sad', emoji: '😢', label: 'Sad' },
+                      { value: 'depressed', emoji: '😔', label: 'Feeling Down' },
+                      { value: 'angry', emoji: '😠', label: 'Angry' },
+                    ].map(mood => (
+                      <div key={mood.value} className="flex items-start gap-3">
+                        <div className="w-28 flex items-center gap-1.5 pt-2 shrink-0">
+                          <span className="text-lg">{mood.emoji}</span>
+                          <span className="text-sm font-medium text-gray-700">{mood.label}</span>
+                        </div>
+                        <Input
+                          value={productMoodForm.moodBenefits[mood.value] || ''}
+                          onChange={(e) => setProductMoodForm({
+                            ...productMoodForm,
+                            moodBenefits: {
+                              ...productMoodForm.moodBenefits,
+                              [mood.value]: e.target.value
+                            }
+                          })}
+                          placeholder={`Why does this product help when feeling ${mood.label.toLowerCase()}?`}
+                          className="flex-1"
+                        />
+                        {productMoodForm.moodBenefits[mood.value] && (
+                          <button
+                            onClick={() => {
+                              const newBenefits = { ...productMoodForm.moodBenefits }
+                              delete newBenefits[mood.value]
+                              setProductMoodForm({ ...productMoodForm, moodBenefits: newBenefits })
+                            }}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg shrink-0"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-4 py-3 border-t flex justify-between items-center">
+                <p className="text-sm text-gray-500">
+                  {Object.keys(productMoodForm.moodBenefits).filter(k => productMoodForm.moodBenefits[k]).length} mood{Object.keys(productMoodForm.moodBenefits).filter(k => productMoodForm.moodBenefits[k]).length !== 1 ? 's' : ''} configured
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setEditingProductMood(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!editingProductMood) return
+                      
+                      try {
+                        setSavingProductMood(true)
+                        
+                        // Clean up empty values from moodBenefits
+                        const cleanedBenefits: Record<string, string> = {}
+                        Object.entries(productMoodForm.moodBenefits).forEach(([key, value]) => {
+                          if (value && value.trim()) {
+                            cleanedBenefits[key] = value.trim()
+                          }
+                        })
+                        
+                        // Update via API
+                        await menuItemsApi.update(editingProductMood.productId, {
+                          nutrients: productMoodForm.nutrients || undefined,
+                          moodBenefits: Object.keys(cleanedBenefits).length > 0 
+                            ? JSON.stringify(cleanedBenefits) 
+                            : undefined
+                        })
+                        
+                        toast.success('Saved!', 'Product mood explanations updated successfully')
+                        
+                        // Reload products
+                        await loadAllProducts()
+                        setEditingProductMood(null)
+                      } catch (error) {
+                        console.error('Failed to save:', error)
+                        toast.error('Save Failed', 'Could not update product mood explanations')
+                      } finally {
+                        setSavingProductMood(false)
+                      }
+                    }}
+                    disabled={savingProductMood}
+                    className="bg-purple-600 hover:bg-purple-700"
+                  >
+                    {savingProductMood ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Products Modal */}
+        {showBulkProductsModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b flex items-center justify-between">
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <Package className="h-5 w-5 text-blue-500" />
+                  Bulk Update Product Scientific Explanations
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowBulkProductsModal(false)}>
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              
+              <div className="p-4 space-y-4 overflow-y-auto flex-1">
+                {/* Prompt Section */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-medium text-blue-800">Step 1: Copy AI Prompt</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generateBulkProductsPrompt())
+                        setBulkProductsPromptCopied(true)
+                        setTimeout(() => setBulkProductsPromptCopied(false), 2000)
+                      }}
+                      className={bulkProductsPromptCopied ? 'bg-green-100 border-green-300 text-green-700' : 'border-blue-300 text-blue-700'}
+                    >
+                      {bulkProductsPromptCopied ? <><CheckCircle className="h-4 w-4 mr-1" /> Copied!</> : <><Copy className="h-4 w-4 mr-1" /> Copy Prompt</>}
+                    </Button>
+                  </div>
+                  <p className="text-sm text-blue-700">
+                    This prompt includes all {allProducts.length} products. Paste it in ChatGPT/Claude to generate scientific mood benefits.
+                  </p>
+                </div>
+
+                {/* Import Section */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <span className="font-medium text-gray-800 block mb-3">Step 2: Paste AI Response</span>
+                  <textarea
+                    id="bulkProductsImport"
+                    rows={10}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder='Paste the JSON array from AI response here...'
+                  />
+                  <Button
+                    onClick={() => {
+                      const textarea = document.getElementById('bulkProductsImport') as HTMLTextAreaElement
+                      if (textarea.value) handleBulkProductsImport(textarea.value)
+                    }}
+                    disabled={bulkUpdating}
+                    className="mt-3 bg-blue-500 hover:bg-blue-600"
+                  >
+                    {bulkUpdating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                    Import & Update Products
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Moods Modal */}
+        {showBulkMoodsModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b flex items-center justify-between">
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-purple-500" />
+                  Bulk Update All Mood Settings
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowBulkMoodsModal(false)}>
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              
+              <div className="p-4 space-y-4 overflow-y-auto flex-1">
+                {/* Prompt Section */}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-medium text-purple-800">Step 1: Copy AI Prompt</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generateBulkMoodsPrompt())
+                        setBulkMoodsPromptCopied(true)
+                        setTimeout(() => setBulkMoodsPromptCopied(false), 2000)
+                      }}
+                      className={bulkMoodsPromptCopied ? 'bg-green-100 border-green-300 text-green-700' : 'border-purple-300 text-purple-700'}
+                    >
+                      {bulkMoodsPromptCopied ? <><CheckCircle className="h-4 w-4 mr-1" /> Copied!</> : <><Copy className="h-4 w-4 mr-1" /> Copy Prompt</>}
+                    </Button>
+                  </div>
+                  <p className="text-sm text-purple-700">
+                    This prompt includes all categories with their products. AI will generate preferred/excluded categories based on nutritional science.
+                  </p>
+                </div>
+
+                {/* Import Section */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <span className="font-medium text-gray-800 block mb-3">Step 2: Paste AI Response</span>
+                  <textarea
+                    id="bulkMoodsImport"
+                    rows={10}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder='Paste the JSON array from AI response here...'
+                  />
+                  <Button
+                    onClick={() => {
+                      const textarea = document.getElementById('bulkMoodsImport') as HTMLTextAreaElement
+                      if (textarea.value) handleBulkMoodsImport(textarea.value)
+                    }}
+                    disabled={bulkUpdating}
+                    className="mt-3 bg-purple-500 hover:bg-purple-600"
+                  >
+                    {bulkUpdating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                    Import & Update Moods
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Combined Bulk Modal */}
+        {showBulkCombinedModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b flex items-center justify-between">
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-amber-500" />
+                  Combined Bulk Update (Moods + Products)
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowBulkCombinedModal(false)}>
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              
+              <div className="p-4 space-y-4 overflow-y-auto flex-1">
+                {/* Info */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-sm text-amber-800">
+                    <strong>Recommended approach:</strong> This updates both mood settings AND product explanations together, 
+                    ensuring they reference the same nutrients for a coherent recommendation system.
+                  </p>
+                </div>
+
+                {/* Prompt Section */}
+                <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-medium text-amber-800">Step 1: Copy AI Prompt</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generateCombinedPrompt())
+                        setBulkCombinedPromptCopied(true)
+                        setTimeout(() => setBulkCombinedPromptCopied(false), 2000)
+                      }}
+                      className={bulkCombinedPromptCopied ? 'bg-green-100 border-green-300 text-green-700' : 'border-amber-400 text-amber-700'}
+                    >
+                      {bulkCombinedPromptCopied ? <><CheckCircle className="h-4 w-4 mr-1" /> Copied!</> : <><Copy className="h-4 w-4 mr-1" /> Copy Prompt</>}
+                    </Button>
+                  </div>
+                  <p className="text-sm text-amber-700">
+                    This prompt asks AI to create coherent mood & product configurations. {allProducts.length > 50 ? `(Includes first 50 products as sample)` : ''}
+                  </p>
+                </div>
+
+                {/* Import Section */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <span className="font-medium text-gray-800 block mb-3">Step 2: Paste AI Response</span>
+                  <textarea
+                    id="bulkCombinedImport"
+                    rows={10}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    placeholder='Paste the JSON object with moodSettings and productUpdates...'
+                  />
+                  <Button
+                    onClick={() => {
+                      const textarea = document.getElementById('bulkCombinedImport') as HTMLTextAreaElement
+                      if (textarea.value) handleCombinedImport(textarea.value)
+                    }}
+                    disabled={bulkUpdating}
+                    className="mt-3 bg-amber-500 hover:bg-amber-600 text-white"
+                  >
+                    {bulkUpdating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                    Import & Update Everything
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Edit Mood Modal */}
         {editingMood && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -2073,6 +3315,121 @@ export const MoodSettingsPage = () => {
               </div>
               
               <div className="p-4 space-y-4">
+                {/* AI Prompt Generator */}
+                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Wand2 className="h-4 w-4 text-purple-600" />
+                      <span className="font-medium text-purple-800 text-sm">AI Prompt Generator</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        // Get existing mood benefits from products for context
+                        const prompt = `You are a nutritional psychology expert. I need help configuring a "${editForm.label || editingMood}" mood setting for a food recommendation system.
+
+**MOOD:** ${editForm.emoji || ''} ${editForm.label || editingMood}
+
+**AVAILABLE FOOD CATEGORIES:**
+${categories.map(cat => `- ${cat.displayName} (ID: ${cat.id})`).join('\n')}
+
+**YOUR TASK:**
+
+1. **DESCRIPTION** (1 sentence): A brief description of this mood state
+
+2. **SUPPORT MESSAGE** (1 sentence, optional): An empathetic message for customers feeling this way
+
+3. **SCIENTIFIC EXPLANATION** (1 sentence): Explain the nutritional science behind food recommendations for this mood
+
+4. **BENEFICIAL NUTRIENTS** (max 3): List key nutrients that help with this mood (e.g., Omega-3, Magnesium, Vitamin B12, Tryptophan, L-Theanine, etc.)
+
+5. **PREFERRED CATEGORIES**: Which food categories are beneficial for this mood? Use the category IDs from above.
+
+6. **EXCLUDED CATEGORIES** (if any): Which categories should be avoided or are not helpful for this mood? Use category IDs.
+
+**RESPONSE FORMAT:**
+
+DESCRIPTION: [1 sentence description]
+SUPPORT MESSAGE: [1 sentence supportive message, or "none"]
+SCIENTIFIC EXPLANATION: [1 sentence scientific explanation]
+BENEFICIAL NUTRIENTS: [comma-separated, max 3]
+PREFERRED CATEGORIES: [comma-separated category IDs]
+EXCLUDED CATEGORIES: [comma-separated category IDs, or "none"]
+
+**QUICK IMPORT FORMAT (IMPORTANT - ALWAYS INCLUDE THIS AT THE END):**
+Provide a single-line JSON for easy copy-paste import:
+\`\`\`
+{"description":"...","supportMessage":"...","scientificExplanation":"...","beneficialNutrients":["Nutrient1","Nutrient2"],"preferredCategories":["category-id-1","category-id-2"],"excludeCategories":["category-id-3"]}
+\`\`\`
+Use actual category IDs from the list above. Omit excludeCategories if none apply.`
+                        navigator.clipboard.writeText(prompt)
+                        setPromptCopied(true)
+                        setTimeout(() => setPromptCopied(false), 2000)
+                      }}
+                      className={`text-xs ${promptCopied ? 'bg-green-100 border-green-300 text-green-700' : 'border-purple-300 text-purple-700 hover:bg-purple-100'}`}
+                    >
+                      {promptCopied ? (
+                        <><CheckCircle className="h-3 w-3 mr-1" /> Copied!</>
+                      ) : (
+                        <><Copy className="h-3 w-3 mr-1" /> Copy Prompt</>
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-purple-700 mb-2">
+                    Copy this prompt → Paste in ChatGPT/Claude → Get mood configuration → Paste the JSON line below
+                  </p>
+                  
+                  {/* Quick Import Field */}
+                  <div className="mt-2">
+                    <Label className="text-xs font-semibold text-purple-800 mb-1 block">
+                      Quick Import (paste JSON from AI response)
+                    </Label>
+                    <Input
+                      type="text"
+                      placeholder='Paste JSON: {"description":"...","scientificExplanation":"..."}'
+                      className="text-xs font-mono"
+                      onPaste={(e) => {
+                        const pastedText = e.clipboardData.getData('text')
+                        try {
+                          // Try to extract JSON from the pasted text
+                          let jsonStr = pastedText
+                          const jsonMatch = pastedText.match(/\{[^{}]*"description"[^{}]*\}/)
+                          if (jsonMatch) {
+                            jsonStr = jsonMatch[0]
+                          }
+                          
+                          const data = JSON.parse(jsonStr)
+                          
+                          // Update the edit form with parsed data
+                          setEditForm(prev => ({
+                            ...prev,
+                            ...(data.description && { description: data.description }),
+                            ...(data.supportMessage && data.supportMessage !== 'none' && { supportMessage: data.supportMessage }),
+                            ...(data.scientificExplanation && { scientificExplanation: data.scientificExplanation }),
+                            ...(data.beneficialNutrients && { beneficialNutrients: Array.isArray(data.beneficialNutrients) ? data.beneficialNutrients : data.beneficialNutrients.split(',').map((s: string) => s.trim()) }),
+                            ...(data.preferredCategories && { preferredCategories: Array.isArray(data.preferredCategories) ? data.preferredCategories : data.preferredCategories.split(',').map((s: string) => s.trim()) }),
+                            ...(data.excludeCategories && data.excludeCategories !== 'none' && { excludeCategories: Array.isArray(data.excludeCategories) ? data.excludeCategories : data.excludeCategories.split(',').map((s: string) => s.trim()) }),
+                          }))
+                          
+                          // Show success and clear input
+                          e.preventDefault()
+                          ;(e.target as HTMLInputElement).value = ''
+                          // Use a simple alert since we don't have toast here
+                          alert('✅ Auto-filled! Check the fields below.')
+                        } catch {
+                          // If JSON parsing fails, let the paste happen normally
+                          console.log('Not valid JSON for auto-import')
+                        }
+                      }}
+                    />
+                    <p className="text-[10px] text-purple-600 mt-1">
+                      Paste the JSON line from AI response to auto-fill all fields
+                    </p>
+                  </div>
+                </div>
+
                 {/* Basic Info */}
                 <div className="grid md:grid-cols-3 gap-4">
                   <div>
@@ -2142,21 +3499,6 @@ export const MoodSettingsPage = () => {
                         {cat.displayName}
                       </button>
                     ))}
-                  </div>
-                  <div className="mt-3">
-                    <Label className="text-sm text-gray-600">Points for Preferred Category Match</Label>
-                    <Input
-                      type="number"
-                      value={editForm.preferredCategoryPoints ?? 10}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value)
-                        setEditForm({ ...editForm, preferredCategoryPoints: isNaN(value) ? 10 : Math.max(0, value) })
-                      }}
-                      min={0}
-                      max={50}
-                      className="mt-1"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Points awarded when menu item is in a preferred category (0-50)</p>
                   </div>
                 </div>
 

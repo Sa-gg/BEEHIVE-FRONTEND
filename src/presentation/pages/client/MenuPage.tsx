@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { ClientLayout } from '../../components/layout/ClientLayout'
 import type { MenuItem } from '../../../core/domain/entities/MenuItem.entity'
 import type { OrderItem, OrderItemAddon } from '../../../core/domain/entities/Order.entity'
@@ -558,8 +558,10 @@ export const MenuPage = () => {
       }))
 
       // Create order via API
+      // Include customer phone for loyalty tracking if user is logged in
       const response = await ordersApi.create({
         customerName: data.customerName || user?.name || undefined,
+        customerPhone: user?.phone || undefined, // For loyalty tracking
         tableNumber: data.tableNumber || undefined,
         orderType: data.orderType,
         moodContext: selectedMood || undefined,
@@ -589,6 +591,13 @@ export const MenuPage = () => {
       setViewState('confirmation')
       setCartItems([]) // Clear cart after successful order
       
+      // Track recommended items ONLY on successful order submission
+      // This ensures "shown" count accurately reflects orders placed, not just mood selections
+      if (selectedMood && shuffledRecommendationsRef.current.items.length > 0) {
+        const recommendedItemIds = shuffledRecommendationsRef.current.items.map(item => item.id)
+        trackRecommendedItems(selectedMood, recommendedItemIds)
+      }
+      
       // Immediately refresh order notifications for real-time count
       refreshOrderNotifications()
 
@@ -611,15 +620,16 @@ export const MenuPage = () => {
   const handleSelectMood = async (mood: MoodType) => {
     setSelectedMood(mood)
     setShowMoodSelector(false)
-    // Reset tracked mood ref so useEffect will track for the new mood
+    // Reset tracked mood ref for new mood session
     trackedMoodRef.current = null
     // Clear cached recommendations so new mood gets freshly shuffled
     shuffledRecommendationsRef.current = { mood: null, items: [] }
   }
   
-  // Track shown items when mood is selected and recommendations are computed
+  // Track shown items when ORDER IS SUCCESSFULLY PLACED (not on mood selection)
+  // This ensures accurate tracking - only count as "shown" when customer actually orders
   const trackRecommendedItems = async (mood: MoodType, itemIds: string[]) => {
-    // Only track if we haven't already tracked for this mood
+    // Only track if we haven't already tracked for this order session
     if (trackedMoodRef.current === mood) {
       return
     }
@@ -758,15 +768,7 @@ export const MenuPage = () => {
     // Score each item based on multiple factors using DYNAMIC weights from config
     const timeContext = getTimeContext()
     
-    // DEBUG: Log scoring context
-    console.log('\n🎯 ═══════════════════════════════════════════════════════════════')
-    console.log(`📊 MOOD RECOMMENDATION SCORING - "${selectedMood.toUpperCase()}" mood`)
-    console.log('═══════════════════════════════════════════════════════════════')
-    console.log(`⏰ Time: ${timeContext} | 🎚️ Baseline Reached: ${baselineReached}`)
-    console.log(`📈 Total Exposures (for UCB): ${totalExposures}`)
-    console.log(`⚖️ Weights: Benefits=${scoringWeights.moodBenefits}, Category=${scoringWeights.preferredCategory}, Historical=${scoringWeights.historical}, Featured=${scoringWeights.featured}, TimeOfDay=${scoringWeights.timeOfDay}, UCB=${scoringWeights.explorationBonus}`)
-    console.log(`🔢 Min Orders Threshold: ${MINIMUM_ORDERS_THRESHOLD} | Excluded Cat Penalty: ${useExcludedCategoryPenalty ? `-${scoringWeights.excludedCategoryPenalty}` : 'FILTER OUT'}`)
-    console.log('───────────────────────────────────────────────────────────────\n')
+    // DEBUG logging removed for production performance
     
     const scoredItems = recommended.map(item => {
       let score = 0
@@ -917,32 +919,7 @@ export const MenuPage = () => {
     // Items with equal scores get randomized to ensure fair exposure
     const shuffledItems = shuffleEqualScores(filteredItems)
     
-    // DEBUG: Log detailed score breakdown for top items
-    console.log('📋 ITEM SCORE BREAKDOWN (sorted by score):')
-    console.log('┌────────────────────────────────────┬──────────┬─────────┬──────┬────────┬─────────┬──────────┬────────┬─────────┬─────────┐')
-    console.log('│ Item Name                          │ Stage    │ Benefits│ Cat+ │ Cat-   │ History │ Featured │ TimeOD │ UCB     │ TOTAL   │')
-    console.log('├────────────────────────────────────┼──────────┼─────────┼──────┼────────┼─────────┼──────────┼────────┼─────────┼─────────┤')
-    
-    shuffledItems.slice(0, 15).forEach(({ item, score, breakdown }, idx) => {
-      const name = item.name.substring(0, 34).padEnd(34)
-      const stage = breakdown.stage.padEnd(8)
-      const benefits = breakdown.moodBenefits.toFixed(1).padStart(7)
-      const catPlus = breakdown.preferredCategory.toFixed(1).padStart(4)
-      const catMinus = breakdown.excludedCategory.toFixed(1).padStart(6)
-      const hist = breakdown.historical.toFixed(2).padStart(7)
-      const feat = breakdown.featured.toFixed(1).padStart(8)
-      const time = breakdown.timeOfDay.toFixed(1).padStart(6)
-      const ucb = breakdown.explorationBonus.toFixed(2).padStart(7)
-      const total = score.toFixed(2).padStart(7)
-      
-      const rankEmoji = idx < 8 ? '✅' : '❌'
-      console.log(`│ ${name} │ ${stage} │ ${benefits} │ ${catPlus} │ ${catMinus} │ ${hist} │ ${feat} │ ${time} │ ${ucb} │ ${total} │ ${rankEmoji}`)
-    })
-    
-    console.log('└────────────────────────────────────┴──────────┴─────────┴──────┴────────┴─────────┴──────────┴────────┴─────────┴─────────┘')
-    console.log(`\n✅ = In Top 8 (will be shown)  ❌ = Below top 8 (filtered out)`)
-    console.log(`🎲 Randomization: Items with EQUAL scores are shuffled (tiebreaker) to prevent position bias`)
-    console.log('═══════════════════════════════════════════════════════════════\n')
+    // DEBUG table logging removed for production performance
     
     // Return top items (already sorted by score within shuffleEqualScores)
     let topRecommended = shuffledItems
@@ -960,7 +937,6 @@ export const MenuPage = () => {
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
       }
       topRecommended = shuffled
-      console.log('🔀 Day 0 Position Shuffle: Display order randomized (cached for this mood)')
     }
     
     // Cache the shuffled result so subsequent renders don't re-shuffle
@@ -969,58 +945,8 @@ export const MenuPage = () => {
     return topRecommended
   }
   
-  // Track recommendations when selectedMood changes (only once per mood selection)
-  useEffect(() => {
-    if (!selectedMood || trackedMoodRef.current === selectedMood) {
-      return
-    }
-    
-    // Get recommended items for tracking (same logic as getRecommendedItems with dynamic weights)
-    const moodConfig = getMoodByValue(selectedMood)
-    if (!moodConfig) return
-    
-    const timeContext = getTimeContext()
-    const safeMenuItems = Array.isArray(menuItems) ? menuItems : []
-    const recommended = safeMenuItems.filter(item => {
-      if (moodConfig.excludeCategories?.includes(item.categoryId)) return false
-      return item.available
-    })
-    
-    const scoredItems = recommended.map(item => {
-      let score = 0
-      const hasExplanation = getMoodExplanation(item.name, selectedMood, item.moodBenefits)
-      if (hasExplanation) score += scoringWeights.moodBenefits
-      if (moodConfig.preferredCategories?.includes(item.categoryId)) score += scoringWeights.preferredCategory
-      if (item.featured) score += scoringWeights.featured
-      // Time of day boost (using configurable categories with categoryId)
-      if (timeContext === 'morning' && timeConfig.morningCategories.includes(item.categoryId)) {
-        score += scoringWeights.timeOfDay
-      } else if (timeContext === 'afternoon' && timeConfig.afternoonCategories.includes(item.categoryId)) {
-        score += scoringWeights.timeOfDay
-      } else if (timeContext === 'evening' && timeConfig.eveningCategories.includes(item.categoryId)) {
-        score += scoringWeights.timeOfDay
-      }
-      return { item, score, hasExplanation }
-    })
-    
-    const filteredItems = scoredItems.filter(({ score, hasExplanation, item }) => {
-      if (hasExplanation) return true
-      if (moodConfig.preferredCategories?.includes(item.categoryId)) return true
-      if (item.featured) return true
-      if (score >= scoringWeights.featured) return true
-      return false
-    })
-    
-    const topRecommended = filteredItems
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 8)
-      .map(scored => scored.item)
-    
-    if (topRecommended.length > 0) {
-      const itemIds = topRecommended.map(item => item.id)
-      trackRecommendedItems(selectedMood, itemIds)
-    }
-  }, [selectedMood, menuItems, scoringWeights])
+  // REMOVED: Tracking on mood selection - now tracking happens on order submission
+  // This prevents duplicate "shown" counts when user changes moods multiple times before ordering
 
   const handleNewOrder = () => {
     setCartItems([])
@@ -1035,17 +961,31 @@ export const MenuPage = () => {
     setViewState('menu')
   }
 
-  // Ensure menuItems is always an array and filter out manually out-of-stock items
-  const safeMenuItems = (Array.isArray(menuItems) ? menuItems : []).filter(item => !(item as any).outOfStock)
+  // Memoize safe menu items to prevent recalculation on every render
+  const safeMenuItems = useMemo(() => 
+    (Array.isArray(menuItems) ? menuItems : []).filter(item => !(item as any).outOfStock),
+    [menuItems]
+  )
   
-  // Filter by category - use categoryId for matching with API categories
-  const filteredItems = selectedCategory === 'all' 
-    ? safeMenuItems 
-    : selectedCategory === 'best seller'
-    ? safeMenuItems.filter(item => item.featured) // Use featured flag for best sellers
-    : safeMenuItems.filter((item) => (item as any).categoryId === selectedCategory || item.category === selectedCategory.toLowerCase())
-  const recommendedItems = getRecommendedItems()
-  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
+  // Memoize filtered items - only recalculate when category or items change
+  const filteredItems = useMemo(() => {
+    if (selectedCategory === 'all') return safeMenuItems
+    if (selectedCategory === 'best seller') return safeMenuItems.filter(item => item.featured)
+    return safeMenuItems.filter((item) => 
+      (item as any).categoryId === selectedCategory || item.category === selectedCategory.toLowerCase()
+    )
+  }, [safeMenuItems, selectedCategory])
+  
+  // Memoize recommended items - only recalculate when mood or related data changes
+  const recommendedItems = useMemo(() => getRecommendedItems(), 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedMood, menuItems, moodItemStats, feedbackConfig]
+  )
+  
+  const cartCount = useMemo(() => 
+    cartItems.reduce((sum, item) => sum + item.quantity, 0),
+    [cartItems]
+  )
 
   if (viewState === 'checkout') {
     return (
@@ -1261,8 +1201,8 @@ export const MenuPage = () => {
           </div>
         </div>
 
-        {/* Menu Items */}
-        <div className="px-4 py-4">
+        {/* Menu Items - with CSS containment for scroll performance */}
+        <div className="px-4 py-4 menu-items-container">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-500">
               <Loader2 className="h-8 w-8 animate-spin mb-3" style={{ color: '#F9C900' }} />
@@ -1273,15 +1213,16 @@ export const MenuPage = () => {
               <p className="text-sm">No items found</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 menu-grid">
               {filteredItems.map((item) => (
-                <CustomerMenuItemCard
-                  key={item.id}
-                  item={item}
-                  onAddToCart={addToCart}
-                  currentMood={selectedMood}
-                  getImageUrl={getImageUrl}
-                />
+                <div key={item.id} className="menu-item-wrapper">
+                  <CustomerMenuItemCard
+                    item={item}
+                    onAddToCart={addToCart}
+                    currentMood={selectedMood}
+                    getImageUrl={getImageUrl}
+                  />
+                </div>
               ))}
             </div>
           )}
@@ -1346,7 +1287,7 @@ export const MenuPage = () => {
             </span>
           </button>
 
-        {/* Custom animation styles */}
+        {/* Custom animation styles + scroll performance optimizations */}
         <style>{`
           @keyframes bounce-slow {
             0%, 100% { transform: translateY(0); }
@@ -1359,6 +1300,24 @@ export const MenuPage = () => {
           }
           .animate-bounce-slow { animation: bounce-slow 2s ease-in-out infinite; }
           .animate-wiggle { animation: wiggle 0.5s ease-in-out infinite; }
+          
+          /* Scroll performance optimizations */
+          .menu-items-container {
+            contain: layout style;
+            will-change: transform;
+          }
+          .menu-grid {
+            contain: layout;
+          }
+          .menu-item-wrapper {
+            contain: layout style paint;
+            content-visibility: auto;
+            contain-intrinsic-size: 140px 180px;
+          }
+          /* Prevent layout thrashing during scroll */
+          .min-h-screen {
+            overflow-anchor: none;
+          }
         `}</style>
 
         {/* Flying Item Animation */}
